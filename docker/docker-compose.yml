@@ -1,0 +1,42 @@
+services:
+
+  # ─── App (Frontend + Backend) ─────────────────────────────────────────────
+  app:
+    build:
+      context: ..                  # Projekt-Root als Build-Kontext
+      dockerfile: docker/Dockerfile
+    environment:
+      # Zwingend erforderlich – siehe .env.docker.example
+      JWT_SECRET: ${JWT_SECRET}
+      # nginx ist der einzige Client; CORS greift hier nicht (gleiche Origin),
+      # aber der Wert wird geloggt und für direkte API-Zugriffe benötigt.
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://localhost}
+      PORT: "3001"
+    volumes:
+      # SQLite-Datenbank persistent speichern
+      - db-data:/app/server/data
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ─── nginx (HTTPS-Proxy) ──────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - internal
+
+volumes:
+  db-data:
+
+networks:
+  internal:
+    driver: bridge
