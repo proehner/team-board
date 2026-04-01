@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStore } from '@/store'
 import Avatar from '@/components/ui/Avatar'
 import { AlertTriangle, CheckCircle, Shield, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { TeamMember, Skill } from '@/types'
 
 function getBusFactor(skillId: string, memberSkills: { memberId: string; skillId: string; level: number }[], threshold = 3) {
@@ -14,14 +15,16 @@ function getRiskColor(factor: number): string {
   return 'text-green-600 bg-green-50 border-green-200'
 }
 
-function getRiskLabel(factor: number): string {
-  if (factor === 0) return 'Kein Experte'
-  if (factor === 1) return 'Kritisch'
-  if (factor === 2) return 'Gefährdet'
-  return 'Gut'
-}
-
 export default function HealthPage() {
+  const { t } = useTranslation()
+
+  function getRiskLabel(factor: number): string {
+    if (factor === 0) return t('skillLevel.0')
+    if (factor === 1) return t('health.critical')
+    if (factor === 2) return t('health.atRisk')
+    return 'OK'
+  }
+
   const members = useStore((s) => s.members)
   const skills = useStore((s) => s.skills)
   const memberSkills = useStore((s) => s.memberSkills)
@@ -40,7 +43,6 @@ export default function HealthPage() {
 
   const ms = memberSkills as { memberId: string; skillId: string; level: number }[]
 
-  // Bus Factor
   const skillRisks = skills.map((sk) => {
     const factor = getBusFactor(sk.id, ms)
     const experts = ms
@@ -53,7 +55,6 @@ export default function HealthPage() {
   const criticalSkills = skillRisks.filter((s) => s.factor <= 1)
   const atRiskSkills = skillRisks.filter((s) => s.factor === 2)
 
-  // Workload
   const workloads = activeSprint
     ? activeSprint.capacity.map((c) => {
         const member = activeMembers.find((m) => m.id === c.memberId)
@@ -63,7 +64,6 @@ export default function HealthPage() {
   const maxPlanned = Math.max(...workloads.map((w) => w.plannedPoints), 1)
   const avgPlanned = workloads.length ? workloads.reduce((s, w) => s + w.plannedPoints, 0) / workloads.length : 0
 
-  // Absence simulator
   const absentMember = absentMemberId ? activeMembers.find((m) => m.id === absentMemberId) : null
   const affectedAssignments = absentMemberId
     ? assignments.filter((a) => a.memberId === absentMemberId && !a.isSynthetic && !a.isArchived)
@@ -83,7 +83,6 @@ export default function HealthPage() {
     )
   }
 
-  // Development suggestions
   const devSuggestions = activeMembers.map((member) => {
     const suggestions = skills.map((sk) => {
       const myLevel = ms.find((x) => x.memberId === member.id && x.skillId === sk.id)?.level ?? 0
@@ -93,12 +92,16 @@ export default function HealthPage() {
       const isCritical = busFactor <= 1
       const hasGrowthRoom = myLevel < teamMax - 1
       if (!isCritical && !hasGrowthRoom) return null
-      return { skill: sk, currentLevel: myLevel, targetLevel: Math.min(myLevel + 2, 5) as number, reason: isCritical ? 'Kritische Kompetenz' : 'Wachstumspotenzial' }
+      return {
+        skill: sk,
+        currentLevel: myLevel,
+        targetLevel: Math.min(myLevel + 2, 5) as number,
+        reason: isCritical ? t('health.criticalCompetency') : t('health.growthPotential'),
+      }
     }).filter(Boolean) as { skill: Skill; currentLevel: number; targetLevel: number; reason: string }[]
     return { member, suggestions }
   }).filter((d) => d.suggestions.length > 0)
 
-  // Open action items
   const openActions = retrospectives
     .flatMap((r) => r.items
       .filter((i) => i.type === 'Aktionspunkt' && i.status !== 'Erledigt')
@@ -106,7 +109,6 @@ export default function HealthPage() {
     )
     .sort((a, b) => a.retroDate.localeCompare(b.retroDate))
 
-  // Health score
   const totalSkills = skills.length || 1
   const healthScore = Math.min(100, Math.round(
     ((totalSkills - criticalSkills.length) / totalSkills) * 50 +
@@ -121,11 +123,11 @@ export default function HealthPage() {
     <div className="p-6 space-y-5 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Team-Gesundheit</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Analyse auf Basis aktueller Daten</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('health.title')}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('health.subtitle')}</p>
         </div>
         <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border ${healthBg}`}>
-          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Gesundheitsscore</span>
+          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{t('health.healthScore')}</span>
           <span className={`text-2xl font-bold ${healthColor}`}>{healthScore}</span>
           <span className="text-xs text-slate-400 dark:text-slate-500">/ 100</span>
         </div>
@@ -133,14 +135,14 @@ export default function HealthPage() {
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryCard icon={<Shield className="w-5 h-5 text-red-500" />} label="Kritische Skills" value={criticalSkills.length} sub={`von ${skills.length} Skills`} highlight={criticalSkills.length > 0} />
-        <SummaryCard icon={<AlertTriangle className="w-5 h-5 text-amber-500" />} label="Gefährdet" value={atRiskSkills.length} sub="nur 2 Experten" highlight={atRiskSkills.length > 2} />
-        <SummaryCard icon={<CheckCircle className="w-5 h-5 text-indigo-500" />} label="Offene Maßnahmen" value={openActions.length} sub="aus Retros" highlight={openActions.length > 3} />
-        <SummaryCard icon={<TrendingUp className="w-5 h-5 text-green-500" />} label="Entwicklungsvorschläge" value={devSuggestions.reduce((s, d) => s + d.suggestions.length, 0)} sub="insgesamt" highlight={false} />
+        <SummaryCard icon={<Shield className="w-5 h-5 text-red-500" />} label={t('health.criticalSkills')} value={criticalSkills.length} sub={t('health.ofSkills', { count: skills.length })} highlight={criticalSkills.length > 0} />
+        <SummaryCard icon={<AlertTriangle className="w-5 h-5 text-amber-500" />} label={t('health.atRisk')} value={atRiskSkills.length} sub={t('health.onlyTwoExperts')} highlight={atRiskSkills.length > 2} />
+        <SummaryCard icon={<CheckCircle className="w-5 h-5 text-indigo-500" />} label={t('health.openActions')} value={openActions.length} sub={t('health.fromRetros')} highlight={openActions.length > 3} />
+        <SummaryCard icon={<TrendingUp className="w-5 h-5 text-green-500" />} label={t('health.developmentSuggestions')} value={devSuggestions.reduce((s, d) => s + d.suggestions.length, 0)} sub={t('health.inTotal')} highlight={false} />
       </div>
 
       {/* Bus Factor */}
-      <Section id="busfactor" title="Bus-Faktor & Wissenskonzentration" badge={criticalSkills.length > 0 ? `${criticalSkills.length} kritisch` : undefined} badgeColor="red" expanded={expandedSection === 'busfactor'} onToggle={() => toggleSection('busfactor')}>
+      <Section id="busfactor" title={t('health.busFactor')} badge={criticalSkills.length > 0 ? `${criticalSkills.length} ${t('health.critical')}` : undefined} badgeColor="red" expanded={expandedSection === 'busfactor'} onToggle={() => toggleSection('busfactor')}>
         <div className="space-y-2 pt-2">
           {skillRisks.map(({ skill, factor, experts }) => (
             <div key={skill.id} className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800 last:border-0">
@@ -158,19 +160,19 @@ export default function HealthPage() {
                     <span className="text-xs text-slate-500 dark:text-slate-400">{m.name.split(' ')[0]}</span>
                   </div>
                 ))}
-                {experts.length === 0 && <span className="text-xs text-red-400">Niemand auf Niveau 3+</span>}
+                {experts.length === 0 && <span className="text-xs text-red-400">{t('health.noOneLevel3')}</span>}
               </div>
             </div>
           ))}
-          {skillRisks.length === 0 && <p className="text-sm text-slate-400 py-4 text-center">Keine Kompetenz-Daten vorhanden.</p>}
+          {skillRisks.length === 0 && <p className="text-sm text-slate-400 py-4 text-center">{t('health.noSuggestions')}</p>}
         </div>
       </Section>
 
       {/* Workload */}
-      <Section id="workload" title={`Workload-Verteilung${activeSprint ? ` — ${activeSprint.name}` : ''}`} badge={!activeSprint ? 'Kein aktiver Sprint' : undefined} badgeColor="slate" expanded={expandedSection === 'workload'} onToggle={() => toggleSection('workload')}>
+      <Section id="workload" title={`${t('health.workloadDistribution')}${activeSprint ? ` — ${activeSprint.name}` : ''}`} badge={!activeSprint ? t('health.noActiveSprint') : undefined} badgeColor="slate" expanded={expandedSection === 'workload'} onToggle={() => toggleSection('workload')}>
         {activeSprint ? (
           <div className="space-y-3 pt-2">
-            {workloads.length === 0 && <p className="text-sm text-slate-400">Keine Kapazitätsdaten für diesen Sprint.</p>}
+            {workloads.length === 0 && <p className="text-sm text-slate-400">{t('health.noCapacityData')}</p>}
             {workloads.map(({ member, plannedPoints, availableDays }) => {
               const deviation = avgPlanned > 0 ? ((plannedPoints - avgPlanned) / avgPlanned) * 100 : 0
               const barColor = Math.abs(deviation) > 30 ? 'bg-amber-400' : 'bg-indigo-400'
@@ -186,27 +188,27 @@ export default function HealthPage() {
                 </div>
               )
             })}
-            {workloads.length > 0 && <p className="text-xs text-slate-400 dark:text-slate-500 pt-1">Ø {Math.round(avgPlanned)} SP · Abweichung &gt;30% markiert</p>}
+            {workloads.length > 0 && <p className="text-xs text-slate-400 dark:text-slate-500 pt-1">{t('health.avgSp', { avg: Math.round(avgPlanned) })}</p>}
           </div>
-        ) : <p className="text-sm text-slate-400 pt-2">Kein aktiver Sprint vorhanden.</p>}
+        ) : <p className="text-sm text-slate-400 pt-2">{t('health.noActiveSprint')}.</p>}
       </Section>
 
       {/* Absence Simulator */}
-      <Section id="absence" title="Abwesenheits-Simulator" expanded={expandedSection === 'absence'} onToggle={() => toggleSection('absence')}>
+      <Section id="absence" title={t('health.absenceSimulator')} expanded={expandedSection === 'absence'} onToggle={() => toggleSection('absence')}>
         <div className="space-y-4 pt-2">
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Mitglied auswählen</label>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">{t('health.selectMember')}</label>
             <select value={absentMemberId ?? ''} onChange={(e) => setAbsentMemberId(e.target.value || null)} className="form-input text-sm">
-              <option value="">Mitglied wählen…</option>
+              <option value="">{t('health.selectMemberPlaceholder')}</option>
               {activeMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
           {absentMember && (
             <div className="space-y-4">
               <div>
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">Betroffene Zuweisungen ({affectedAssignments.length})</p>
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">{t('health.affectedAssignments', { count: affectedAssignments.length })}</p>
                 {affectedAssignments.length === 0
-                  ? <p className="text-xs text-slate-400">Keine aktiven Zuweisungen.</p>
+                  ? <p className="text-xs text-slate-400">{t('health.noActiveAssignments')}</p>
                   : affectedAssignments.map((a) => (
                       <div key={a.id} className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex justify-between mb-1">
                         <span className="font-medium text-amber-800">{a.type}</span>
@@ -215,9 +217,9 @@ export default function HealthPage() {
                     ))}
               </div>
               <div>
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">Alleinige Expertise ({soleExpertise.length} Skills)</p>
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">{t('health.soleExpertise', { count: soleExpertise.length })}</p>
                 {soleExpertise.length === 0
-                  ? <p className="text-xs text-green-600">Kein Wissensmonopol — alle Skills doppelt besetzt.</p>
+                  ? <p className="text-xs text-green-600">{t('health.noKnowledgeMonopoly')}</p>
                   : soleExpertise.map((sk) => {
                       const covers = getCoverCandidates(sk)
                       return (
@@ -228,7 +230,7 @@ export default function HealthPage() {
                           </div>
                           {covers.length > 0 ? (
                             <div className="flex items-center gap-1 flex-wrap">
-                              <span className="text-xs text-slate-500 dark:text-slate-400">Einspringen kann:</span>
+                              <span className="text-xs text-slate-500 dark:text-slate-400">{t('health.canFillIn')}</span>
                               {covers.map((m) => {
                                 const lvl = ms.find((x) => x.memberId === m.id && x.skillId === sk.id)?.level ?? 0
                                 return (
@@ -240,7 +242,7 @@ export default function HealthPage() {
                                 )
                               })}
                             </div>
-                          ) : <p className="text-xs text-red-500">⚠ Kein Ersatz verfügbar (Niveau ≥ 2)</p>}
+                          ) : <p className="text-xs text-red-500">{t('health.noReplacement')}</p>}
                         </div>
                       )
                     })}
@@ -251,9 +253,9 @@ export default function HealthPage() {
       </Section>
 
       {/* Development Suggestions */}
-      <Section id="development" title="Individuelle Entwicklungsvorschläge" badge={devSuggestions.length > 0 ? `${devSuggestions.reduce((s, d) => s + d.suggestions.length, 0)} Vorschläge` : undefined} badgeColor="indigo" expanded={expandedSection === 'development'} onToggle={() => toggleSection('development')}>
+      <Section id="development" title={t('health.developmentSuggestionsIndividual')} badge={devSuggestions.length > 0 ? `${devSuggestions.reduce((s, d) => s + d.suggestions.length, 0)} ${t('health.suggestions')}` : undefined} badgeColor="indigo" expanded={expandedSection === 'development'} onToggle={() => toggleSection('development')}>
         {devSuggestions.length === 0
-          ? <p className="text-sm text-slate-400 py-4 text-center">Keine Vorschläge auf Basis der aktuellen Daten.</p>
+          ? <p className="text-sm text-slate-400 py-4 text-center">{t('health.noSuggestions')}</p>
           : <div className="space-y-4 pt-2">
               {devSuggestions.map(({ member, suggestions }) => (
                 <div key={member.id}>
@@ -270,7 +272,7 @@ export default function HealthPage() {
                             <div key={i} className={`w-3 h-3 rounded-sm ${i < currentLevel ? 'bg-indigo-400' : i < targetLevel ? 'bg-indigo-100 dark:bg-indigo-900 border border-indigo-300 dark:border-indigo-700' : 'bg-slate-100 dark:bg-slate-800'}`} />
                           ))}
                         </div>
-                        <span className={`px-1.5 py-0.5 rounded text-xs shrink-0 ${reason === 'Kritische Kompetenz' ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-600'}`}>{reason}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-xs shrink-0 ${reason === t('health.criticalCompetency') ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-600'}`}>{reason}</span>
                       </div>
                     ))}
                   </div>
@@ -280,9 +282,9 @@ export default function HealthPage() {
       </Section>
 
       {/* Open Action Items */}
-      <Section id="actions" title="Offene Retro-Maßnahmen" badge={openActions.length > 0 ? `${openActions.length} offen` : '0 offen'} badgeColor={openActions.length > 0 ? 'amber' : 'green'} expanded={expandedSection === 'actions'} onToggle={() => toggleSection('actions')}>
+      <Section id="actions" title={t('health.openRetroActions')} badge={openActions.length > 0 ? `${openActions.length} ${t('health.open')}` : `0 ${t('health.open')}`} badgeColor={openActions.length > 0 ? 'amber' : 'green'} expanded={expandedSection === 'actions'} onToggle={() => toggleSection('actions')}>
         {openActions.length === 0
-          ? <p className="text-sm text-green-600 py-2 pt-2">Alle Maßnahmen erledigt.</p>
+          ? <p className="text-sm text-green-600 py-2 pt-2">{t('health.allActionsDone')}</p>
           : <div className="space-y-2 pt-2">
               {openActions.map((item) => {
                 const assignee = item.assigneeId ? members.find((m) => m.id === item.assigneeId) : null
@@ -290,7 +292,7 @@ export default function HealthPage() {
                   <div key={item.id} className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-slate-800 dark:text-slate-200">{item.text}</p>
-                      <p className="text-xs text-amber-600 mt-0.5">aus: {item.retroTitle}</p>
+                      <p className="text-xs text-amber-600 mt-0.5">{item.retroTitle}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {assignee && (
@@ -299,7 +301,7 @@ export default function HealthPage() {
                           <span className="text-xs text-slate-500 dark:text-slate-400">{assignee.name.split(' ')[0]}</span>
                         </div>
                       )}
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${item.status === 'InBearbeitung' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>{item.status}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${item.status === 'InBearbeitung' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>{t(`retroItemStatus.${item.status}`)}</span>
                     </div>
                   </div>
                 )

@@ -36,7 +36,7 @@ export function seedIfEmpty(): void {
   const row = dbGet<{ n: number }>('SELECT COUNT(*) as n FROM members')
   if ((row?.n ?? 0) > 0) return
 
-  console.log('Datenbank leer – Seed-Daten werden eingespielt…')
+  console.log('Database empty – inserting seed data…')
 
   const today = new Date()
   const sprintStart = new Date(today); sprintStart.setDate(today.getDate() - 5)
@@ -142,5 +142,5 @@ export function seedIfEmpty(): void {
       [iid, retroId, type, text, votes, assignee, 'Offen'])
   }
 
-  console.log('Seed-Daten erfolgreich eingespielt.')
+  console.log('Seed data inserted successfully.')
 }

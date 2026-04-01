@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
@@ -15,6 +16,7 @@ const sprintStatusVariant: Record<SprintStatus, 'info' | 'success' | 'default' |
 }
 
 export default function Dashboard() {
+  const { t } = useTranslation()
   const members = useStore((s) => s.members)
   const skills = useStore((s) => s.skills)
   const sprints = useStore((s) => s.sprints)
@@ -45,34 +47,34 @@ export default function Dashboard() {
     <div className="p-6 space-y-6 max-w-7xl">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Dashboard</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Willkommen zurück – hier ist der aktuelle Überblick.</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('dashboard.title')}</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('dashboard.subtitle')}</p>
       </div>
 
       {/* Stat row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={<Users className="w-5 h-5" />}
-          label="Aktive Mitglieder"
+          label={t('dashboard.activeMembers')}
           value={activeMembers.length.toString()}
           color="indigo"
         />
         <StatCard
           icon={<Zap className="w-5 h-5" />}
-          label="Aktiver Sprint"
+          label={t('dashboard.activeSprint')}
           value={activeSprint?.name ?? '—'}
-          sub={daysLeft !== null ? `${daysLeft} Tage verbleibend` : undefined}
+          sub={daysLeft !== null ? t('dashboard.daysLeft', { count: daysLeft }) : undefined}
           color="green"
         />
         <StatCard
           icon={<AlertCircle className="w-5 h-5" />}
-          label="Offene Aktionspunkte"
+          label={t('dashboard.openActionItems')}
           value={openActionItems.length.toString()}
           color="amber"
         />
         <StatCard
           icon={<Star className="w-5 h-5" />}
-          label="Fähigkeiten im Katalog"
+          label={t('dashboard.skillsInCatalog')}
           value={skills.length.toString()}
           color="purple"
         />
@@ -81,11 +83,11 @@ export default function Dashboard() {
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Active Sprint */}
         <Card
-          title="Aktiver Sprint"
+          title={t('dashboard.activeSprint')}
           action={
             activeSprint ? (
               <Link to={`/sprints/${activeSprint.id}`} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-                Details <ArrowRight className="w-3 h-3" />
+                {t('common.details')} <ArrowRight className="w-3 h-3" />
               </Link>
             ) : undefined
           }
@@ -93,7 +95,7 @@ export default function Dashboard() {
           {activeSprint ? (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <Badge label={activeSprint.status} variant={sprintStatusVariant[activeSprint.status]} dot />
+                <Badge label={t(`sprintStatus.${activeSprint.status}`)} variant={sprintStatusVariant[activeSprint.status]} dot />
                 <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{activeSprint.name}</span>
               </div>
               <div className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
@@ -108,26 +110,26 @@ export default function Dashboard() {
               </div>
               <div className="bg-slate-50 dark:bg-slate-950 rounded-lg p-3 space-y-1">
                 <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                  <span>Verfügbare Tage gesamt</span>
+                  <span>{t('dashboard.totalAvailableDays')}</span>
                   <span className="font-medium text-slate-700 dark:text-slate-300">{totalDays}</span>
                 </div>
                 <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                  <span>Geplante Story Points</span>
+                  <span>{t('dashboard.plannedStoryPoints')}</span>
                   <span className="font-medium text-slate-700 dark:text-slate-300">{totalPoints}</span>
                 </div>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-slate-400 dark:text-slate-500">Kein aktiver Sprint.</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500">{t('dashboard.noActiveSprint')}</p>
           )}
         </Card>
 
         {/* Current Responsibilities */}
         <Card
-          title="Aktuelle Verantwortlichkeiten"
+          title={t('dashboard.currentResponsibilities')}
           action={
             <Link to="/rotation" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-              Alle <ArrowRight className="w-3 h-3" />
+              {t('dashboard.all')} <ArrowRight className="w-3 h-3" />
             </Link>
           }
         >
@@ -152,12 +154,12 @@ export default function Dashboard() {
               })}
             </div>
           ) : (
-            <p className="text-sm text-slate-400">Keine aktuellen Zuweisungen.</p>
+            <p className="text-sm text-slate-400">{t('dashboard.noCurrentAssignments')}</p>
           )}
         </Card>
 
         {/* Team Capacity */}
-        <Card title="Team-Kapazität (aktueller Sprint)">
+        <Card title={t('dashboard.teamCapacity')}>
           {capacity.length > 0 ? (
             <div className="space-y-2.5">
               {capacity.map((c) => {
@@ -181,16 +183,16 @@ export default function Dashboard() {
               })}
             </div>
           ) : (
-            <p className="text-sm text-slate-400">Keine Kapazitätsdaten für diesen Sprint.</p>
+            <p className="text-sm text-slate-400">{t('dashboard.noCapacityData')}</p>
           )}
         </Card>
 
         {/* Open Action Items */}
         <Card
-          title="Offene Aktionspunkte"
+          title={t('dashboard.openActionItems')}
           action={
             <Link to="/retro" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-              Alle <ArrowRight className="w-3 h-3" />
+              {t('dashboard.all')} <ArrowRight className="w-3 h-3" />
             </Link>
           }
         >
@@ -214,11 +216,11 @@ export default function Dashboard() {
                         )}
                         {item.dueDate && (
                           <span className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-slate-400'}`}>
-                            {overdue ? 'Überfällig!' : `Fällig: ${formatDate(item.dueDate)}`}
+                            {overdue ? t('dashboard.overdue') : t('dashboard.due', { date: formatDate(item.dueDate) })}
                           </span>
                         )}
                         <Badge
-                          label={item.status}
+                          label={t(`retroItemStatus.${item.status}`)}
                           variant={item.status === 'InBearbeitung' ? 'warning' : 'default'}
                           size="sm"
                         />
@@ -228,11 +230,11 @@ export default function Dashboard() {
                 )
               })}
               {openActionItems.length > 5 && (
-                <p className="text-xs text-slate-400 pt-1">+{openActionItems.length - 5} weitere…</p>
+                <p className="text-xs text-slate-400 pt-1">{t('dashboard.moreItems', { count: openActionItems.length - 5 })}</p>
               )}
             </div>
           ) : (
-            <p className="text-sm text-slate-400">Keine offenen Aktionspunkte.</p>
+            <p className="text-sm text-slate-400">{t('dashboard.noOpenActionItems')}</p>
           )}
         </Card>
       </div>

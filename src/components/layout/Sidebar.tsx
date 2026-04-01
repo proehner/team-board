@@ -2,31 +2,34 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Star, Zap, RefreshCw, MessageSquare, Shield,
   HeartPulse, Activity, Eye, Trophy, Settings, LogOut, ChevronRight,
-  Sun, Moon,
+  Sun, Moon, Globe,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-
-const navItems = [
-  { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',     page: 'dashboard' },
-  { to: '/team',          icon: Users,           label: 'Team',           page: 'team' },
-  { to: '/kompetenzen',   icon: Star,            label: 'Kompetenzen',    page: 'kompetenzen' },
-  { to: '/sprints',       icon: Zap,             label: 'Sprints',        page: 'sprints' },
-  { to: '/rotation',      icon: RefreshCw,       label: 'Rotation',       page: 'rotation' },
-  { to: '/retro',         icon: MessageSquare,   label: 'Retrospektiven', page: 'retro' },
-  { to: '/health',        icon: HeartPulse,      label: 'Teamgesundheit', page: 'health' },
-  { to: '/pulse',         icon: Activity,        label: 'Pulse Check',    page: 'pulse' },
-  { to: '/stakeholder',   icon: Eye,             label: 'Stakeholder',    page: 'stakeholder' },
-  { to: '/azure-ranking', icon: Trophy,          label: 'Azure Rankings', page: 'azure-ranking' },
-]
+import i18n from '@/i18n'
 
 export default function Sidebar() {
+  const { t } = useTranslation()
   const user      = useAuthStore((s) => s.user)
   const logout    = useAuthStore((s) => s.logout)
   const isAllowed = useAuthStore((s) => s.isAllowed)
   const navigate  = useNavigate()
   const isDark    = useThemeStore((s) => s.isDark)
   const toggle    = useThemeStore((s) => s.toggle)
+
+  const navItems = [
+    { to: '/dashboard',     icon: LayoutDashboard, label: t('nav.dashboard'),       page: 'dashboard' },
+    { to: '/team',          icon: Users,           label: t('nav.team'),             page: 'team' },
+    { to: '/kompetenzen',   icon: Star,            label: t('nav.competencies'),     page: 'kompetenzen' },
+    { to: '/sprints',       icon: Zap,             label: t('nav.sprints'),          page: 'sprints' },
+    { to: '/rotation',      icon: RefreshCw,       label: t('nav.rotation'),         page: 'rotation' },
+    { to: '/retro',         icon: MessageSquare,   label: t('nav.retrospectives'),   page: 'retro' },
+    { to: '/health',        icon: HeartPulse,      label: t('nav.teamHealth'),       page: 'health' },
+    { to: '/pulse',         icon: Activity,        label: t('nav.pulseCheck'),       page: 'pulse' },
+    { to: '/stakeholder',   icon: Eye,             label: t('nav.stakeholder'),      page: 'stakeholder' },
+    { to: '/azure-ranking', icon: Trophy,          label: t('nav.azureRankings'),    page: 'azure-ranking' },
+  ]
 
   function handleLogout() {
     logout()
@@ -71,7 +74,7 @@ export default function Sidebar() {
         {user?.role === 'admin' && (
           <>
             <div className="pt-3 pb-1 px-3">
-              <p className="text-xs font-medium text-slate-600 uppercase tracking-wider">Administration</p>
+              <p className="text-xs font-medium text-slate-600 uppercase tracking-wider">{t('nav.administration')}</p>
             </div>
             <NavLink
               to="/admin"
@@ -84,7 +87,7 @@ export default function Sidebar() {
               }
             >
               <Settings className="w-4 h-4 shrink-0" />
-              Benutzerverwaltung
+              {t('nav.userManagement')}
               <ChevronRight className="w-3.5 h-3.5 ml-auto" />
             </NavLink>
           </>
@@ -96,14 +99,24 @@ export default function Sidebar() {
         {/* Theme toggle */}
         <button
           onClick={toggle}
-          title={isDark ? 'Light-Modus aktivieren' : 'Dark-Modus aktivieren'}
+          title={isDark ? t('sidebar.enableLightMode') : t('sidebar.enableDarkMode')}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
         >
           {isDark
             ? <Sun className="w-4 h-4 shrink-0" />
             : <Moon className="w-4 h-4 shrink-0" />
           }
-          {isDark ? 'Light-Modus' : 'Dark-Modus'}
+          {isDark ? t('sidebar.lightMode') : t('sidebar.darkMode')}
+        </button>
+
+        {/* Language switch */}
+        <button
+          onClick={() => i18n.changeLanguage(i18n.language === 'de' ? 'en' : 'de')}
+          title={t('sidebar.switchLanguage')}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+        >
+          <Globe className="w-4 h-4 shrink-0" />
+          {i18n.language === 'de' ? 'EN' : 'DE'}
         </button>
 
         {user && (
@@ -114,7 +127,7 @@ export default function Sidebar() {
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium text-white truncate">{user.displayName}</p>
               <p className="text-xs text-slate-500 truncate">
-                {user.role === 'admin' ? 'Administrator' : 'Benutzer'}
+                {user.role === 'admin' ? t('sidebar.administrator') : t('sidebar.user')}
               </p>
             </div>
           </div>
@@ -124,7 +137,7 @@ export default function Sidebar() {
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
         >
           <LogOut className="w-4 h-4 shrink-0" />
-          Abmelden
+          {t('sidebar.logout')}
         </button>
       </div>
     </aside>

@@ -22,7 +22,7 @@ router.post('/login', (req, res) => {
   const { username, password } = req.body as { username?: string; password?: string }
 
   if (!username || !password) {
-    res.status(400).json({ error: 'Benutzername und Passwort erforderlich' })
+    res.status(400).json({ error: 'Username and password required' })
     return
   }
 
@@ -32,7 +32,7 @@ router.post('/login', (req, res) => {
   )
 
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-    res.status(401).json({ error: 'Benutzername oder Passwort falsch' })
+    res.status(401).json({ error: 'Invalid username or password' })
     return
   }
 
@@ -48,11 +48,11 @@ router.post('/login', (req, res) => {
   res.json({ token, user: payload })
 })
 
-// GET /api/auth/me  – gibt frische Benutzerdaten zurück (Token wird mitgeschickt)
+// GET /api/auth/me  – returns fresh user data (token is sent along)
 router.get('/me', requireAuth, (req, res) => {
   const user = dbGet<UserRow>('SELECT * FROM users WHERE id = ? AND is_active = 1', [req.user!.id])
   if (!user) {
-    res.status(401).json({ error: 'Benutzer nicht gefunden' })
+    res.status(401).json({ error: 'User not found' })
     return
   }
   const payload: AuthUser = {
@@ -65,22 +65,22 @@ router.get('/me', requireAuth, (req, res) => {
   res.json(payload)
 })
 
-// POST /api/auth/change-password  – Passwort ändern (eigenes Konto)
+// POST /api/auth/change-password  – change password (own account)
 router.post('/change-password', requireAuth, (req, res) => {
   const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string }
 
   if (!currentPassword || !newPassword) {
-    res.status(400).json({ error: 'Aktuelles und neues Passwort erforderlich' })
+    res.status(400).json({ error: 'Current and new password required' })
     return
   }
   if (newPassword.length < 6) {
-    res.status(400).json({ error: 'Neues Passwort muss mindestens 6 Zeichen haben' })
+    res.status(400).json({ error: 'New password must be at least 6 characters long' })
     return
   }
 
   const user = dbGet<UserRow>('SELECT * FROM users WHERE id = ?', [req.user!.id])
   if (!user || !bcrypt.compareSync(currentPassword, user.password_hash)) {
-    res.status(401).json({ error: 'Aktuelles Passwort falsch' })
+    res.status(401).json({ error: 'Current password is incorrect' })
     return
   }
 
@@ -98,7 +98,7 @@ export function seedAdminUser(): void {
     'INSERT INTO users (id, username, password_hash, display_name, role, forbidden_pages, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)',
     [crypto.randomUUID(), 'admin', hash, 'Administrator', 'admin', '[]', new Date().toISOString()],
   )
-  console.log('Standard-Admin erstellt: admin / admin123 (bitte sofort ändern!)')
+  console.log('Default admin created: admin / admin123 (please change immediately!)')
 }
 
 export default router

@@ -3,6 +3,8 @@ import Avatar from '@/components/ui/Avatar'
 import Badge from '@/components/ui/Badge'
 import { formatDate, daysUntil } from '@/utils/date'
 import { Target, Calendar, Users, Zap, CheckCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import type { SprintStatus } from '@/types'
 
 const STATUS_VARIANTS: Record<SprintStatus, 'default' | 'info' | 'success' | 'danger'> = {
@@ -10,6 +12,7 @@ const STATUS_VARIANTS: Record<SprintStatus, 'default' | 'info' | 'success' | 'da
 }
 
 export default function StakeholderPage() {
+  const { t } = useTranslation()
   const sprints = useStore((s) => s.sprints)
   const members = useStore((s) => s.members)
   const retrospectives = useStore((s) => s.retrospectives)
@@ -23,11 +26,13 @@ export default function StakeholderPage() {
   const completedActions = retrospectives.flatMap((r) => r.items.filter((i) => i.type === 'Aktionspunkt' && i.status === 'Erledigt')).length
   const totalActions = retrospectives.flatMap((r) => r.items.filter((i) => i.type === 'Aktionspunkt')).length
 
+  const locale = i18n.language === 'de' ? 'de-DE' : 'en-US'
+
   return (
     <div className="p-6 space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Sprint-Übersicht</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Stakeholder-Ansicht · {new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('stakeholder.title')}</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('stakeholder.subtitle')} {new Date().toLocaleDateString(locale, { day: '2-digit', month: 'long', year: 'numeric' })}</p>
       </div>
 
       {activeSprint ? (
@@ -36,14 +41,14 @@ export default function StakeholderPage() {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{activeSprint.name}</h2>
-                <Badge label="Aktiv" variant="info" dot />
+                <Badge label={t('sprintStatus.Aktiv')} variant="info" dot />
               </div>
               <div className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
                 <Calendar className="w-4 h-4" />
                 {formatDate(activeSprint.startDate)} – {formatDate(activeSprint.endDate)}
                 {daysLeft !== null && (
                   <span className={`ml-2 font-medium ${daysLeft <= 2 ? 'text-red-500' : daysLeft <= 5 ? 'text-amber-500' : 'text-green-600'}`}>
-                    ({daysLeft > 0 ? `noch ${daysLeft} Tage` : daysLeft === 0 ? 'endet heute' : 'abgelaufen'})
+                    ({daysLeft > 0 ? t('dashboard.daysLeft', { count: daysLeft }) : daysLeft === 0 ? 'today' : 'overdue'})
                   </span>
                 )}
               </div>
@@ -51,24 +56,24 @@ export default function StakeholderPage() {
           </div>
           <div className="flex items-start gap-2 bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3">
             <Target className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
-            <p className="text-sm text-indigo-800 dark:text-indigo-300">{activeSprint.goal || 'Kein Sprint-Ziel definiert'}</p>
+            <p className="text-sm text-indigo-800 dark:text-indigo-300">{activeSprint.goal || '—'}</p>
           </div>
           {activeSprint.plannedPoints > 0 && (
             <div className="space-y-1">
               <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
-                <span>Fortschritt</span>
+                <span>{t('stakeholder.progress')}</span>
                 <span>{activeSprint.velocity ?? 0} / {activeSprint.plannedPoints} Story Points</span>
               </div>
               <div className="bg-slate-100 dark:bg-slate-800 rounded-full h-3">
                 <div className="bg-indigo-500 h-3 rounded-full transition-all" style={{ width: `${progress}%` }} />
               </div>
-              <p className="text-xs text-slate-400 dark:text-slate-500">{progress}% abgeschlossen</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">{progress}% {t('stakeholder.completed')}</p>
             </div>
           )}
           <div>
             <div className="flex items-center gap-2 mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
               <Users className="w-3.5 h-3.5" />
-              Team ({activeSprint.capacity.length} Mitglieder)
+              {t('stakeholder.team', { count: activeSprint.capacity.length })}
             </div>
             <div className="flex flex-wrap gap-2">
               {activeSprint.capacity.map((c) => {
@@ -88,29 +93,29 @@ export default function StakeholderPage() {
       ) : (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-center text-slate-400 dark:text-slate-500">
           <Zap className="w-8 h-8 mx-auto mb-2 opacity-40" />
-          <p className="text-sm">Kein aktiver Sprint</p>
+          <p className="text-sm">{t('stakeholder.noActiveSprint')}</p>
         </div>
       )}
 
       {totalActions > 0 && (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Kontinuierliche Verbesserung</h3>
-            <span className="text-xs text-slate-500 dark:text-slate-400">{completedActions} / {totalActions} umgesetzt</span>
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('stakeholder.continuousImprovement')}</h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{completedActions} / {totalActions} {t('stakeholder.implemented')}</span>
           </div>
           <div className="bg-slate-100 dark:bg-slate-800 rounded-full h-2 mb-2">
             <div className="bg-green-500 h-2 rounded-full" style={{ width: `${totalActions > 0 ? (completedActions / totalActions) * 100 : 0}%` }} />
           </div>
           <div className="flex items-center gap-1.5 text-xs text-green-600">
             <CheckCircle className="w-3.5 h-3.5" />
-            {completedActions} Retro-Maßnahmen erfolgreich umgesetzt
+            {completedActions} {t('stakeholder.retroActionsImplemented')}
           </div>
         </div>
       )}
 
       {recentSprints.length > 0 && (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Letzte Sprints</h3>
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">{t('stakeholder.recentSprints')}</h3>
           <div className="space-y-3">
             {recentSprints.map((sp) => (
               <div key={sp.id} className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-800 last:border-0">
@@ -120,7 +125,7 @@ export default function StakeholderPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   {sp.velocity !== undefined && <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{sp.velocity} SP</span>}
-                  <Badge label={sp.status} variant={STATUS_VARIANTS[sp.status]} />
+                  <Badge label={t(`sprintStatus.${sp.status}`)} variant={STATUS_VARIANTS[sp.status]} />
                 </div>
               </div>
             ))}

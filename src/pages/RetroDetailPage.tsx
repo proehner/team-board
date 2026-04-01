@@ -10,20 +10,11 @@ import {
   ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Lock, Unlock,
   Edit2, Check, X,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { RetroItemType, RetroItemStatus, RetroItem, TeamMember } from '@/types'
 
-const COLUMNS: { type: RetroItemType; label: string; color: string; bg: string; border: string }[] = [
-  { type: 'GutGelaufen', label: 'Gut gelaufen', color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
-  { type: 'Verbesserung', label: 'Verbesserungspotential', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
-  { type: 'Aktionspunkt', label: 'Aktionspunkte', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
-]
-
 const STATUS_OPTIONS: RetroItemStatus[] = ['Offen', 'InBearbeitung', 'Erledigt']
-const STATUS_LABELS: Record<RetroItemStatus, string> = {
-  Offen: 'Offen',
-  InBearbeitung: 'In Bearbeitung',
-  Erledigt: 'Erledigt',
-}
+
 const STATUS_VARIANTS: Record<RetroItemStatus, 'default' | 'warning' | 'success'> = {
   Offen: 'default',
   InBearbeitung: 'warning',
@@ -31,6 +22,14 @@ const STATUS_VARIANTS: Record<RetroItemStatus, 'default' | 'warning' | 'success'
 }
 
 export default function RetroDetailPage() {
+  const { t } = useTranslation()
+
+  const COLUMNS: { type: RetroItemType; label: string; color: string; bg: string; border: string }[] = [
+    { type: 'GutGelaufen',  label: t('retroDetail.wentWell'),    color: 'text-green-700', bg: 'bg-green-50',  border: 'border-green-200' },
+    { type: 'Verbesserung', label: t('retroDetail.improvements'), color: 'text-amber-700', bg: 'bg-amber-50',  border: 'border-amber-200' },
+    { type: 'Aktionspunkt', label: t('retroDetail.actionItems'),  color: 'text-red-700',   bg: 'bg-red-50',    border: 'border-red-200'   },
+  ]
+
   const { retroId } = useParams<{ retroId: string }>()
   const members = useStore((s) => s.members)
   const sprints = useStore((s) => s.sprints)
@@ -49,9 +48,9 @@ export default function RetroDetailPage() {
   if (!retro) {
     return (
       <div className="p-6">
-        <p className="text-slate-500">Retrospektive nicht gefunden.</p>
+        <p className="text-slate-500">{t('retroDetail.notFound')}</p>
         <Link to="/retro" className="inline-flex items-center gap-1 text-sm text-indigo-600 hover:underline mt-3">
-          <ArrowLeft className="w-4 h-4" /> Zurück
+          <ArrowLeft className="w-4 h-4" /> {t('common.back')}
         </Link>
       </div>
     )
@@ -67,7 +66,7 @@ export default function RetroDetailPage() {
       await addRetroItem(retro!.id, type, text)
       setNewTexts((t) => ({ ...t, [type]: '' }))
     } catch {
-      alert('Fehler beim Speichern. Bitte prüfe, ob der Server läuft.')
+      alert(t('competencies.saveError'))
     }
   }
 
@@ -75,7 +74,7 @@ export default function RetroDetailPage() {
     <div className="p-6 space-y-5 max-w-7xl">
       {/* Back */}
       <Link to="/retro" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition-colors">
-        <ArrowLeft className="w-4 h-4" /> Alle Retrospektiven
+        <ArrowLeft className="w-4 h-4" /> {t('retroDetail.allRetros')}
       </Link>
 
       {/* Header */}
@@ -86,7 +85,7 @@ export default function RetroDetailPage() {
               <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{retro.title}</h1>
               {retro.isFinalized && (
                 <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                  <Lock className="w-3 h-3" /> Finalisiert
+                  <Lock className="w-3 h-3" /> {t('retroDetail.finalized')}
                 </span>
               )}
             </div>
@@ -107,7 +106,7 @@ export default function RetroDetailPage() {
             icon={retro.isFinalized ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
             onClick={() => updateRetrospective(retro.id, { isFinalized: !retro.isFinalized })}
           >
-            {retro.isFinalized ? 'Entsperren' : 'Finalisieren'}
+            {retro.isFinalized ? t('retroDetail.unlock') : t('retroDetail.finalize')}
           </Button>
         </div>
       </div>
@@ -151,15 +150,15 @@ export default function RetroDetailPage() {
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="Neu hinzufügen…"
+                      placeholder={t('retroDetail.addNewPlaceholder')}
                       value={newTexts[col.type] ?? ''}
-                      onChange={(e) => setNewTexts((t) => ({ ...t, [col.type]: e.target.value }))}
+                      onChange={(e) => setNewTexts((txt) => ({ ...txt, [col.type]: e.target.value }))}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleAddItem(col.type) }}
                       className="flex-1 px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
                     />
                     <Button size="sm" variant="ghost" icon={<Plus className="w-4 h-4" />} onClick={() => handleAddItem(col.type)} />
                   </div>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 ml-1">Enter zum Hinzufügen</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 ml-1">{t('retroDetail.pressEnter')}</p>
                 </div>
               )}
             </div>
@@ -171,9 +170,9 @@ export default function RetroDetailPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => { if (deleteTarget) deleteRetroItem(retro.id, deleteTarget) }}
-        title="Item löschen"
-        message="Möchtest du dieses Retro-Item wirklich löschen?"
-        confirmLabel="Löschen"
+        title={t('retroDetail.deleteItem')}
+        message={t('retroDetail.deleteItemConfirm')}
+        confirmLabel={t('common.delete')}
       />
     </div>
   )
@@ -190,6 +189,7 @@ interface RetroItemCardProps {
 }
 
 function RetroItemCard({ item, members, isFinalized, onUpdate, onDelete, onVote, colColor }: RetroItemCardProps) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(item.text)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -240,10 +240,10 @@ function RetroItemCard({ item, members, isFinalized, onUpdate, onDelete, onVote,
               className="text-xs border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white dark:bg-slate-900 dark:text-slate-300"
             >
               {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                <option key={s} value={s}>{t(`retroItemStatus.${s}`)}</option>
               ))}
             </select>
-            <Badge label={STATUS_LABELS[item.status]} variant={STATUS_VARIANTS[item.status]} />
+            <Badge label={t(`retroItemStatus.${item.status}`)} variant={STATUS_VARIANTS[item.status]} />
           </div>
           <select
             value={item.assigneeId ?? ''}
@@ -251,7 +251,7 @@ function RetroItemCard({ item, members, isFinalized, onUpdate, onDelete, onVote,
             disabled={isFinalized}
             className="w-full text-xs border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white dark:bg-slate-900 dark:text-slate-300"
           >
-            <option value="">Kein Verantwortlicher</option>
+            <option value="">{t('retroDetail.noOwner')}</option>
             {members.filter((m) => m.isActive).map((m) => (
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}

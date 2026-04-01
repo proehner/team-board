@@ -5,20 +5,7 @@ import type { AdminUser } from '@/types'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useAuthStore } from '@/store/auth'
-
-// Alle verfügbaren Seiten mit Label
-const ALL_PAGES: { key: string; label: string }[] = [
-  { key: 'dashboard',    label: 'Dashboard' },
-  { key: 'team',         label: 'Team' },
-  { key: 'kompetenzen',  label: 'Kompetenzen' },
-  { key: 'sprints',      label: 'Sprints' },
-  { key: 'rotation',     label: 'Rotation' },
-  { key: 'retro',        label: 'Retrospektiven' },
-  { key: 'health',       label: 'Teamgesundheit' },
-  { key: 'pulse',        label: 'Pulse Check' },
-  { key: 'stakeholder',  label: 'Stakeholder' },
-  { key: 'azure-ranking', label: 'Azure Rankings' },
-]
+import { useTranslation } from 'react-i18next'
 
 interface UserFormState {
   username: string
@@ -39,6 +26,21 @@ const emptyForm = (): UserFormState => ({
 })
 
 export default function AdminPage() {
+  const { t } = useTranslation()
+
+  const ALL_PAGES: { key: string; label: string }[] = [
+    { key: 'dashboard',    label: t('nav.dashboard') },
+    { key: 'team',         label: t('nav.team') },
+    { key: 'kompetenzen',  label: t('nav.competencies') },
+    { key: 'sprints',      label: t('nav.sprints') },
+    { key: 'rotation',     label: t('nav.rotation') },
+    { key: 'retro',        label: t('nav.retrospectives') },
+    { key: 'health',       label: t('nav.teamHealth') },
+    { key: 'pulse',        label: t('nav.pulseCheck') },
+    { key: 'stakeholder',  label: t('nav.stakeholder') },
+    { key: 'azure-ranking', label: t('nav.azureRankings') },
+  ]
+
   const currentUser = useAuthStore((s) => s.user)
   const [users, setUsers]         = useState<AdminUser[]>([])
   const [loading, setLoading]     = useState(true)
@@ -57,7 +59,7 @@ export default function AdminPage() {
       const data = await adminApi.listUsers()
       setUsers(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Fehler beim Laden')
+      setError(err instanceof Error ? err.message : t('admin.errorLoading'))
     } finally {
       setLoading(false)
     }
@@ -89,15 +91,15 @@ export default function AdminPage() {
   async function handleSave() {
     setFormError('')
     if (!form.username.trim() || !form.displayName.trim()) {
-      setFormError('Benutzername und Anzeigename erforderlich')
+      setFormError(t('admin.usernameDisplayNameRequired'))
       return
     }
     if (!editUser && !form.password) {
-      setFormError('Passwort erforderlich')
+      setFormError(t('admin.passwordRequired'))
       return
     }
     if (form.password && form.password.length < 6) {
-      setFormError('Passwort muss mindestens 6 Zeichen haben')
+      setFormError(t('admin.passwordMinLength'))
       return
     }
     setSaving(true)
@@ -123,7 +125,7 @@ export default function AdminPage() {
       }
       setModalOpen(false)
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Fehler beim Speichern')
+      setFormError(err instanceof Error ? err.message : t('admin.errorSaving'))
     } finally {
       setSaving(false)
     }
@@ -135,7 +137,7 @@ export default function AdminPage() {
       await adminApi.deleteUser(deleteTarget.id)
       setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Fehler beim Löschen')
+      setError(err instanceof Error ? err.message : t('admin.errorDeleting'))
     } finally {
       setDeleteTarget(null)
     }
@@ -159,8 +161,8 @@ export default function AdminPage() {
             <Users className="w-5 h-5 text-indigo-600" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Benutzerverwaltung</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Benutzer anlegen, bearbeiten und Berechtigungen vergeben</p>
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t('admin.title')}</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{t('admin.subtitle')}</p>
           </div>
         </div>
         <button
@@ -168,7 +170,7 @@ export default function AdminPage() {
           className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
         >
           <Plus className="w-4 h-4" />
-          Neuer Benutzer
+          {t('admin.newUser')}
         </button>
       </div>
 
@@ -187,10 +189,10 @@ export default function AdminPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
               <tr>
-                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">Benutzer</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">Rolle</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">Gesperrte Bereiche</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">Status</th>
+                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.userColumn')}</th>
+                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.roleColumn')}</th>
+                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.restrictionsColumn')}</th>
+                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('common.status')}</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -210,7 +212,7 @@ export default function AdminPage() {
                         <p className="text-xs text-slate-400 dark:text-slate-500">@{u.username}</p>
                       </div>
                       {u.id === currentUser?.id && (
-                        <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-1.5 py-0.5 ml-1">Ich</span>
+                        <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-1.5 py-0.5 ml-1">{t('admin.me')}</span>
                       )}
                     </div>
                   </td>
@@ -220,14 +222,14 @@ export default function AdminPage() {
                         ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                     }`}>
-                      {u.role === 'admin' ? 'Administrator' : 'Benutzer'}
+                      {u.role === 'admin' ? t('sidebar.administrator') : t('sidebar.user')}
                     </span>
                   </td>
                   <td className="px-5 py-3.5">
                     {u.role === 'admin' ? (
-                      <span className="text-xs text-slate-400 dark:text-slate-500">Vollzugriff</span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">{t('admin.fullAccess')}</span>
                     ) : u.forbiddenPages.length === 0 ? (
-                      <span className="text-xs text-slate-400 dark:text-slate-500">Keine Einschränkungen</span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">{t('admin.noRestrictions')}</span>
                     ) : (
                       <div className="flex flex-wrap gap-1">
                         {u.forbiddenPages.map((p) => (
@@ -244,7 +246,7 @@ export default function AdminPage() {
                         ? 'bg-green-50 text-green-700 border border-green-200'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                     }`}>
-                      {u.isActive ? 'Aktiv' : 'Inaktiv'}
+                      {u.isActive ? t('common.active') : t('common.inactive')}
                     </span>
                   </td>
                   <td className="px-5 py-3.5">
@@ -252,7 +254,6 @@ export default function AdminPage() {
                       <button
                         onClick={() => openEdit(u)}
                         className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-lg transition-colors"
-                        title="Bearbeiten"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -260,7 +261,6 @@ export default function AdminPage() {
                         onClick={() => setDeleteTarget(u)}
                         disabled={u.id === currentUser?.id}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                        title="Löschen"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -277,12 +277,11 @@ export default function AdminPage() {
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editUser ? 'Benutzer bearbeiten' : 'Neuer Benutzer'}
+        title={editUser ? t('common.edit') : t('admin.newUser')}
       >
         <div className="space-y-4">
-          {/* Anzeigename */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Anzeigename</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.displayName')}</label>
             <input
               type="text"
               value={form.displayName}
@@ -292,9 +291,8 @@ export default function AdminPage() {
             />
           </div>
 
-          {/* Benutzername */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Benutzername</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.username')}</label>
             <input
               type="text"
               value={form.username}
@@ -303,38 +301,35 @@ export default function AdminPage() {
               placeholder="max.mustermann"
               disabled={!!editUser}
             />
-            {editUser && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Benutzername kann nicht geändert werden</p>}
+            {editUser && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t('admin.usernameReadonly')}</p>}
           </div>
 
-          {/* Passwort */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               <Key className="w-3.5 h-3.5 inline mr-1" />
-              Passwort {editUser && <span className="text-slate-400 dark:text-slate-500 font-normal">(leer lassen = unverändert)</span>}
+              {t('admin.password')} {editUser && <span className="text-slate-400 dark:text-slate-500 font-normal">({t('admin.passwordHint')})</span>}
             </label>
             <input
               type="password"
               value={form.password}
               onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
               className="form-input w-full"
-              placeholder={editUser ? '••••••••' : 'Mindestens 6 Zeichen'}
+              placeholder={editUser ? '••••••••' : t('admin.passwordMinHint')}
             />
           </div>
 
-          {/* Rolle */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Rolle</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('common.role')}</label>
             <select
               value={form.role}
               onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as 'admin' | 'user' }))}
               className="form-input w-full"
             >
-              <option value="user">Benutzer</option>
-              <option value="admin">Administrator</option>
+              <option value="user">{t('sidebar.user')}</option>
+              <option value="admin">{t('sidebar.administrator')}</option>
             </select>
           </div>
 
-          {/* Aktiv */}
           {editUser && (
             <div className="flex items-center gap-2">
               <input
@@ -344,16 +339,15 @@ export default function AdminPage() {
                 onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))}
                 className="rounded border-slate-300 text-indigo-600"
               />
-              <label htmlFor="isActive" className="text-sm text-slate-700 dark:text-slate-300">Benutzer aktiv</label>
+              <label htmlFor="isActive" className="text-sm text-slate-700 dark:text-slate-300">{t('admin.userActive')}</label>
             </div>
           )}
 
-          {/* Gesperrte Bereiche (nur für normale Benutzer) */}
           {form.role === 'user' && (
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Gesperrte Bereiche
-                <span className="ml-1 text-slate-400 dark:text-slate-500 font-normal">(diese Seiten sind nicht zugänglich)</span>
+                {t('admin.restrictedAreas')}
+                <span className="ml-1 text-slate-400 dark:text-slate-500 font-normal">({t('admin.restrictedAreasHint')})</span>
               </label>
               <div className="grid grid-cols-2 gap-1.5">
                 {ALL_PAGES.map(({ key, label }) => (
@@ -389,7 +383,7 @@ export default function AdminPage() {
               onClick={() => setModalOpen(false)}
               className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
             >
-              Abbrechen
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleSave}
@@ -397,7 +391,7 @@ export default function AdminPage() {
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-              {editUser ? 'Speichern' : 'Erstellen'}
+              {editUser ? t('common.save') : t('common.create')}
             </button>
           </div>
         </div>
@@ -406,9 +400,9 @@ export default function AdminPage() {
       {/* Delete Confirm */}
       <ConfirmDialog
         isOpen={!!deleteTarget}
-        title="Benutzer löschen"
-        message={`Soll "${deleteTarget?.displayName}" wirklich gelöscht werden? Diese Aktion kann nicht rückgängig gemacht werden.`}
-        confirmLabel="Löschen"
+        title={t('admin.deleteUser')}
+        message={t('admin.deleteConfirm', { name: deleteTarget?.displayName ?? '' })}
+        confirmLabel={t('common.delete')}
         variant="danger"
         onConfirm={handleDelete}
         onClose={() => setDeleteTarget(null)}

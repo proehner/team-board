@@ -23,14 +23,14 @@ router.get('/', (_req, res) => {
 // GET /api/retrospectives/:id
 router.get('/:id', (req, res) => {
   const row = dbGet<Row>('SELECT * FROM retrospectives WHERE id = ?', [req.params.id])
-  if (!row) return res.status(404).json({ error: 'Retrospektive nicht gefunden.' })
+  if (!row) return res.status(404).json({ error: 'Retrospective not found.' })
   res.json(toRetro(row))
 })
 
 // POST /api/retrospectives
 router.post('/', (req, res) => {
   const { title, date, sprintId, facilitatorId, isFinalized = false } = req.body
-  if (!title || !date) return res.status(400).json({ error: 'title und date sind erforderlich.' })
+  if (!title || !date) return res.status(400).json({ error: 'title and date are required.' })
   const id = uid()
   dbRun(
     'INSERT INTO retrospectives (id, sprintId, title, date, facilitatorId, isFinalized, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -43,7 +43,7 @@ router.post('/', (req, res) => {
 router.patch('/:id', (req, res) => {
   const { id } = req.params
   if (!dbGet('SELECT id FROM retrospectives WHERE id = ?', [id])) {
-    return res.status(404).json({ error: 'Retrospektive nicht gefunden.' })
+    return res.status(404).json({ error: 'Retrospective not found.' })
   }
   const updates: string[] = []
   const values: unknown[] = []
@@ -63,7 +63,7 @@ router.patch('/:id', (req, res) => {
 // DELETE /api/retrospectives/:id
 router.delete('/:id', (req, res) => {
   const r = dbRun('DELETE FROM retrospectives WHERE id = ?', [req.params.id])
-  if (r.changes === 0) return res.status(404).json({ error: 'Retrospektive nicht gefunden.' })
+  if (r.changes === 0) return res.status(404).json({ error: 'Retrospective not found.' })
   res.status(204).send()
 })
 
@@ -73,10 +73,10 @@ router.delete('/:id', (req, res) => {
 router.post('/:id/items', (req, res) => {
   const { id } = req.params
   if (!dbGet('SELECT id FROM retrospectives WHERE id = ?', [id])) {
-    return res.status(404).json({ error: 'Retrospektive nicht gefunden.' })
+    return res.status(404).json({ error: 'Retrospective not found.' })
   }
   const { type, text } = req.body
-  if (!type || !text) return res.status(400).json({ error: 'type und text sind erforderlich.' })
+  if (!type || !text) return res.status(400).json({ error: 'type and text are required.' })
   const itemId = uid()
   dbRun(
     'INSERT INTO retro_items (id, retroId, type, text, votes, status) VALUES (?, ?, ?, ?, 0, ?)',
@@ -89,7 +89,7 @@ router.post('/:id/items', (req, res) => {
 router.patch('/:id/items/:itemId', (req, res) => {
   const { itemId } = req.params
   if (!dbGet('SELECT id FROM retro_items WHERE id = ?', [itemId])) {
-    return res.status(404).json({ error: 'Item nicht gefunden.' })
+    return res.status(404).json({ error: 'Item not found.' })
   }
   const updates: string[] = []
   const values: unknown[] = []
@@ -106,7 +106,7 @@ router.patch('/:id/items/:itemId', (req, res) => {
 // DELETE /api/retrospectives/:id/items/:itemId
 router.delete('/:id/items/:itemId', (req, res) => {
   const r = dbRun('DELETE FROM retro_items WHERE id = ?', [req.params.itemId])
-  if (r.changes === 0) return res.status(404).json({ error: 'Item nicht gefunden.' })
+  if (r.changes === 0) return res.status(404).json({ error: 'Item not found.' })
   res.status(204).send()
 })
 
@@ -114,7 +114,7 @@ router.delete('/:id/items/:itemId', (req, res) => {
 router.post('/:id/items/:itemId/vote', (req, res) => {
   const { itemId } = req.params
   const { delta } = req.body
-  if (delta !== 1 && delta !== -1) return res.status(400).json({ error: 'delta muss 1 oder -1 sein.' })
+  if (delta !== 1 && delta !== -1) return res.status(400).json({ error: 'delta must be 1 or -1.' })
   dbRun('UPDATE retro_items SET votes = MAX(0, votes + ?) WHERE id = ?', [delta, itemId])
   res.json(dbGet<Row>('SELECT * FROM retro_items WHERE id = ?', [itemId]))
 })

@@ -9,6 +9,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import { formatDate, todayISO } from '@/utils/date'
 import { Plus, MessageSquare, Trash2, ChevronRight, CheckCircle, Lock } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface RetroFormData {
   title: string
@@ -18,6 +19,7 @@ interface RetroFormData {
 }
 
 export default function RetroPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const members = useStore((s) => s.members)
   const sprints = useStore((s) => s.sprints)
@@ -53,7 +55,7 @@ export default function RetroPage() {
       setShowModal(false)
       navigate(`/retro/${id}`)
     } catch {
-      alert('Fehler beim Speichern. Bitte prüfe, ob der Server läuft.')
+      alert(t('competencies.saveError'))
     }
   }
 
@@ -65,24 +67,24 @@ export default function RetroPage() {
     <div className="p-6 space-y-5 max-w-4xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Retrospektiven</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{retrospectives.length} gesamt</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('retro.title')}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('retro.count', { count: retrospectives.length })}</p>
         </div>
         <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => { setForm(defaultForm()); setShowModal(true) }}>
-          Neue Retrospektive
+          {t('retro.newRetro')}
         </Button>
       </div>
 
       {/* Sprint filter */}
       {sprints.length > 0 && (
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 dark:text-slate-400">Filtern:</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">{t('retro.filterLabel')}</span>
           <select
             value={filterSprint}
             onChange={(e) => setFilterSprint(e.target.value)}
             className="form-input py-1 text-xs w-40"
           >
-            <option value="">Alle Sprints</option>
+            <option value="">{t('retro.allSprints')}</option>
             {sprints.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
@@ -92,9 +94,9 @@ export default function RetroPage() {
       {sorted.length === 0 ? (
         <EmptyState
           icon={<MessageSquare className="w-12 h-12" />}
-          title="Keine Retrospektiven"
-          description="Erstelle deine erste Retrospektive für das Team."
-          action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => { setForm(defaultForm()); setShowModal(true) }}>Neue Retrospektive</Button>}
+          title={t('retro.noRetros')}
+          description={t('retro.noRetrosSubtitle')}
+          action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => { setForm(defaultForm()); setShowModal(true) }}>{t('retro.newRetro')}</Button>}
         />
       ) : (
         <div className="space-y-3">
@@ -117,7 +119,7 @@ export default function RetroPage() {
                     <span className="font-semibold text-slate-900 dark:text-slate-100">{retro.title}</span>
                     {retro.isFinalized && (
                       <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                        <Lock className="w-3 h-3" /> Finalisiert
+                        <Lock className="w-3 h-3" /> {t('retroDetail.finalized')}
                       </span>
                     )}
                     {sprint && <Badge label={sprint.name} variant="info" />}
@@ -132,11 +134,11 @@ export default function RetroPage() {
                     )}
                   </div>
                   <div className="flex gap-4">
-                    <ItemCount label="Gut gelaufen" count={wellCount} color="bg-green-100 text-green-700" />
-                    <ItemCount label="Verbesserung" count={improvCount} color="bg-amber-100 text-amber-700" />
+                    <ItemCount label={t('retroItemType.GutGelaufen')} count={wellCount} color="bg-green-100 text-green-700" />
+                    <ItemCount label={t('retroItemType.Verbesserung')} count={improvCount} color="bg-amber-100 text-amber-700" />
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-                        {actionCount} Aktionspunkte
+                        {actionCount} {t('retroItemType.Aktionspunkt')}
                       </span>
                       {actionCount > 0 && (
                         <span className="text-xs text-slate-400">
@@ -166,34 +168,34 @@ export default function RetroPage() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title="Neue Retrospektive"
+        title={t('retro.newRetro')}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Abbrechen</Button>
-            <Button variant="primary" onClick={handleSubmit}>Erstellen</Button>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={handleSubmit}>{t('common.create')}</Button>
           </>
         }
       >
         <div className="space-y-4">
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Titel</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('pulse.titleLabel')}</label>
             <input type="text" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} className="form-input" />
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Datum</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('sprints.startDate')}</label>
             <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} className="form-input" />
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Sprint (optional)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('pulse.sprintOptional')}</label>
             <select value={form.sprintId} onChange={(e) => setForm((f) => ({ ...f, sprintId: e.target.value }))} className="form-input">
-              <option value="">Kein Sprint</option>
+              <option value="">{t('pulse.noSprint')}</option>
               {sprints.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Moderator (optional)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('retro.facilitator')}</label>
             <select value={form.facilitatorId} onChange={(e) => setForm((f) => ({ ...f, facilitatorId: e.target.value }))} className="form-input">
-              <option value="">Kein Moderator</option>
+              <option value="">{t('retro.noFacilitator')}</option>
               {members.filter((m) => m.isActive).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
@@ -204,9 +206,9 @@ export default function RetroPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => { if (deleteTarget) deleteRetrospective(deleteTarget) }}
-        title="Retrospektive löschen"
-        message="Möchtest du diese Retrospektive wirklich löschen? Alle Items werden ebenfalls gelöscht."
-        confirmLabel="Löschen"
+        title={t('retro.deleteRetro')}
+        message={t('retro.deleteConfirm')}
+        confirmLabel={t('common.delete')}
       />
     </div>
   )

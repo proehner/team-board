@@ -28,14 +28,14 @@ router.get('/', (_req, res) => {
 
 router.get('/:id', (req, res) => {
   const row = dbGet<Row>('SELECT * FROM pulse_checks WHERE id = ?', [req.params.id])
-  if (!row) return res.status(404).json({ error: 'Nicht gefunden.' })
+  if (!row) return res.status(404).json({ error: 'Not found.' })
   res.json(toCheck(row))
 })
 
 router.post('/', (req, res) => {
   const { title, questions, sprintId } = req.body
   if (!title || !Array.isArray(questions) || questions.length === 0) {
-    return res.status(400).json({ error: 'title und questions sind erforderlich.' })
+    return res.status(400).json({ error: 'title and questions are required.' })
   }
   const id = uid()
   dbRun('INSERT INTO pulse_checks (id, title, questions, sprintId, createdAt) VALUES (?, ?, ?, ?, ?)',
@@ -45,10 +45,10 @@ router.post('/', (req, res) => {
 
 router.post('/:id/respond', (req, res) => {
   const row = dbGet<Row>('SELECT * FROM pulse_checks WHERE id = ?', [req.params.id])
-  if (!row) return res.status(404).json({ error: 'Nicht gefunden.' })
-  if (row.closedAt) return res.status(409).json({ error: 'Check ist bereits geschlossen.' })
+  if (!row) return res.status(404).json({ error: 'Not found.' })
+  if (row.closedAt) return res.status(409).json({ error: 'Check is already closed.' })
   const { ratings } = req.body
-  if (!Array.isArray(ratings)) return res.status(400).json({ error: 'ratings erforderlich.' })
+  if (!Array.isArray(ratings)) return res.status(400).json({ error: 'ratings required.' })
   dbRun('INSERT INTO pulse_responses (id, checkId, ratings, submittedAt) VALUES (?, ?, ?, ?)',
     [uid(), req.params.id, JSON.stringify(ratings), new Date().toISOString()])
   res.status(201).json({ ok: true })
@@ -57,7 +57,7 @@ router.post('/:id/respond', (req, res) => {
 router.patch('/:id', (req, res) => {
   const { id } = req.params
   if (!dbGet('SELECT id FROM pulse_checks WHERE id = ?', [id])) {
-    return res.status(404).json({ error: 'Nicht gefunden.' })
+    return res.status(404).json({ error: 'Not found.' })
   }
   const updates: string[] = []
   const values: unknown[] = []
@@ -69,7 +69,7 @@ router.patch('/:id', (req, res) => {
 
 router.delete('/:id', (req, res) => {
   const r = dbRun('DELETE FROM pulse_checks WHERE id = ?', [req.params.id])
-  if (r.changes === 0) return res.status(404).json({ error: 'Nicht gefunden.' })
+  if (r.changes === 0) return res.status(404).json({ error: 'Not found.' })
   res.status(204).send()
 })
 

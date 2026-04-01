@@ -119,21 +119,21 @@ function tryRestoreCache() {
     cacheState.data       = saved.data       || null
     cacheState.lastLoaded = saved.lastLoaded || null
     if (cacheState.data) {
-      console.log(`📦 Azure-Ranking-Cache wiederhergestellt (Stand: ${new Date(cacheState.lastLoaded!).toLocaleString('de-DE')})`)
+      console.log(`📦 Azure ranking cache restored (as of: ${new Date(cacheState.lastLoaded!).toLocaleString('en-US')})`)
     }
   } catch (e: unknown) {
-    console.warn('Azure-Ranking-Cache konnte nicht gelesen werden:', (e as Error).message)
+    console.warn('Azure ranking cache could not be read:', (e as Error).message)
   }
 }
 
-// Beim Serverstart sofort versuchen
+// Attempt immediately on server start
 tryRestoreCache()
 
 function persistCache() {
   try {
     fs.writeFileSync(CACHE_FILE, JSON.stringify({ data: cacheState.data, lastLoaded: cacheState.lastLoaded }))
   } catch (e: unknown) {
-    console.warn('Azure-Ranking-Cache konnte nicht gespeichert werden:', (e as Error).message)
+    console.warn('Azure ranking cache could not be saved:', (e as Error).message)
   }
 }
 
@@ -233,7 +233,7 @@ async function getClosedWorkItems(fromTs: number) {
     }
     return all
   } catch (e: unknown) {
-    console.warn('Abgeschlossene Tickets nicht ladbar:', (e as Error).message)
+    console.warn('Closed tickets could not be loaded:', (e as Error).message)
     return []
   }
 }
@@ -257,7 +257,7 @@ async function getCreatedWorkItems(fromTs: number) {
     }
     return all
   } catch (e: unknown) {
-    console.warn('Erstellte Tickets nicht ladbar:', (e as Error).message)
+    console.warn('Created tickets could not be loaded:', (e as Error).message)
     return []
   }
 }
@@ -271,7 +271,7 @@ async function getActiveWorkItemIds(fromTs: number) {
     const wiql = await azPost<{ workItems?: { id: number }[] }>(`${BASE()}/_apis/wit/wiql?api-version=7.0`, { query })
     return (wiql.workItems || []).map((w) => w.id)
   } catch (e: unknown) {
-    console.warn('Aktive Work Item IDs nicht ladbar:', (e as Error).message)
+    console.warn('Active work item IDs could not be loaded:', (e as Error).message)
     return []
   }
 }
@@ -321,30 +321,30 @@ interface RawDevStats {
 }
 
 const BADGES: BadgeDef[] = [
-  { id: 'first_pr',       name: 'Erster Schritt',   icon: '🎯', desc: 'Ersten PR erstellt',         cond: (s) => s.prsCreated >= 1 },
-  { id: 'pr_creator',     name: 'PR Ersteller',      icon: '🔀', desc: '5+ PRs erstellt',            cond: (s) => s.prsCreated >= 5 },
-  { id: 'pr_machine',     name: 'PR Maschine',       icon: '⚡', desc: '20+ PRs erstellt',           cond: (s) => s.prsCreated >= 20 },
-  { id: 'merger',         name: 'Merger',            icon: '🎊', desc: '10+ PRs gemergt',            cond: (s) => s.prsCompleted >= 10 },
-  { id: 'reviewer',       name: 'Code Reviewer',     icon: '🔍', desc: '20+ Review-Kommentare',      cond: (s) => s.commentsGiven >= 20 },
-  { id: 'senior_rev',     name: 'Senior Reviewer',   icon: '👁️', desc: '50+ Review-Kommentare',      cond: (s) => s.commentsGiven >= 50 },
-  { id: 'approver',       name: 'Genehmiger',        icon: '✅', desc: '10+ PRs genehmigt',          cond: (s) => s.approvalsGiven >= 10 },
-  { id: 'nitpicker',      name: 'Perfektionist',     icon: '🔎', desc: '5+ PRs abgelehnt',           cond: (s) => s.rejectionsGiven >= 5 },
-  { id: 'committer',      name: 'Aktiver Coder',     icon: '💻', desc: '20+ Commits',                cond: (s) => s.commits >= 20 },
-  { id: 'commit_king',    name: 'Commit König',      icon: '👑', desc: '100+ Commits',               cond: (s) => s.commits >= 100 },
-  { id: 'worker',         name: 'Work Horse',        icon: '🐴', desc: '10+ Tickets abgeschlossen',  cond: (s) => s.workItemsCompleted >= 10 },
-  { id: 'powerworker',    name: 'Power Worker',      icon: '💪', desc: '30+ Tickets abgeschlossen',  cond: (s) => s.workItemsCompleted >= 30 },
-  { id: 'ticket_starter', name: 'Ticket-Erfasser',   icon: '📝', desc: '5+ Tickets erstellt',        cond: (s) => s.ticketsCreated >= 5 },
-  { id: 'ticket_master',  name: 'Ticket Master',     icon: '🎫', desc: '20+ Tickets erstellt',       cond: (s) => s.ticketsCreated >= 20 },
-  { id: 'commentator',    name: 'Kommentator',       icon: '💡', desc: '20+ Ticket-Kommentare',      cond: (s) => s.ticketComments >= 20 },
-  { id: 'disc_king',      name: 'Diskussions-König', icon: '🗣️', desc: '50+ Ticket-Kommentare',      cond: (s) => s.ticketComments >= 50 },
-  { id: 'all_rounder',    name: 'Allrounder',        icon: '🌟', desc: 'In allen Kategorien aktiv',  cond: (s) => s.prsCreated > 0 && s.commits > 0 && s.workItemsCompleted > 0 && s.commentsGiven > 0 },
+  { id: 'first_pr',       name: 'First Step',        icon: '🎯', desc: 'Created first PR',            cond: (s) => s.prsCreated >= 1 },
+  { id: 'pr_creator',     name: 'PR Creator',        icon: '🔀', desc: '5+ PRs created',              cond: (s) => s.prsCreated >= 5 },
+  { id: 'pr_machine',     name: 'PR Machine',        icon: '⚡', desc: '20+ PRs created',             cond: (s) => s.prsCreated >= 20 },
+  { id: 'merger',         name: 'Merger',            icon: '🎊', desc: '10+ PRs merged',              cond: (s) => s.prsCompleted >= 10 },
+  { id: 'reviewer',       name: 'Code Reviewer',     icon: '🔍', desc: '20+ review comments',         cond: (s) => s.commentsGiven >= 20 },
+  { id: 'senior_rev',     name: 'Senior Reviewer',   icon: '👁️', desc: '50+ review comments',         cond: (s) => s.commentsGiven >= 50 },
+  { id: 'approver',       name: 'Approver',          icon: '✅', desc: '10+ PRs approved',            cond: (s) => s.approvalsGiven >= 10 },
+  { id: 'nitpicker',      name: 'Perfectionist',     icon: '🔎', desc: '5+ PRs rejected',             cond: (s) => s.rejectionsGiven >= 5 },
+  { id: 'committer',      name: 'Active Coder',      icon: '💻', desc: '20+ commits',                 cond: (s) => s.commits >= 20 },
+  { id: 'commit_king',    name: 'Commit King',       icon: '👑', desc: '100+ commits',                cond: (s) => s.commits >= 100 },
+  { id: 'worker',         name: 'Work Horse',        icon: '🐴', desc: '10+ tickets completed',       cond: (s) => s.workItemsCompleted >= 10 },
+  { id: 'powerworker',    name: 'Power Worker',      icon: '💪', desc: '30+ tickets completed',       cond: (s) => s.workItemsCompleted >= 30 },
+  { id: 'ticket_starter', name: 'Ticket Creator',    icon: '📝', desc: '5+ tickets created',          cond: (s) => s.ticketsCreated >= 5 },
+  { id: 'ticket_master',  name: 'Ticket Master',     icon: '🎫', desc: '20+ tickets created',         cond: (s) => s.ticketsCreated >= 20 },
+  { id: 'commentator',    name: 'Commentator',       icon: '💡', desc: '20+ ticket comments',         cond: (s) => s.ticketComments >= 20 },
+  { id: 'disc_king',      name: 'Discussion King',   icon: '🗣️', desc: '50+ ticket comments',         cond: (s) => s.ticketComments >= 50 },
+  { id: 'all_rounder',    name: 'All-Rounder',       icon: '🌟', desc: 'Active in all categories',    cond: (s) => s.prsCreated > 0 && s.commits > 0 && s.workItemsCompleted > 0 && s.commentsGiven > 0 },
 ]
 
 function getLevel(points: number): Level {
   if (points >= 10000) return { name: 'Diamond', icon: '💎', color: '#00BFFF', min: 10000, next: null }
-  if (points >= 5000)  return { name: 'Platin',  icon: '🏆', color: '#E5E4E2', min: 5000,  next: 10000 }
+  if (points >= 5000)  return { name: 'Platinum', icon: '🏆', color: '#E5E4E2', min: 5000,  next: 10000 }
   if (points >= 2500)  return { name: 'Gold',    icon: '🥇', color: '#FFD700', min: 2500,  next: 5000 }
-  if (points >= 1000)  return { name: 'Silber',  icon: '🥈', color: '#C0C0C0', min: 1000,  next: 2500 }
+  if (points >= 1000)  return { name: 'Silver',  icon: '🥈', color: '#C0C0C0', min: 1000,  next: 2500 }
   return                      { name: 'Bronze',  icon: '🥉', color: '#CD7F32', min: 0,     next: 1000 }
 }
 
@@ -478,11 +478,11 @@ function aggregateForPeriod(rawDevs: RawDev[], fromTs: number, days: number): Pe
     days,
     scoring: SCORING,
     levels: [
-      { name: 'Bronze',  icon: '🥉', color: '#CD7F32', min: 0,    max: 499  },
-      { name: 'Silber',  icon: '🥈', color: '#C0C0C0', min: 500,  max: 999  },
-      { name: 'Gold',    icon: '🥇', color: '#FFD700', min: 1000, max: 2499 },
-      { name: 'Platin',  icon: '🏆', color: '#E5E4E2', min: 2500, max: 4999 },
-      { name: 'Diamond', icon: '💎', color: '#00BFFF', min: 5000, max: null },
+      { name: 'Bronze',   icon: '🥉', color: '#CD7F32', min: 0,    max: 499  },
+      { name: 'Silver',   icon: '🥈', color: '#C0C0C0', min: 500,  max: 999  },
+      { name: 'Gold',     icon: '🥇', color: '#FFD700', min: 1000, max: 2499 },
+      { name: 'Platinum', icon: '🏆', color: '#E5E4E2', min: 2500, max: 4999 },
+      { name: 'Diamond',  icon: '💎', color: '#00BFFF', min: 5000, max: null },
     ],
   }
 }
@@ -506,19 +506,19 @@ async function loadDataFromAzure() {
   const now       = Date.now()
   const fromTs365 = now - MAX_DAYS * 86400000
 
-  console.log(`\n🔄 Starte Azure-Ranking-Datenladung (${MAX_DAYS} Tage)…`)
+  console.log(`\n🔄 Starting Azure ranking data load (${MAX_DAYS} days)…`)
 
   try {
-    setProgress('start', 'Verbindung wird hergestellt…')
+    setProgress('start', 'Establishing connection…')
     const tracker = new DevTracker()
 
     // 1. Repositories
-    setProgress('repos', 'Lade Repositories…')
+    setProgress('repos', 'Loading repositories…')
     const repos = await getRepositories() as Array<Record<string, unknown>>
     console.log(`   Repositories: ${repos.length}`)
-    setProgress('repos', `${repos.length} Repositories gefunden`, { total: repos.length, done: 0 })
+    setProgress('repos', `${repos.length} repositories found`, { total: repos.length, done: 0 })
 
-    // 2. Per-Repo: PRs + Commits
+    // 2. Per repo: PRs + commits
     for (let i = 0; i < repos.length; i++) {
       const repo = repos[i]
       setProgress('prs', `Repository ${i + 1}/${repos.length}: ${repo.name}`, {
@@ -580,10 +580,10 @@ async function loadDataFromAzure() {
       }
     }
 
-    // 3. Abgeschlossene Tickets
-    setProgress('workitems', 'Lade abgeschlossene Tickets…', { done: repos.length, total: repos.length })
+    // 3. Closed tickets
+    setProgress('workitems', 'Loading closed tickets…', { done: repos.length, total: repos.length })
     const closedWI = await getClosedWorkItems(fromTs365) as Array<Record<string, unknown>>
-    console.log(`   Abgeschlossene Tickets: ${closedWI.length}`)
+    console.log(`   Closed tickets: ${closedWI.length}`)
     for (const wi of closedWI) {
       const fields     = wi.fields as Record<string, unknown>
       const assignedTo = fields?.['System.AssignedTo'] as AzureIdentity | undefined
@@ -594,10 +594,10 @@ async function loadDataFromAzure() {
       }
     }
 
-    // 4. Erstellte Tickets
-    setProgress('tickets-created', 'Lade erstellte Tickets…')
+    // 4. Created tickets
+    setProgress('tickets-created', 'Loading created tickets…')
     const createdWI = await getCreatedWorkItems(fromTs365) as Array<Record<string, unknown>>
-    console.log(`   Erstellte Tickets: ${createdWI.length}`)
+    console.log(`   Created tickets: ${createdWI.length}`)
     for (const wi of createdWI) {
       const fields    = wi.fields as Record<string, unknown>
       const createdBy = fields?.['System.CreatedBy'] as AzureIdentity | undefined
@@ -608,13 +608,13 @@ async function loadDataFromAzure() {
       }
     }
 
-    // 5. Ticket-Kommentare
-    setProgress('ticket-comments', 'Lade Ticket-Kommentare…')
+    // 5. Ticket comments
+    setProgress('ticket-comments', 'Loading ticket comments…')
     const activeIds = await getActiveWorkItemIds(fromTs365)
     const fetchIds  = activeIds.slice(0, 1000)
-    console.log(`   Ticket-Kommentare: ${fetchIds.length} Work Items`)
+    console.log(`   Ticket comments: ${fetchIds.length} work items`)
     for (let i = 0; i < fetchIds.length; i++) {
-      setProgress('ticket-comments', `Ticket-Kommentare ${i + 1}/${fetchIds.length}…`, {
+      setProgress('ticket-comments', `Ticket comments ${i + 1}/${fetchIds.length}…`, {
         done: i, total: fetchIds.length,
       })
       const comments = await getWorkItemComments(fetchIds[i]) as Array<Record<string, unknown>>
@@ -627,31 +627,31 @@ async function loadDataFromAzure() {
       if (i % 10 === 0) await sleep(50)
     }
 
-    // 6. Aggregieren
-    setProgress('done', 'Auswertung wird berechnet…')
+    // 6. Aggregate
+    setProgress('done', 'Calculating results…')
     const rawDevs = tracker.getAll()
     const periods: Record<number, PeriodData> = {}
     for (const days of PERIODS) {
       const fromTs = now - days * 86400000
       periods[days] = aggregateForPeriod(rawDevs, fromTs, days)
-      console.log(`   Periode ${days}d: ${periods[days].developers.length} Entwickler`)
+      console.log(`   Period ${days}d: ${periods[days].developers.length} developers`)
     }
 
     cacheState.data       = { periods }
     cacheState.lastLoaded = new Date().toISOString()
     persistCache()
 
-    console.log(`✅ Azure-Ranking-Cache aktualisiert – Stand: ${new Date(cacheState.lastLoaded).toLocaleString('de-DE')}\n`)
-    setProgress('done', 'Fertig')
+    console.log(`✅ Azure ranking cache updated – as of: ${new Date(cacheState.lastLoaded).toLocaleString('en-US')}\n`)
+    setProgress('done', 'Done')
 
   } catch (err: unknown) {
     const e = err as { response?: { status: number }; message: string }
     cacheState.error = e.response?.status === 401
-      ? 'Authentifizierung fehlgeschlagen. Bitte PAT Token prüfen.'
+      ? 'Authentication failed. Please check the PAT token.'
       : e.response?.status === 404
-        ? 'Organisation oder Projekt nicht gefunden.'
+        ? 'Organisation or project not found.'
         : e.message
-    console.error('❌ Azure-Ranking-Ladefehler:', cacheState.error)
+    console.error('❌ Azure ranking load error:', cacheState.error)
   } finally {
     cacheState.loading = false
   }
@@ -670,11 +670,11 @@ router.get('/config/status', (_req, res) => {
 router.post('/config', (req, res) => {
   const { organization, project, pat } = req.body
   if (!organization || !project || !pat)
-    return res.status(400).json({ error: 'Alle Felder sind erforderlich.' })
+    return res.status(400).json({ error: 'All fields are required.' })
 
   config = { organization, project, pat }
   try { fs.writeFileSync(CONFIG_FILE, JSON.stringify({ organization, project, pat })) }
-  catch (e: unknown) { console.warn('Config nicht speicherbar:', (e as Error).message) }
+  catch (e: unknown) { console.warn('Config could not be saved:', (e as Error).message) }
   res.json({ success: true })
 })
 
@@ -693,12 +693,12 @@ router.get('/cache/status', (_req, res) => {
 
 router.post('/cache/refresh', (req, res) => {
   if (!config.organization || !config.project || !config.pat)
-    return res.status(400).json({ error: 'Nicht konfiguriert.' })
+    return res.status(400).json({ error: 'Not configured.' })
   if (cacheState.loading)
-    return res.json({ started: false, message: 'Laden läuft bereits.' })
+    return res.json({ started: false, message: 'Load already in progress.' })
 
   loadDataFromAzure() // fire and forget
-  res.json({ started: true, message: 'Datenladung gestartet.' })
+  res.json({ started: true, message: 'Data load started.' })
 })
 
 router.get('/stats', (req, res) => {
@@ -709,8 +709,8 @@ router.get('/stats', (req, res) => {
       loading: cacheState.loading,
       error:   cacheState.error,
       message: cacheState.loading
-        ? 'Daten werden gerade geladen…'
-        : 'Kein Cache vorhanden. Bitte Daten von Azure laden.',
+        ? 'Data is currently being loaded…'
+        : 'No cache available. Please load data from Azure.',
     })
   }
 
@@ -719,7 +719,7 @@ router.get('/stats', (req, res) => {
   const period       = validPeriods.includes(days) ? days : 365
   const data         = cacheState.data.periods[period]
 
-  if (!data) return res.status(400).json({ error: `Periode ${days} nicht im Cache.` })
+  if (!data) return res.status(400).json({ error: `Period ${days} not in cache.` })
   res.json(data)
 })
 
