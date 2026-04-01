@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Theme variables ──────────────────────────────────────────────────────── */
+/* Used by AzureRankingPage (inline styles) and can be used anywhere via var() */
+:root {
+  --az-bg:          #f8fafc;
+  --az-surface:     #ffffff;
+  --az-surface2:    #f1f5f9;
+  --az-border:      #e2e8f0;
+  --az-text:        #0f172a;
+  --az-text-muted:  #64748b;
+  --az-text-dim:    #94a3b8;
+  --az-accent:      #4f46e5;
+  --az-accent-on:   #ffffff;
+  --az-green:       #16a34a;
+  --az-green-on:    #ffffff;
+  --az-red:         #dc2626;
+}
+
+.dark {
+  --az-bg:          #0d1117;
+  --az-surface:     #161b22;
+  --az-surface2:    #21262d;
+  --az-border:      #30363d;
+  --az-text:        #e6edf3;
+  --az-text-muted:  #8b949e;
+  --az-text-dim:    #484f58;
+  --az-accent:      #58a6ff;
+  --az-accent-on:   #000000;
+  --az-green:       #3fb950;
+  --az-green-on:    #000000;
+  --az-red:         #f85149;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  }
+}
+
+@layer components {
+  .form-input {
+    @apply w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-slate-900 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400;
+  }
+  .form-textarea {
+    @apply w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-slate-900 resize-none dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .dark .scrollbar-thin {
+    scrollbar-color: #334155 transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full dark:bg-slate-700;
+  }
+}
