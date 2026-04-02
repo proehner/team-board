@@ -26,7 +26,7 @@ router.get('/', (_req, res) => {
 // GET /api/sprints/:id
 router.get('/:id', (req, res) => {
   const sprint = getSprintWithCapacity(req.params.id)
-  if (!sprint) return res.status(404).json({ error: 'Sprint nicht gefunden.' })
+  if (!sprint) return res.status(404).json({ error: 'Sprint not found.' })
   res.json(sprint)
 })
 
@@ -34,7 +34,7 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   const { name, goal = '', startDate, endDate, notes = '' } = req.body
   if (!name || !startDate || !endDate) {
-    return res.status(400).json({ error: 'name, startDate und endDate sind erforderlich.' })
+    return res.status(400).json({ error: 'name, startDate and endDate are required.' })
   }
   const id = uid()
   dbRun(
@@ -48,7 +48,7 @@ router.post('/', (req, res) => {
 router.patch('/:id', (req, res) => {
   const { id } = req.params
   if (!dbGet('SELECT id FROM sprints WHERE id = ?', [id])) {
-    return res.status(404).json({ error: 'Sprint nicht gefunden.' })
+    return res.status(404).json({ error: 'Sprint not found.' })
   }
   const updates: string[] = []
   const values: unknown[] = []
@@ -65,7 +65,7 @@ router.patch('/:id', (req, res) => {
 // DELETE /api/sprints/:id
 router.delete('/:id', (req, res) => {
   const r = dbRun('DELETE FROM sprints WHERE id = ?', [req.params.id])
-  if (r.changes === 0) return res.status(404).json({ error: 'Sprint nicht gefunden.' })
+  if (r.changes === 0) return res.status(404).json({ error: 'Sprint not found.' })
   res.status(204).send()
 })
 
@@ -74,7 +74,7 @@ router.put('/:id/capacity/:memberId', (req, res) => {
   const { id, memberId } = req.params
   const { availableDays, plannedPoints } = req.body
   if (availableDays === undefined || plannedPoints === undefined) {
-    return res.status(400).json({ error: 'availableDays und plannedPoints sind erforderlich.' })
+    return res.status(400).json({ error: 'availableDays and plannedPoints are required.' })
   }
   dbRun(
     'INSERT OR REPLACE INTO sprint_capacity (sprintId, memberId, availableDays, plannedPoints) VALUES (?, ?, ?, ?)',

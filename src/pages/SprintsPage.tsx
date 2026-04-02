@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -30,6 +31,7 @@ interface SprintFormData {
 }
 
 export default function SprintsPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const sprints = useStore((s) => s.sprints)
   const addSprint = useStore((s) => s.addSprint)
@@ -68,12 +70,12 @@ export default function SprintsPage() {
 
   function validate(): boolean {
     const e: Partial<SprintFormData> = {}
-    if (!form.name.trim()) e.name = 'Name erforderlich.'
-    if (!form.goal.trim()) e.goal = 'Sprint-Ziel erforderlich.'
-    if (!form.startDate) e.startDate = 'Startdatum erforderlich.'
-    if (!form.endDate) e.endDate = 'Enddatum erforderlich.'
+    if (!form.name.trim()) e.name = t('sprints.nameRequired')
+    if (!form.goal.trim()) e.goal = t('sprints.goalRequired')
+    if (!form.startDate) e.startDate = t('sprints.startDateRequired')
+    if (!form.endDate) e.endDate = t('sprints.endDateRequired')
     if (form.startDate && form.endDate && form.endDate <= form.startDate) {
-      e.endDate = 'Enddatum muss nach dem Startdatum liegen.'
+      e.endDate = t('sprints.endDateAfterStart')
     }
     setErrors(e)
     return Object.keys(e).length === 0
@@ -90,7 +92,7 @@ export default function SprintsPage() {
       }
       setShowModal(false)
     } catch {
-      alert('Fehler beim Speichern. Bitte prüfe, ob der Server läuft.')
+      alert(t('competencies.saveError'))
     }
   }
 
@@ -98,31 +100,32 @@ export default function SprintsPage() {
     <div className="p-6 space-y-5 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Sprints</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{sprints.length} Sprints gesamt</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('sprints.title')}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('sprints.count', { count: sprints.length })}</p>
         </div>
         <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>
-          Neuer Sprint
+          {t('sprints.newSprint')}
         </Button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 flex-wrap">
-        {TABS.map((t) => {
-          const count = t === 'Alle' ? sprints.length : sprints.filter((s) => s.status === t).length
+        {TABS.map((tabKey) => {
+          const count = tabKey === 'Alle' ? sprints.length : sprints.filter((s) => s.status === tabKey).length
+          const label = tabKey === 'Alle' ? t('common.all') : t(`sprintStatus.${tabKey}`)
           return (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={tabKey}
+              onClick={() => setTab(tabKey)}
               className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                tab === t
+                tab === tabKey
                   ? 'bg-indigo-600 text-white'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              {t}
+              {label}
               {count > 0 && (
-                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${tab === t ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}>
+                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${tab === tabKey ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}>
                   {count}
                 </span>
               )}
@@ -135,9 +138,9 @@ export default function SprintsPage() {
       {sorted.length === 0 ? (
         <EmptyState
           icon={<Zap className="w-12 h-12" />}
-          title="Keine Sprints"
-          description="Erstelle deinen ersten Sprint, um zu beginnen."
-          action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>Neuer Sprint</Button>}
+          title={t('sprints.noSprints')}
+          description={t('sprints.noSprintsSubtitle')}
+          action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>{t('sprints.newSprint')}</Button>}
         />
       ) : (
         <div className="space-y-3">
@@ -158,31 +161,31 @@ export default function SprintsPage() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editTarget ? 'Sprint bearbeiten' : 'Neuer Sprint'}
+        title={editTarget ? t('sprints.editSprint') : t('sprints.newSprint')}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Abbrechen</Button>
-            <Button variant="primary" onClick={handleSubmit}>{editTarget ? 'Speichern' : 'Erstellen'}</Button>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={handleSubmit}>{editTarget ? t('common.save') : t('common.create')}</Button>
           </>
         }
       >
         <div className="space-y-4">
-          <FormField label="Name" error={errors.name}>
+          <FormField label={t('common.name')} error={errors.name}>
             <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="form-input" />
           </FormField>
-          <FormField label="Sprint-Ziel" error={errors.goal}>
-            <textarea value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} rows={2} className="form-textarea" placeholder="Was soll in diesem Sprint erreicht werden?" />
+          <FormField label={t('sprints.sprintGoal')} error={errors.goal}>
+            <textarea value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} rows={2} className="form-textarea" placeholder={t('sprints.sprintGoalPlaceholder')} />
           </FormField>
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Startdatum" error={errors.startDate}>
+            <FormField label={t('sprints.startDate')} error={errors.startDate}>
               <input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} className="form-input" />
             </FormField>
-            <FormField label="Enddatum" error={errors.endDate}>
+            <FormField label={t('sprints.endDate')} error={errors.endDate}>
               <input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} className="form-input" />
             </FormField>
           </div>
-          <FormField label="Notizen (optional)">
-            <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="form-textarea" placeholder="Hinweise, Besonderheiten…" />
+          <FormField label={t('sprints.notes')}>
+            <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="form-textarea" placeholder={t('sprints.notesPlaceholder')} />
           </FormField>
         </div>
       </Modal>
@@ -191,9 +194,9 @@ export default function SprintsPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => { if (deleteTarget) deleteSprint(deleteTarget.id) }}
-        title="Sprint löschen"
-        message={`Möchtest du "${deleteTarget?.name}" wirklich löschen?`}
-        confirmLabel="Löschen"
+        title={t('sprints.deleteSprint')}
+        message={t('sprints.deleteConfirm', { name: deleteTarget?.name })}
+        confirmLabel={t('common.delete')}
       />
     </div>
   )
@@ -208,6 +211,7 @@ interface SprintCardProps {
 }
 
 function SprintCard({ sprint, onEdit, onDelete, onStatusChange, onClick }: SprintCardProps) {
+  const { t } = useTranslation()
   const capacityCount = sprint.capacity.length
 
   return (
@@ -216,7 +220,7 @@ function SprintCard({ sprint, onEdit, onDelete, onStatusChange, onClick }: Sprin
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-900 dark:text-slate-100">{sprint.name}</span>
-            <Badge label={sprint.status} variant={STATUS_VARIANTS[sprint.status]} dot />
+            <Badge label={t(`sprintStatus.${sprint.status}`)} variant={STATUS_VARIANTS[sprint.status]} dot />
           </div>
           <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors" />
         </div>
@@ -229,16 +233,15 @@ function SprintCard({ sprint, onEdit, onDelete, onStatusChange, onClick }: Sprin
             <Calendar className="w-3.5 h-3.5" />
             {formatDate(sprint.startDate)} – {formatDate(sprint.endDate)}
           </div>
-          <span>{capacityCount} Mitglieder</span>
-          {sprint.plannedPoints > 0 && <span>{sprint.plannedPoints} SP geplant</span>}
-          {sprint.velocity !== undefined && <span>{sprint.velocity} SP abgeschlossen</span>}
+          <span>{capacityCount}</span>
+          {sprint.plannedPoints > 0 && <span>{sprint.plannedPoints} SP</span>}
+          {sprint.velocity !== undefined && <span>{sprint.velocity} SP</span>}
         </div>
       </button>
 
       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
         {sprint.status === 'Geplant' && (
           <button
-            title="Sprint starten"
             onClick={() => onStatusChange('Aktiv')}
             className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors"
           >
@@ -247,7 +250,6 @@ function SprintCard({ sprint, onEdit, onDelete, onStatusChange, onClick }: Sprin
         )}
         {sprint.status === 'Aktiv' && (
           <button
-            title="Sprint abschließen"
             onClick={() => onStatusChange('Abgeschlossen')}
             className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors"
           >
@@ -256,7 +258,6 @@ function SprintCard({ sprint, onEdit, onDelete, onStatusChange, onClick }: Sprin
         )}
         {sprint.status === 'Aktiv' && (
           <button
-            title="Sprint abbrechen"
             onClick={() => onStatusChange('Abgebrochen')}
             className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
           >

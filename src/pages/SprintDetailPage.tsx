@@ -6,6 +6,7 @@ import Badge from '@/components/ui/Badge'
 import Avatar from '@/components/ui/Avatar'
 import { formatDate, sprintDurationDays } from '@/utils/date'
 import { ArrowLeft, Plus, Trash2, Calendar, Target, Users, TrendingUp } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { SprintStatus } from '@/types'
 
 const STATUS_VARIANTS: Record<SprintStatus, 'default' | 'info' | 'success' | 'danger'> = {
@@ -13,6 +14,7 @@ const STATUS_VARIANTS: Record<SprintStatus, 'default' | 'info' | 'success' | 'da
 }
 
 export default function SprintDetailPage() {
+  const { t } = useTranslation()
   const { sprintId } = useParams<{ sprintId: string }>()
   const navigate = useNavigate()
   const sprints = useStore((s) => s.sprints)
@@ -29,15 +31,14 @@ export default function SprintDetailPage() {
   if (!sprint) {
     return (
       <div className="p-6">
-        <p className="text-slate-500">Sprint nicht gefunden.</p>
+        <p className="text-slate-500">{t('sprintDetail.notFound')}</p>
         <Button variant="ghost" onClick={() => navigate('/sprints')} icon={<ArrowLeft className="w-4 h-4" />} className="mt-3">
-          Zurück
+          {t('common.back')}
         </Button>
       </div>
     )
   }
 
-  // After the guard above, sprint is definitely defined
   const sp = sprint
   const duration = sprintDurationDays(sp.startDate, sp.endDate)
   const totalDays = sp.capacity.reduce((s, c) => s + c.availableDays, 0)
@@ -52,7 +53,7 @@ export default function SprintDetailPage() {
       await setMemberCapacity(sp.id, addingMemberId, duration <= 10 ? duration : 10, 0)
       setAddingMemberId('')
     } catch {
-      alert('Fehler beim Speichern. Bitte prüfe, ob der Server läuft.')
+      alert(t('competencies.saveError'))
     }
   }
 
@@ -75,7 +76,7 @@ export default function SprintDetailPage() {
         await updateSprint(sp.id, { velocity: v })
         setVelocityInput('')
       } catch {
-        alert('Fehler beim Speichern. Bitte prüfe, ob der Server läuft.')
+        alert(t('competencies.saveError'))
       }
     }
   }
@@ -84,7 +85,7 @@ export default function SprintDetailPage() {
     <div className="p-6 space-y-6 max-w-5xl">
       {/* Back link */}
       <Link to="/sprints" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition-colors">
-        <ArrowLeft className="w-4 h-4" /> Alle Sprints
+        <ArrowLeft className="w-4 h-4" /> {t('sprints.title')}
       </Link>
 
       {/* Sprint header */}
@@ -93,14 +94,13 @@ export default function SprintDetailPage() {
           <div>
             <div className="flex items-center gap-3 mb-1">
               <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{sp.name}</h1>
-              <Badge label={sp.status} variant={STATUS_VARIANTS[sp.status]} dot />
+              <Badge label={t(`sprintStatus.${sp.status}`)} variant={STATUS_VARIANTS[sp.status]} dot />
             </div>
             <div className="flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
               <div className="flex items-center gap-1.5">
                 <Calendar className="w-4 h-4" />
                 {formatDate(sp.startDate)} – {formatDate(sp.endDate)}
               </div>
-              <span>{duration} Arbeitstage</span>
             </div>
           </div>
           <select
@@ -109,7 +109,7 @@ export default function SprintDetailPage() {
             className="form-input w-auto"
           >
             {(['Geplant', 'Aktiv', 'Abgeschlossen', 'Abgebrochen'] as SprintStatus[]).map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{t(`sprintStatus.${s}`)}</option>
             ))}
           </select>
         </div>
@@ -128,13 +128,13 @@ export default function SprintDetailPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatBox label="Mitglieder" value={sp.capacity.length} icon={<Users className="w-4 h-4" />} />
-        <StatBox label="Verfügbare Tage" value={totalDays} icon={<Calendar className="w-4 h-4" />} />
-        <StatBox label="Geplante Story Points" value={totalPoints} icon={<Target className="w-4 h-4" />} />
+        <StatBox label={t('sprintDetail.membersHeader')} value={sp.capacity.length} icon={<Users className="w-4 h-4" />} />
+        <StatBox label={t('sprintDetail.availableDays')} value={totalDays} icon={<Calendar className="w-4 h-4" />} />
+        <StatBox label={t('sprintDetail.plannedStoryPoints')} value={totalPoints} icon={<Target className="w-4 h-4" />} />
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4">
           <div className="flex items-center gap-1.5 text-slate-400 mb-1.5">
             <TrendingUp className="w-4 h-4" />
-            <span className="text-xs">Velocity (SP)</span>
+            <span className="text-xs">{t('sprintDetail.velocity')}</span>
           </div>
           {sp.status === 'Abgeschlossen' ? (
             <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{sp.velocity ?? '—'}</p>
@@ -158,7 +158,7 @@ export default function SprintDetailPage() {
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Users className="w-4 h-4 text-slate-400 dark:text-slate-500" /> Kapazitätsplanung
+            <Users className="w-4 h-4 text-slate-400 dark:text-slate-500" /> {t('sprintDetail.capacityPlanning')}
           </h2>
           {availableToAdd.length > 0 && (
             <div className="flex items-center gap-2">
@@ -167,13 +167,13 @@ export default function SprintDetailPage() {
                 onChange={(e) => setAddingMemberId(e.target.value)}
                 className="form-input py-1 text-sm w-44"
               >
-                <option value="">Mitglied wählen…</option>
+                <option value="">{t('sprintDetail.selectMember')}</option>
                 {availableToAdd.map((m) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
               <Button size="sm" variant="primary" icon={<Plus className="w-3.5 h-3.5" />} onClick={handleAddMember}>
-                Hinzufügen
+                {t('common.add')}
               </Button>
             </div>
           )}
@@ -181,17 +181,17 @@ export default function SprintDetailPage() {
 
         {sp.capacity.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-400 dark:text-slate-500">
-            Noch keine Mitglieder hinzugefügt. Wähle oben ein Mitglied aus.
+            {t('sprintDetail.noMembers')}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800">
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Mitglied</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Verfügbare Tage</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Geplante SP</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">SP/Tag</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('sprintDetail.memberColumn')}</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('sprintDetail.availableDays')}</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('sprintDetail.plannedStoryPoints')}</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('sprintDetail.spPerDay')}</th>
                   <th className="px-4 py-3 w-12" />
                 </tr>
               </thead>
@@ -251,7 +251,7 @@ export default function SprintDetailPage() {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold">
-                  <td className="px-5 py-3 text-sm text-slate-700 dark:text-slate-300">Gesamt</td>
+                  <td className="px-5 py-3 text-sm text-slate-700 dark:text-slate-300">{t('sprintDetail.total')}</td>
                   <td className="px-4 py-3 text-center text-sm text-slate-700 dark:text-slate-300">{totalDays}</td>
                   <td className="px-4 py-3 text-center text-sm text-slate-700 dark:text-slate-300">{totalPoints}</td>
                   <td className="px-4 py-3 text-center text-sm text-slate-700 dark:text-slate-300">

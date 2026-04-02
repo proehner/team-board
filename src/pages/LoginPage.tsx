@@ -2,8 +2,10 @@ import { useState, FormEvent } from 'react'
 import { Shield, Loader2, Eye, EyeOff } from 'lucide-react'
 import { authApi } from '@/api/client'
 import { useAuthStore } from '@/store/auth'
+import { useTranslation } from 'react-i18next'
 
 export default function LoginPage() {
+  const { t } = useTranslation()
   const login = useAuthStore((s) => s.login)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -19,7 +21,7 @@ export default function LoginPage() {
       const { token, user } = await authApi.login(username.trim(), password)
       login(token, user)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Anmeldung fehlgeschlagen')
+      setError(err instanceof Error ? err.message : t('login.failed'))
     } finally {
       setLoading(false)
     }
@@ -41,19 +43,19 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
-          <h2 className="text-base font-semibold text-slate-800 mb-6">Anmelden</h2>
+          <h2 className="text-base font-semibold text-slate-800 mb-6">{t('login.title')}</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Benutzername
+                {t('login.username')}
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="form-input w-full"
-                placeholder="benutzername"
+                placeholder={t('login.usernamePlaceholder')}
                 autoComplete="username"
                 autoFocus
                 required
@@ -62,7 +64,7 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Passwort
+                {t('login.password')}
               </label>
               <div className="relative">
                 <input
@@ -99,10 +101,10 @@ export default function LoginPage() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Anmelden…
+                  {t('login.signingIn')}
                 </>
               ) : (
-                'Anmelden'
+                t('login.title')
               )}
             </button>
           </form>

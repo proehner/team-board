@@ -19,9 +19,9 @@ const app = express()
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
-// Erlaubte Herkunft über Umgebungsvariable konfigurieren.
-// Entwicklung: http://localhost:5173 (Vite-Dev-Server)
-// Produktion:  CORS_ORIGIN=https://mein-server.intern
+// Configure allowed origin via environment variable.
+// Development: http://localhost:5173 (Vite dev server)
+// Production:  CORS_ORIGIN=https://my-server.internal
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:5173'
 
 app.use(cors({
@@ -30,20 +30,20 @@ app.use(cors({
 }))
 app.use(express.json())
 
-// ─── Public Routes (kein Token nötig) ────────────────────────────────────────
+// ─── Public Routes (no token required) ───────────────────────────────────────
 app.use('/api/auth', authRouter)
 
-// Health check (öffentlich, gibt keine Anwendungsdaten preis)
+// Health check (public, does not expose any application data)
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// ─── Geschützte API Routes ────────────────────────────────────────────────────
-// requireAuth    → gültiges JWT erforderlich
-// requirePageAccess → Seiten-Sperren werden auch auf API-Ebene durchgesetzt
+// ─── Protected API Routes ─────────────────────────────────────────────────────
+// requireAuth    → valid JWT required
+// requirePageAccess → page locks are also enforced at the API level
 const guard = [requireAuth, requirePageAccess]
 
-app.use('/api/admin',                requireAuth,   adminRouter)   // Seitensperre hier irrelevant
+app.use('/api/admin',                requireAuth,   adminRouter)   // page lock not relevant here
 app.use('/api/members',              ...guard,       membersRouter)
 app.use('/api/skills',               ...guard,       skillsRouter)
 app.use('/api/sprints',              ...guard,       sprintsRouter)
@@ -66,7 +66,7 @@ seedResponsibilityTypes()
 seedAdminUser()
 
 app.listen(PORT, () => {
-  console.log(`Team Board Server läuft auf http://localhost:${PORT}`)
-  console.log(`API erreichbar unter http://localhost:${PORT}/api`)
-  console.log(`CORS erlaubt für: ${CORS_ORIGIN}`)
+  console.log(`Team Board Server running on http://localhost:${PORT}`)
+  console.log(`API available at http://localhost:${PORT}/api`)
+  console.log(`CORS allowed for: ${CORS_ORIGIN}`)
 })

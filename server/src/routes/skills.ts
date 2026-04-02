@@ -17,7 +17,7 @@ router.get('/', (_req, res) => {
 // POST /api/skills
 router.post('/', (req, res) => {
   const { name, category, description } = req.body
-  if (!name || !category) return res.status(400).json({ error: 'name und category sind erforderlich.' })
+  if (!name || !category) return res.status(400).json({ error: 'name and category are required.' })
   const id = uid()
   dbRun('INSERT INTO skills (id, name, category, description) VALUES (?, ?, ?, ?)',
     [id, name, category, description ?? null])
@@ -28,14 +28,14 @@ router.post('/', (req, res) => {
 router.patch('/:id', (req, res) => {
   const { id } = req.params
   if (!dbGet('SELECT id FROM skills WHERE id = ?', [id])) {
-    return res.status(404).json({ error: 'Fähigkeit nicht gefunden.' })
+    return res.status(404).json({ error: 'Skill not found.' })
   }
   const updates: string[] = []
   const values: unknown[] = []
   for (const f of ['name', 'category', 'description']) {
     if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f] ?? null) }
   }
-  if (updates.length === 0) return res.status(400).json({ error: 'Keine Felder angegeben.' })
+  if (updates.length === 0) return res.status(400).json({ error: 'No fields provided.' })
   values.push(id)
   dbRun(`UPDATE skills SET ${updates.join(', ')} WHERE id = ?`, values)
   res.json(dbGet<Row>('SELECT * FROM skills WHERE id = ?', [id]))
@@ -44,7 +44,7 @@ router.patch('/:id', (req, res) => {
 // DELETE /api/skills/:id
 router.delete('/:id', (req, res) => {
   const r = dbRun('DELETE FROM skills WHERE id = ?', [req.params.id])
-  if (r.changes === 0) return res.status(404).json({ error: 'Fähigkeit nicht gefunden.' })
+  if (r.changes === 0) return res.status(404).json({ error: 'Skill not found.' })
   res.status(204).send()
 })
 
@@ -52,7 +52,7 @@ router.delete('/:id', (req, res) => {
 router.put('/member-skill', (req, res) => {
   const { memberId, skillId, level, notes } = req.body
   if (memberId === undefined || skillId === undefined || level === undefined) {
-    return res.status(400).json({ error: 'memberId, skillId und level sind erforderlich.' })
+    return res.status(400).json({ error: 'memberId, skillId and level are required.' })
   }
   const updatedAt = new Date().toISOString()
   dbRun(

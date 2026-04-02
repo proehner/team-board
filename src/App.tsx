@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect } from 'react'
+import { useTranslation, Trans } from 'react-i18next'
 import Layout from '@/components/layout/Layout'
 import Dashboard from '@/pages/Dashboard'
 import TeamPage from '@/pages/TeamPage'
@@ -21,14 +22,15 @@ import { authApi } from '@/api/client'
 import { Loader2, AlertTriangle } from 'lucide-react'
 
 function ProtectedRoute({ page, children }: { page: string; children: React.ReactNode }) {
+  const { t } = useTranslation()
   const isAllowed = useAuthStore((s) => s.isAllowed)
   if (!isAllowed(page)) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center space-y-2">
           <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
-          <h2 className="text-base font-semibold text-slate-800">Kein Zugriff</h2>
-          <p className="text-sm text-slate-500">Du hast keine Berechtigung für diesen Bereich.</p>
+          <h2 className="text-base font-semibold text-slate-800">{t('app.noAccess')}</h2>
+          <p className="text-sm text-slate-500">{t('app.noPermission')}</p>
         </div>
       </div>
     )
@@ -37,6 +39,7 @@ function ProtectedRoute({ page, children }: { page: string; children: React.Reac
 }
 
 export default function App() {
+  const { t } = useTranslation()
   const loadAll = useStore((s) => s.loadAll)
   const loading = useStore((s) => s.loading)
   const error   = useStore((s) => s.error)
@@ -68,7 +71,7 @@ export default function App() {
       return (
         <div className="flex h-screen items-center justify-center bg-slate-50 gap-3 text-slate-500">
           <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-          <span className="text-sm">Sitzung wird geprüft…</span>
+          <span className="text-sm">{t('app.verifyingSession')}</span>
         </div>
       )
     }
@@ -79,7 +82,7 @@ export default function App() {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50 gap-3 text-slate-500">
         <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-        <span className="text-sm">Daten werden geladen…</span>
+        <span className="text-sm">{t('app.loadingData')}</span>
       </div>
     )
   }
@@ -89,16 +92,22 @@ export default function App() {
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <div className="bg-white rounded-xl border border-red-200 p-8 max-w-md text-center space-y-3 shadow-sm">
           <AlertTriangle className="w-10 h-10 text-red-400 mx-auto" />
-          <h2 className="text-base font-semibold text-slate-800">Server nicht erreichbar</h2>
+          <h2 className="text-base font-semibold text-slate-800">{t('app.serverUnreachable')}</h2>
           <p className="text-sm text-slate-500">
-            Der Team-Lead-Server konnte nicht erreicht werden. Bitte stelle sicher, dass der Server läuft (<code className="bg-slate-100 px-1 rounded">npm run dev</code> im Verzeichnis <code className="bg-slate-100 px-1 rounded">server/</code>).
+            <Trans
+              i18nKey="app.serverUnreachableMessage"
+              components={[
+                <code className="bg-slate-100 px-1 rounded" />,
+                <code className="bg-slate-100 px-1 rounded" />,
+              ]}
+            />
           </p>
           <p className="text-xs text-red-400">{error}</p>
           <button
             onClick={() => loadAll()}
             className="mt-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors"
           >
-            Erneut versuchen
+            {t('app.tryAgain')}
           </button>
         </div>
       </div>

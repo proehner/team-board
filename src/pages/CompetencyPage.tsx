@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
@@ -6,7 +7,6 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import { Plus, Star, Edit2, Trash2, Info } from 'lucide-react'
 import type { Skill, SkillCategory, SkillLevel, TeamMember, MemberSkill } from '@/types'
-import { SKILL_LEVEL_LABELS } from '@/types'
 
 const CATEGORIES: SkillCategory[] = [
   'Frontend', 'Backend', 'DevOps', 'Testing', 'Datenbank', 'Soft Skills', 'Sonstiges',
@@ -24,6 +24,7 @@ const LEVEL_BG: Record<SkillLevel, string> = {
 type Tab = 'matrix' | 'katalog'
 
 export default function CompetencyPage() {
+  const { t } = useTranslation()
   const members = useStore((s) => s.members).filter((m) => m.isActive)
   const skills = useStore((s) => s.skills)
   const memberSkills = useStore((s) => s.memberSkills)
@@ -92,7 +93,7 @@ export default function CompetencyPage() {
       }
       setShowSkillModal(false)
     } catch {
-      alert('Fehler beim Speichern. Bitte prüfe, ob der Server läuft.')
+      alert(t('competencies.saveError'))
     }
   }
 
@@ -100,25 +101,25 @@ export default function CompetencyPage() {
     <div className="p-6 space-y-5 max-w-full">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Kompetenzen</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{skills.length} Fähigkeiten · {members.length} aktive Mitglieder</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('competencies.title')}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('competencies.subtitle', { count: members.length })}</p>
         </div>
         <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAddSkill}>
-          Fähigkeit hinzufügen
+          {t('competencies.addSkill')}
         </Button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 w-fit">
-        {([['matrix', 'Kompetenz-Matrix'], ['katalog', 'Fähigkeitskatalog']] as [Tab, string][]).map(([t, l]) => (
+        {([['matrix', t('competencies.competencyMatrix')], ['katalog', t('competencies.skillsCatalog')]] as [Tab, string][]).map(([tabKey, label]) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={tabKey}
+            onClick={() => setTab(tabKey)}
             className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              tab === t ? 'bg-white dark:bg-slate-900 shadow-sm text-slate-900 dark:text-slate-100' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              tab === tabKey ? 'bg-white dark:bg-slate-900 shadow-sm text-slate-900 dark:text-slate-100' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
-            {l}
+            {label}
           </button>
         ))}
       </div>
@@ -135,7 +136,7 @@ export default function CompetencyPage() {
                 : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-600 hover:border-indigo-400'
             }`}
           >
-            {cat}
+            {cat === 'Alle' ? t('common.all') : cat}
           </button>
         ))}
       </div>
@@ -164,27 +165,27 @@ export default function CompetencyPage() {
       <Modal
         isOpen={showSkillModal}
         onClose={() => setShowSkillModal(false)}
-        title={editSkill ? 'Fähigkeit bearbeiten' : 'Neue Fähigkeit'}
+        title={editSkill ? t('competencies.editSkill') : t('competencies.newSkill')}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowSkillModal(false)}>Abbrechen</Button>
-            <Button variant="primary" onClick={handleSkillSubmit}>{editSkill ? 'Speichern' : 'Hinzufügen'}</Button>
+            <Button variant="secondary" onClick={() => setShowSkillModal(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={handleSkillSubmit}>{editSkill ? t('common.save') : t('common.add')}</Button>
           </>
         }
       >
         <div className="space-y-4">
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Name</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('common.name')}</label>
             <input
               type="text"
               value={skillForm.name}
               onChange={(e) => setSkillForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="z. B. React"
+              placeholder={t('competencies.namePlaceholder')}
               className="form-input"
             />
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Kategorie</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('competencies.category')}</label>
             <select
               value={skillForm.category}
               onChange={(e) => setSkillForm((f) => ({ ...f, category: e.target.value as SkillCategory }))}
@@ -194,13 +195,13 @@ export default function CompetencyPage() {
             </select>
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Beschreibung (optional)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('competencies.descriptionLabel')}</label>
             <textarea
               value={skillForm.description}
               onChange={(e) => setSkillForm((f) => ({ ...f, description: e.target.value }))}
               rows={2}
               className="form-textarea"
-              placeholder="Kurze Beschreibung der Fähigkeit…"
+              placeholder={t('competencies.descriptionPlaceholder')}
             />
           </div>
         </div>
@@ -210,9 +211,9 @@ export default function CompetencyPage() {
         isOpen={!!deleteSkillTarget}
         onClose={() => setDeleteSkillTarget(null)}
         onConfirm={() => { if (deleteSkillTarget) deleteSkill(deleteSkillTarget.id) }}
-        title="Fähigkeit entfernen"
-        message={`Möchtest du "${deleteSkillTarget?.name}" wirklich aus dem Katalog entfernen? Alle zugehörigen Bewertungen werden gelöscht.`}
-        confirmLabel="Entfernen"
+        title={t('competencies.removeSkill')}
+        message={t('competencies.removeConfirm', { name: deleteSkillTarget?.name })}
+        confirmLabel={t('common.remove')}
       />
     </div>
   )
@@ -229,12 +230,13 @@ interface MatrixTabProps {
 }
 
 function MatrixTab({ members, groupedSkills, getLevel, activeCell, setActiveCell, setMemberSkillLevel, popoverRef }: MatrixTabProps) {
+  const { t } = useTranslation()
   if (members.length === 0 || Object.keys(groupedSkills).length === 0) {
     return (
       <EmptyState
         icon={<Star className="w-12 h-12" />}
-        title="Keine Daten vorhanden"
-        description="Füge Fähigkeiten und Teammitglieder hinzu, um die Matrix zu befüllen."
+        title={t('competencies.noData')}
+        description={t('competencies.noDataSubtitle')}
       />
     )
   }
@@ -245,7 +247,7 @@ function MatrixTab({ members, groupedSkills, getLevel, activeCell, setActiveCell
         <thead>
           <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide w-52 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10">
-              Fähigkeit
+              {t('competencies.skillColumn')}
             </th>
             {members.map((m) => (
               <th key={m.id} className="px-3 py-3 text-center text-xs font-medium text-slate-700 dark:text-slate-300 min-w-[90px]">
@@ -293,7 +295,7 @@ function MatrixTab({ members, groupedSkills, getLevel, activeCell, setActiveCell
                         <button
                           onClick={() => setActiveCell(isActive ? null : { memberId: m.id, skillId: skill.id })}
                           className={`w-16 h-8 rounded-lg text-xs font-semibold transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${LEVEL_BG[level]}`}
-                          title={SKILL_LEVEL_LABELS[level]}
+                          title={t(`skillLevel.${level}`)}
                         >
                           {level === 0 ? '—' : level}
                         </button>
@@ -309,7 +311,7 @@ function MatrixTab({ members, groupedSkills, getLevel, activeCell, setActiveCell
                                   setMemberSkillLevel(m.id, skill.id, l)
                                   setActiveCell(null)
                                 }}
-                                title={SKILL_LEVEL_LABELS[l]}
+                                title={t(`skillLevel.${l}`)}
                                 className={`w-8 h-8 rounded-lg text-xs font-semibold transition-all hover:scale-110 ${LEVEL_BG[l]} ${level === l ? 'ring-2 ring-indigo-500' : ''}`}
                               >
                                 {l === 0 ? '—' : l}
@@ -332,7 +334,7 @@ function MatrixTab({ members, groupedSkills, getLevel, activeCell, setActiveCell
             <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-semibold ${LEVEL_BG[l]}`}>
               {l === 0 ? '—' : l}
             </div>
-            <span>{SKILL_LEVEL_LABELS[l]}</span>
+            <span>{t(`skillLevel.${l}`)}</span>
           </div>
         ))}
       </div>
@@ -349,12 +351,13 @@ interface CatalogTabProps {
 }
 
 function CatalogTab({ filteredSkills, memberSkills, members, onEdit, onDelete }: CatalogTabProps) {
+  const { t } = useTranslation()
   if (filteredSkills.length === 0) {
     return (
       <EmptyState
         icon={<Star className="w-12 h-12" />}
-        title="Keine Fähigkeiten"
-        description="Füge die ersten Fähigkeiten zum Katalog hinzu."
+        title={t('competencies.noSkills')}
+        description={t('competencies.noSkillsSubtitle')}
       />
     )
   }
@@ -388,9 +391,9 @@ function CatalogTab({ filteredSkills, memberSkills, members, onEdit, onDelete }:
             </div>
             {sk.description && <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">{sk.description}</p>}
             <div className="flex gap-4 text-xs text-slate-500 dark:text-slate-400">
-              <span><span className="font-semibold text-slate-700 dark:text-slate-300">{levels.length}</span>/{members.length} Mitglieder</span>
-              {avgLevel > 0 && <span>Ø <span className="font-semibold text-slate-700 dark:text-slate-300">{avgLevel}</span></span>}
-              {expertCount > 0 && <span><span className="font-semibold text-slate-700 dark:text-slate-300">{expertCount}</span> Experten</span>}
+              <span>{t('competencies.membersRated', { rated: levels.length, total: members.length })}</span>
+              {avgLevel > 0 && <span>{t('competencies.avgLevel', { level: avgLevel })}</span>}
+              {expertCount > 0 && <span><span className="font-semibold text-slate-700 dark:text-slate-300">{expertCount}</span> {t('competencies.experts')}</span>}
             </div>
           </div>
         )

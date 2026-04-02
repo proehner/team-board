@@ -1,63 +1,64 @@
 # Team Board
 
-Ein Scrum-Team-Dashboard für Teamleiter – verwaltet Mitglieder, Kompetenzen, Sprints, Rotationen, Retrospektiven, Pulse-Checks, Stakeholder-Kommunikation und Azure DevOps Rankings in einer einzigen Webanwendung.
+A Scrum team dashboard for team leads – manage members, competencies, sprints, rotations, retrospectives, pulse checks, stakeholder communication, and Azure DevOps rankings in a single web application.
 
 ---
 
-## Inhaltsverzeichnis
+## Table of Contents
 
-1. [Funktionen](#1-funktionen)
-2. [Technologie-Stack](#2-technologie-stack)
-3. [Lokaler Betrieb (Entwicklung)](#3-lokaler-betrieb-entwicklung)
+1. [Features](#1-features)
+2. [Technology Stack](#2-technology-stack)
+3. [Local Development](#3-local-development)
 4. [GitHub Pages Deployment](#4-github-pages-deployment)
-5. [Umgebungsvariablen](#5-umgebungsvariablen)
-6. [Backend separat hosten](#6-backend-separat-hosten)
-7. [Benutzeranmeldung & Rollen](#7-benutzeranmeldung--rollen)
-8. [Projektstruktur](#8-projektstruktur)
+5. [Environment Variables](#5-environment-variables)
+6. [Hosting the Backend Separately](#6-hosting-the-backend-separately)
+7. [User Login & Roles](#7-user-login--roles)
+8. [Project Structure](#8-project-structure)
 
 ---
 
-## 1. Funktionen
+## 1. Features
 
-| Bereich | Was es bietet |
+| Area | What it offers |
 | --- | --- |
-| **Dashboard** | Zentraler Überblick – aktiver Sprint, offene Aktionspunkte, Teamkennzahlen |
-| **Team** | Mitgliederverwaltung mit Rollen und Aktiv/Inaktiv-Status |
-| **Kompetenzen** | Kompetenzmatrix und Skill-Katalog mit Bewertungsstufen |
-| **Sprints** | Sprint-Planung, Kapazitätsverwaltung und Velocity-Tracking |
-| **Rotation** | Zuweisung und Rotation von Teamverantwortlichkeiten (z. B. On-Call, Scrum Master) |
-| **Retrospektiven** | Strukturierte Retro-Boards mit Abstimmung und Aktionspunkten |
-| **Teamgesundheit** | Bus-Faktor-Analyse, Workload-Verteilung und Abwesenheitssimulation |
-| **Pulse Check** | Anonyme Zufriedenheitsumfragen im Team |
-| **Stakeholder** | Sprint-Fortschritt und Zielerreichung für externe Kommunikation |
-| **Azure Rankings** | Gamifiziertes Entwickler-Ranking auf Basis von Azure DevOps Metriken |
-| **Dark / Light Mode** | Umschaltbar über den Sidebar-Button, Einstellung wird gespeichert |
+| **Dashboard** | Central overview – active sprint, open action items, team metrics |
+| **Team** | Member management with roles and active/inactive status |
+| **Competencies** | Competency matrix and skill catalogue with rating levels |
+| **Sprints** | Sprint planning, capacity management and velocity tracking |
+| **Rotation** | Assignment and rotation of team responsibilities (e.g. on-call, Scrum Master) |
+| **Retrospectives** | Structured retro boards with voting and action items |
+| **Team Health** | Bus factor analysis, workload distribution and absence simulation |
+| **Pulse Check** | Anonymous satisfaction surveys within the team |
+| **Stakeholder** | Sprint progress and goal achievement for external communication |
+| **Azure Rankings** | Gamified developer ranking based on Azure DevOps metrics |
+| **Dark / Light Mode** | Toggleable via the sidebar button, setting is persisted |
 
 ---
 
-## 2. Technologie-Stack
+## 2. Technology Stack
 
 ### Frontend
 
 - React 18 + TypeScript
-- Vite (Build-Tool)
-- Tailwind CSS (inkl. Dark-Mode via `class`-Strategie)
-- Zustand (State Management)
+- Vite (build tool)
+- Tailwind CSS (including dark mode via `class` strategy)
+- Zustand (state management)
 - React Router v6
-- Lucide React (Icons)
+- Lucide React (icons)
+- i18next + react-i18next (English / German UI, auto-detection)
 
 ### Backend (`server/`)
 
 - Node.js + Express
-- SQLite via `node-sqlite3-wasm` (kein natives Kompilieren nötig)
-- JWT-Authentifizierung
+- SQLite via `node-sqlite3-wasm` (no native compilation required)
+- JWT authentication
 - TypeScript
 
 ---
 
-## 3. Lokaler Betrieb (Entwicklung)
+## 3. Local Development
 
-### Voraussetzungen
+### Prerequisites
 
 - Node.js ≥ 18
 - npm ≥ 9
@@ -65,184 +66,185 @@ Ein Scrum-Team-Dashboard für Teamleiter – verwaltet Mitglieder, Kompetenzen, 
 ### Installation
 
 ```bash
-# Frontend-Abhängigkeiten
+# Frontend dependencies
 npm install
 
-# Backend-Abhängigkeiten
+# Backend dependencies
 cd server && npm install && cd ..
 ```
 
-### Server starten
+### Starting the Server
 
 ```bash
-# Terminal 1 – Backend (startet auf http://localhost:3001)
+# Terminal 1 – Backend (starts on http://localhost:3001)
 cd server
 npm run dev
 ```
 
 ```bash
-# Terminal 2 – Frontend (startet auf http://localhost:5173)
+# Terminal 2 – Frontend (starts on http://localhost:5173)
 npm run dev
 ```
 
-Beim ersten Backend-Start werden automatisch Demo-Daten eingespielt (5 Mitglieder, Fähigkeiten, Sprint, Retrospektive).
+On the first backend start, demo data is seeded automatically (5 members, skills, sprint, retrospective).
 
-**Standard-Login:** `admin` / `admin` (bitte nach dem ersten Login ändern)
+**Default login:** `admin` / `admin` (please change after first login)
 
 ---
 
 ## 4. GitHub Pages Deployment
 
-Das Frontend kann als statische Site auf **GitHub Pages** gehostet werden. Das Backend muss separat laufen (siehe [Abschnitt 6](#6-backend-separat-hosten)).
+The frontend can be hosted as a static site on **GitHub Pages**. The backend must run separately (see [Section 6](#6-hosting-the-backend-separately)).
 
-### Einmalige Einrichtung (5 Schritte)
+### One-time Setup (5 Steps)
 
-**Schritt 1 – Repository auf GitHub anlegen**
+**Step 1 – Create a repository on GitHub**
 
-Repository erstellen (Name z. B. `team-lead`, kann öffentlich oder privat sein).
+Create a repository (name e.g. `team-lead`, can be public or private).
 
-**Schritt 2 – Backend-URL als Repository-Variable hinterlegen**
+**Step 2 – Add the backend URL as a repository variable**
 
-Damit das Frontend im Browser weiß, wo das Backend läuft:
+So the frontend running in the browser knows where the backend is:
 
 `Settings → Secrets and variables → Actions → Variables → New repository variable`
 
-| Name | Wert |
+| Name | Value |
 |---|---|
-| `VITE_API_URL` | `https://dein-server.example.com` (ohne abschließenden `/`) |
+| `VITE_API_URL` | `https://your-server.example.com` (without trailing `/`) |
 
-> Solange du das Backend noch nicht hast, kann der Wert leer bleiben – die App baut trotzdem, API-Aufrufe schlagen dann allerdings fehl.
+> If you don't have the backend yet, the value can be left empty – the app will still build, but API calls will fail.
 
-**Schritt 3 – GitHub Pages aktivieren**
+**Step 3 – Enable GitHub Pages**
 
 `Settings → Pages → Source: GitHub Actions`
 
-**Schritt 4 – Code pushen**
+**Step 4 – Push code**
 
 ```bash
-git remote add origin https://github.com/DEIN-USER/team-lead.git
+git remote add origin https://github.com/YOUR-USER/team-lead.git
 git push -u origin main
 ```
 
-Der Workflow `.github/workflows/deploy.yml` startet automatisch, baut das Frontend und veröffentlicht es.
+The workflow `.github/workflows/deploy.yml` starts automatically, builds the frontend and publishes it.
 
-**Schritt 5 – App aufrufen**
+**Step 5 – Open the app**
 
-Nach ca. 1–2 Minuten ist die App erreichbar unter:
+After approximately 1–2 minutes the app is available at:
 
 ```
-https://DEIN-USER.github.io/team-lead/
+https://YOUR-USER.github.io/team-lead/
 ```
 
-### Automatische Deployments
+### Automatic Deployments
 
-Jeder Push auf `main` oder `master` löst automatisch einen neuen Build und Deploy aus. Den Status siehst du unter `Actions` im Repository.
+Every push to `main` or `master` automatically triggers a new build and deploy. You can see the status under `Actions` in the repository.
 
 ---
 
-## 5. Umgebungsvariablen
+## 5. Environment Variables
 
-Kopiere `.env.example` nach `.env.local` für lokale Anpassungen (wird nicht eingecheckt):
+Copy `.env.example` to `.env.local` for local overrides (not committed):
 
 ```bash
 cp .env.example .env.local
 ```
 
-| Variable | Wo gesetzt | Beschreibung |
+| Variable | Where set | Description |
 |---|---|---|
-| `VITE_API_URL` | GitHub Repository Variable oder `.env.local` | Backend-URL, z. B. `https://mein-server.de`. Leer lassen für lokale Entwicklung. |
-| `VITE_BASE_PATH` | Wird vom CI automatisch gesetzt | Basis-Pfad des Frontends (`/team-lead/`). Nur manuell nötig, wenn der Repo-Name vom Pfad abweicht. |
+| `VITE_API_URL` | GitHub repository variable or `.env.local` | Backend URL, e.g. `https://my-server.com`. Leave empty for local development. |
+| `VITE_BASE_PATH` | Set automatically by CI | Base path of the frontend (`/team-lead/`). Only needed manually if the repo name differs from the path. |
 
-**Für das Backend** (`server/.env`, nicht eingecheckt):
+**For the backend** (`server/.env`, not committed):
 
-| Variable | Standard | Beschreibung |
+| Variable | Default | Description |
 |---|---|---|
-| `PORT` | `3001` | TCP-Port des Express-Servers |
-| `DB_PATH` | `server/data/teamlead.db` | Pfad zur SQLite-Datenbankdatei |
-| `JWT_SECRET` | (zufällig generiert beim Start) | Geheimnis für JWT-Token-Signierung – in Produktion unbedingt setzen |
+| `PORT` | `3001` | TCP port of the Express server |
+| `DB_PATH` | `server/data/teamlead.db` | Path to the SQLite database file |
+| `JWT_SECRET` | (randomly generated on start) | Secret for JWT token signing – must be set in production |
 
 ---
 
-## 6. Backend separat hosten
+## 6. Hosting the Backend Separately
 
-GitHub Pages hostet nur statische Dateien. Das Backend (Express + SQLite) muss auf einem eigenen Server laufen. Empfohlene Optionen:
+GitHub Pages only hosts static files. The backend (Express + SQLite) must run on its own server. Recommended options:
 
-### Option A – VPS / eigener Server (empfohlen)
+### Option A – VPS / own server (recommended)
 
 ```bash
-# Auf dem Server: Code clonen und bauen
-git clone https://github.com/DEIN-USER/team-lead.git
+# On the server: clone and build
+git clone https://github.com/YOUR-USER/team-lead.git
 cd team-lead
 npm install
 cd server && npm install
 cd .. && npm run server:build
 
-# Mit PM2 als Dienst starten
+# Start as a service with PM2
 npm install -g pm2
 pm2 start server/dist/index.js --name team-lead
 pm2 save && pm2 startup
 ```
 
-Danach einen Reverse-Proxy (nginx/Caddy) einrichten, der Port 3001 unter einer öffentlichen URL erreichbar macht.
+Then set up a reverse proxy (nginx/Caddy) to make port 3001 accessible via a public URL.
 
-### Option B – Windows Server mit IIS
+### Option B – Windows Server with IIS
 
-Siehe [BETRIEB.md – Abschnitt 4](BETRIEB.md#4-deployment-auf-iis-windows) für die vollständige IIS-Anleitung mit iisnode.
+See [OPERATIONS.md – Section 4](OPERATIONS.md#4-deployment-on-iis-windows) for the full IIS guide with iisnode.
 
 ### Option C – Render / Railway / Fly.io (Cloud)
 
-Diese Plattformen können den Node.js-Server direkt aus dem `server/`-Verzeichnis hosten. Umgebungsvariablen (`PORT`, `DB_PATH`, `JWT_SECRET`) in den jeweiligen Plattform-Einstellungen setzen.
+These platforms can host the Node.js server directly from the `server/` directory. Set environment variables (`PORT`, `DB_PATH`, `JWT_SECRET`) in the respective platform settings.
 
-> **CORS:** Damit das auf GitHub Pages gehostete Frontend auf das Backend zugreifen darf, muss in `server/src/index.ts` die GitHub-Pages-Domain in der CORS-Konfiguration eingetragen sein.
+> **CORS:** For the frontend hosted on GitHub Pages to be able to access the backend, the GitHub Pages domain must be added to the CORS configuration in `server/src/index.ts`.
 
 ---
 
-## 7. Benutzeranmeldung & Rollen
+## 7. User Login & Roles
 
-Die Anwendung verwendet JWT-basierte Authentifizierung.
+The application uses JWT-based authentication.
 
-| Rolle | Rechte |
+| Role | Permissions |
 | --- | --- |
-| `admin` | Vollzugriff auf alle Bereiche inkl. Benutzerverwaltung |
-| `user` | Zugriff auf freigegebene Bereiche (konfigurierbar pro Nutzer) |
+| `admin` | Full access to all areas including user management |
+| `user` | Access to permitted areas (configurable per user) |
 
-**Standard-Admin nach dem ersten Start:**
+**Default admin after first start:**
 
 ```txt
-Benutzername: admin
-Passwort:     admin
+Username: admin
+Password: admin
 ```
 
-Das Passwort sollte direkt nach dem ersten Login unter `Administration → Benutzerverwaltung` geändert werden.
+The password should be changed immediately after the first login under `Administration → User Management`.
 
-Weitere Benutzer können unter `/admin` angelegt und mit eingeschränkten Seitenzugriffen konfiguriert werden.
+Additional users can be created at `/admin` and configured with restricted page access.
 
 ---
 
-## 8. Projektstruktur
+## 8. Project Structure
 
 ```txt
 team-lead/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml        # GitHub Actions: Build & Deploy zu GitHub Pages
-├── src/                      # React-Frontend (TypeScript)
-│   ├── api/                  # API-Client (fetch-Wrapper)
+│       └── deploy.yml        # GitHub Actions: build & deploy to GitHub Pages
+├── src/                      # React frontend (TypeScript)
+│   ├── api/                  # API client (fetch wrapper)
 │   ├── components/
-│   │   ├── layout/           # Sidebar, Layout
-│   │   └── ui/               # Wiederverwendbare UI-Komponenten
-│   ├── pages/                # Seiten-Komponenten
-│   ├── store/                # Zustand-Stores (app, auth, theme)
-│   └── types/                # Gemeinsame TypeScript-Typen
-├── server/                   # Express-Backend (TypeScript)
+│   │   ├── layout/           # Sidebar, layout
+│   │   └── ui/               # Reusable UI components
+│   ├── i18n/                 # i18next setup + locale files (en/de)
+│   ├── pages/                # Page components
+│   ├── store/                # Zustand stores (app, auth, theme)
+│   └── types/                # Shared TypeScript types
+├── server/                   # Express backend (TypeScript)
 │   ├── src/
-│   │   ├── index.ts          # Einstiegspunkt
-│   │   ├── db.ts             # SQLite-Initialisierung
-│   │   └── routes/           # REST-API-Endpunkte
+│   │   ├── index.ts          # Entry point
+│   │   ├── db.ts             # SQLite initialisation
+│   │   └── routes/           # REST API endpoints
 │   └── data/
-│       └── teamlead.db       # SQLite-Datenbankdatei (wird automatisch erstellt)
-├── .env.example              # Vorlage für Umgebungsvariablen
-├── BETRIEB.md                # Ausführliche Betriebsanleitung
+│       └── teamlead.db       # SQLite database file (created automatically)
+├── .env.example              # Template for environment variables
+├── OPERATIONS.md                # Detailed operations guide
 ├── vite.config.ts
 └── package.json
 ```

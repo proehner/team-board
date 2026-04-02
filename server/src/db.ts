@@ -9,30 +9,30 @@ if (!fs.existsSync(DATA_DIR)) {
 
 export const DB_PATH = process.env.DB_PATH ?? path.join(DATA_DIR, 'teamlead.db')
 
-// Veraltetes Lock-Verzeichnis entfernen (entsteht bei hartem Prozessabbruch)
+// Remove stale lock directory (created on hard process termination)
 const lockDir = `${DB_PATH}.lock`
 if (fs.existsSync(lockDir)) {
   fs.rmSync(lockDir, { recursive: true, force: true })
-  console.warn(`Veraltetes DB-Lock bereinigt: ${lockDir}`)
+  console.warn(`Stale DB lock cleaned up: ${lockDir}`)
 }
 
-// Backup der Datenbank erstellen (falls vorhanden)
+// Create a backup of the database (if it exists)
 if (fs.existsSync(DB_PATH)) {
   const backupPath = `${DB_PATH}.backup-${Date.now()}`
   fs.copyFileSync(DB_PATH, backupPath)
-  console.info(`Datenbank-Backup erstellt: ${backupPath}`)
+  console.info(`Database backup created: ${backupPath}`)
 }
 
 let db: InstanceType<typeof Database>
 try {
   db = new Database(DB_PATH)
 } catch (err) {
-  console.error(`Datenbankdatei konnte nicht geöffnet werden: ${DB_PATH}`)
+  console.error(`Could not open database file: ${DB_PATH}`)
   throw err
 }
 
-// node-sqlite3-wasm (WASM-basiert) unterstützt WAL auf Windows nicht zuverlässig.
-// DELETE-Journal (Standard) ist für diese Anwendung ausreichend.
+// node-sqlite3-wasm (WASM-based) does not reliably support WAL on Windows.
+// DELETE journal mode (default) is sufficient for this application.
 db.exec(`PRAGMA foreign_keys = ON`)
 
 try {
@@ -160,16 +160,16 @@ try {
   const msg = err instanceof Error ? err.message : String(err)
   if (msg.includes('locked')) {
     console.error(
-      '\n❌  FEHLER: Die Datenbank ist gesperrt.\n' +
-      '   Wahrscheinlich läuft bereits ein anderer Server-Prozess.\n' +
-      '   Lösung: Alle laufenden Node-Prozesse beenden und dann neu starten.\n' +
+      '\n❌  ERROR: The database is locked.\n' +
+      '   Another server process is likely already running.\n' +
+      '   Solution: Stop all running Node processes and then restart.\n' +
       '   Windows: taskkill /F /IM node.exe\n',
     )
   }
   throw err
 }
 
-// ─── Migrations (bestehende Datenbanken) ─────────────────────────────────────
+// ─── Migrations (existing databases) ─────────────────────────────────────────
 const assignmentCols = db.prepare('PRAGMA table_info(assignments)').all([]) as Array<{ name: string }>
 if (!assignmentCols.some((c) => c.name === 'isSynthetic')) {
   db.exec('ALTER TABLE assignments ADD COLUMN isSynthetic INTEGER NOT NULL DEFAULT 0')

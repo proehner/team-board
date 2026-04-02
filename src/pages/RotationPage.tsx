@@ -8,6 +8,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import { formatDate, todayISO } from '@/utils/date'
 import { Plus, RefreshCw, Edit2, Trash2, Wand2, BarChart2, Settings, Archive } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig } from '@/types'
 import { assignmentsApi } from '@/api/client'
 
@@ -33,6 +34,7 @@ interface TypeFormData {
 }
 
 export default function RotationPage() {
+  const { t } = useTranslation()
   const members = useStore((s) => s.members).filter((m) => m.isActive)
   const allMembers = useStore((s) => s.members)
   const sprints = useStore((s) => s.sprints)
@@ -50,7 +52,7 @@ export default function RotationPage() {
   const colorOf = (typeName: string) =>
     responsibilityTypes.find((t) => t.name === typeName)?.color ?? '#6366f1'
 
-  const [filterType, setFilterType] = useState<string>('Alle')
+  const [filterType, setFilterType] = useState<string>('all')
   const [suggestions, setSuggestions] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -158,12 +160,12 @@ export default function RotationPage() {
 
   function validateAssignment(): boolean {
     const e: Partial<AssignmentFormData> = {}
-    if (!form.type) e.type = 'Verantwortlichkeit erforderlich.'
-    if (!form.memberId) e.memberId = 'Mitglied erforderlich.'
-    if (!form.startDate) e.startDate = 'Startdatum erforderlich.'
-    if (!form.endDate) e.endDate = 'Enddatum erforderlich.'
+    if (!form.type) e.type = t('rotation.responsibilityRequired')
+    if (!form.memberId) e.memberId = t('rotation.memberRequired')
+    if (!form.startDate) e.startDate = t('rotation.startDateRequired')
+    if (!form.endDate) e.endDate = t('rotation.endDateRequired')
     if (form.startDate && form.endDate && form.endDate < form.startDate) {
-      e.endDate = 'Enddatum muss nach Startdatum liegen.'
+      e.endDate = t('rotation.endDateAfterStart')
     }
     setFormErrors(e)
     return Object.keys(e).length === 0
@@ -190,7 +192,7 @@ export default function RotationPage() {
       }
       setShowModal(false)
     } catch {
-      alert('Fehler beim Speichern. Bitte prüfe, ob der Server läuft.')
+      alert(t('competencies.saveError'))
     }
   }
 
@@ -210,7 +212,7 @@ export default function RotationPage() {
   }
 
   async function handleTypeSubmit() {
-    if (!typeForm.name.trim()) { setTypeFormError('Name erforderlich.'); return }
+    if (!typeForm.name.trim()) { setTypeFormError(t('rotation.nameRequired')); return }
     try {
       if (editTypeTarget) {
         await updateResponsibilityType(editTypeTarget.id, typeForm)
@@ -220,12 +222,12 @@ export default function RotationPage() {
       setShowTypeModal(false)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      setTypeFormError(msg.includes('existiert') ? 'Dieser Name existiert bereits.' : 'Fehler beim Speichern.')
+      setTypeFormError(msg.includes('existiert') ? t('rotation.nameExists') : t('admin.errorSaving'))
     }
   }
 
   // ─── Derived ───────────────────────────────────────────────────────────────
-  const visibleAssignments = filterType === 'Alle'
+  const visibleAssignments = filterType === 'all'
     ? assignments.filter((a) => !a.isSynthetic)
     : assignments.filter((a) => a.type === filterType && !a.isSynthetic)
   const sorted = [...visibleAssignments].sort((a, b) => b.startDate.localeCompare(a.startDate))
@@ -243,28 +245,28 @@ export default function RotationPage() {
     <div className="p-6 space-y-5 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Rotation & Verantwortlichkeiten</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{assignments.filter((a) => !a.isSynthetic).length} Zuweisungen insgesamt</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('rotation.title')}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('rotation.count', { count: assignments.filter((a) => !a.isSynthetic).length })}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" icon={<Archive className="w-4 h-4" />} onClick={openCleanup}>
-            Bereinigen
+            {t('rotation.cleanup')}
           </Button>
-          <Button variant="secondary" icon={<Settings className="w-4 h-4" />} onClick={() => setShowTypeModal(true)}>
-            Typen
+          <Button variant="secondary" icon={<Settings className="w-4 h-4" />} onClick={() => { openAddType(); setShowTypeModal(true) }}>
+            {t('rotation.types')}
           </Button>
           <Button variant="secondary" icon={<BarChart2 className="w-4 h-4" />} onClick={() => setShowStats(true)}>
-            Statistik
+            {t('rotation.statistics')}
           </Button>
           <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => openAdd()}>
-            Neue Zuweisung
+            {t('rotation.newAssignment')}
           </Button>
         </div>
       </div>
 
       {/* Type filter */}
       <div className="flex flex-wrap gap-2">
-        <TypeChip label="Alle" active={filterType === 'Alle'} color="#64748b" onClick={() => setFilterType('Alle')} />
+        <TypeChip label={t('common.all')} active={filterType === 'all'} color="#64748b" onClick={() => setFilterType('all')} />
         {responsibilityTypes.map((t) => (
           <TypeChip key={t.id} label={t.name} active={filterType === t.name} color={t.color} onClick={() => setFilterType(t.name)} />
         ))}
@@ -293,7 +295,7 @@ export default function RotationPage() {
                       <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{suggestedMember.name}</span>
                     </div>
                   ) : (
-                    <span className="text-xs text-slate-400">Vorschlag…</span>
+                    <span className="text-xs text-slate-400">{t('rotation.suggestion')}</span>
                   )}
                 </div>
               </button>
@@ -306,9 +308,9 @@ export default function RotationPage() {
       {sorted.length === 0 ? (
         <EmptyState
           icon={<RefreshCw className="w-12 h-12" />}
-          title="Keine Zuweisungen"
-          description="Erstelle die erste Rotationszuweisung für dein Team."
-          action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => openAdd()}>Neue Zuweisung</Button>}
+          title={t('rotation.newAssignment')}
+          description=""
+          action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => openAdd()}>{t('rotation.newAssignment')}</Button>}
         />
       ) : (
         <div className="space-y-2">
@@ -336,7 +338,7 @@ export default function RotationPage() {
                 </div>
                 <div className="text-xs text-slate-400 dark:text-slate-500 text-right shrink-0">
                   <div>{formatDate(a.startDate)}</div>
-                  <div>bis {formatDate(a.endDate)}</div>
+                  <div>– {formatDate(a.endDate)}</div>
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">
@@ -356,62 +358,62 @@ export default function RotationPage() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editTarget ? 'Zuweisung bearbeiten' : 'Neue Zuweisung'}
+        title={editTarget ? t('common.edit') : t('rotation.newAssignment')}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Abbrechen</Button>
-            <Button variant="primary" onClick={handleAssignmentSubmit}>{editTarget ? 'Speichern' : 'Erstellen'}</Button>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={handleAssignmentSubmit}>{editTarget ? t('common.save') : t('common.create')}</Button>
           </>
         }
       >
         <div className="space-y-4">
           <div className="space-y-1">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-              Verantwortlichkeit {formErrors.type && <span className="text-red-500 text-xs ml-1">{formErrors.type}</span>}
+              {t('rotation.title').split(' & ')[1] ?? 'Responsibility'} {formErrors.type && <span className="text-red-500 text-xs ml-1">{formErrors.type}</span>}
             </label>
             <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))} className="form-input">
-              <option value="">Verantwortlichkeit wählen…</option>
+              <option value=""></option>
               {responsibilityTypes.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
             </select>
           </div>
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                Mitglied {formErrors.memberId && <span className="text-red-500 text-xs ml-1">{formErrors.memberId}</span>}
+                {t('sprintDetail.memberColumn')} {formErrors.memberId && <span className="text-red-500 text-xs ml-1">{formErrors.memberId}</span>}
               </label>
               <button type="button" onClick={autoSuggest} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-                <Wand2 className="w-3 h-3" /> Auto-Vorschlag
+                <Wand2 className="w-3 h-3" /> Auto
               </button>
             </div>
             <select value={form.memberId} onChange={(e) => setForm((f) => ({ ...f, memberId: e.target.value }))} className="form-input">
-              <option value="">Mitglied wählen…</option>
+              <option value="">{t('rotation.selectMember')}</option>
               {members.map((m) => {
                 const count = assignments.filter((a) => a.type === form.type && a.memberId === m.id && !a.isSynthetic).length
-                return <option key={m.id} value={m.id}>{m.name} ({count}× zugewiesen)</option>
+                return <option key={m.id} value={m.id}>{m.name} ({count}×)</option>
               })}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Von</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('sprints.startDate')}</label>
               <input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} className="form-input" />
             </div>
             <div className="space-y-1">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                Bis {formErrors.endDate && <span className="text-red-500 text-xs">{formErrors.endDate}</span>}
+                {t('sprints.endDate')} {formErrors.endDate && <span className="text-red-500 text-xs">{formErrors.endDate}</span>}
               </label>
               <input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} className="form-input" />
             </div>
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Sprint (optional)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('pulse.sprintOptional')}</label>
             <select value={form.sprintId} onChange={(e) => setForm((f) => ({ ...f, sprintId: e.target.value }))} className="form-input">
-              <option value="">Kein Sprint</option>
+              <option value="">{t('pulse.noSprint')}</option>
               {sprints.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Notizen (optional)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('sprints.notes')}</label>
             <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="form-textarea" />
           </div>
         </div>
@@ -421,11 +423,10 @@ export default function RotationPage() {
       <Modal
         isOpen={showTypeModal}
         onClose={() => { setShowTypeModal(false); setEditTypeTarget(null) }}
-        title="Verantwortlichkeiten verwalten"
+        title={t('rotation.types')}
         size="lg"
       >
         <div className="space-y-4">
-          {/* Existing types list */}
           <div className="space-y-2">
             {responsibilityTypes.map((rt) => (
               <div key={rt.id} className="flex items-center gap-3 bg-slate-50 dark:bg-slate-950 rounded-lg px-3 py-2">
@@ -440,28 +441,26 @@ export default function RotationPage() {
               </div>
             ))}
             {responsibilityTypes.length === 0 && (
-              <p className="text-sm text-slate-400 text-center py-4">Noch keine Verantwortlichkeiten angelegt.</p>
+              <p className="text-sm text-slate-400 text-center py-4"></p>
             )}
           </div>
 
-          {/* Add / Edit form */}
           <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-3">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {editTypeTarget ? `„${editTypeTarget.name}" bearbeiten` : 'Neue Verantwortlichkeit'}
+              {editTypeTarget ? editTypeTarget.name : t('rotation.newAssignment')}
             </h3>
             <div className="flex gap-3 items-end">
               <div className="flex-1 space-y-1">
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Name</label>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">{t('common.name')}</label>
                 <input
                   type="text"
                   value={typeForm.name}
                   onChange={(e) => { setTypeForm((f) => ({ ...f, name: e.target.value })); setTypeFormError('') }}
-                  placeholder="z. B. On-Call-Dienst"
                   className="form-input"
                 />
               </div>
               <div className="space-y-1">
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Farbe</label>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Color</label>
                 <div className="flex flex-wrap gap-1.5 w-48">
                   {COLOR_OPTIONS.map((c) => (
                     <button
@@ -479,11 +478,11 @@ export default function RotationPage() {
             <div className="flex gap-2">
               {editTypeTarget && (
                 <Button variant="secondary" onClick={() => { setEditTypeTarget(null); setTypeForm({ name: '', color: COLOR_OPTIONS[0] }) }}>
-                  Abbrechen
+                  {t('common.cancel')}
                 </Button>
               )}
               <Button variant="primary" icon={editTypeTarget ? undefined : <Plus className="w-4 h-4" />} onClick={handleTypeSubmit}>
-                {editTypeTarget ? 'Speichern' : 'Hinzufügen'}
+                {editTypeTarget ? t('common.save') : t('common.add')}
               </Button>
             </div>
           </div>
@@ -491,7 +490,7 @@ export default function RotationPage() {
       </Modal>
 
       {/* Stats Modal */}
-      <Modal isOpen={showStats} onClose={() => setShowStats(false)} title="Rotations-Statistik" size="lg">
+      <Modal isOpen={showStats} onClose={() => setShowStats(false)} title={t('rotation.statistics')} size="lg">
         <div className="space-y-6">
           {responsibilityTypes.map((rt) => {
             const typeStats = stats[rt.name] ?? []
@@ -524,19 +523,19 @@ export default function RotationPage() {
       <Modal
         isOpen={showCleanup}
         onClose={() => setShowCleanup(false)}
-        title="Veraltete Einträge bereinigen"
+        title={t('rotation.cleanup')}
         footer={
           cleanupDone === null ? (
             <>
-              <Button variant="secondary" onClick={() => setShowCleanup(false)}>Abbrechen</Button>
+              <Button variant="secondary" onClick={() => setShowCleanup(false)}>{t('common.cancel')}</Button>
               {cleanupPreview && cleanupPreview.count > 0 && (
                 <Button variant="primary" onClick={handleCleanupConfirm} disabled={cleanupLoading}>
-                  {cleanupLoading ? 'Wird archiviert…' : `${cleanupPreview.count} Einträge archivieren`}
+                  {cleanupLoading ? '…' : `${cleanupPreview.count}`}
                 </Button>
               )}
             </>
           ) : (
-            <Button variant="primary" onClick={() => setShowCleanup(false)}>Schließen</Button>
+            <Button variant="primary" onClick={() => setShowCleanup(false)}>{t('common.confirm')}</Button>
           )
         }
       >
@@ -546,17 +545,13 @@ export default function RotationPage() {
               <Archive className="w-6 h-6 text-green-600" />
             </div>
             <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-              {cleanupDone === 0 ? 'Keine Einträge zum Archivieren gefunden.' : `${cleanupDone} Einträge erfolgreich archiviert.`}
+              {cleanupDone} archived.
             </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Die Einträge zählen weiterhin für Statistik und Auto-Vorschlag.</p>
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Abgelaufene Zuweisungen werden <strong>archiviert</strong> – sie verschwinden aus der Liste, zählen aber weiterhin für den Fairness-Algorithmus und die Statistik.
-            </p>
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Einträge archivieren, die endeten vor:</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Archive entries that ended before:</label>
               <input
                 type="date"
                 value={cleanupBefore}
@@ -569,14 +564,12 @@ export default function RotationPage() {
               onClick={() => loadCleanupPreview(cleanupBefore)}
               disabled={cleanupLoading || !cleanupBefore}
             >
-              {cleanupLoading ? 'Lädt…' : 'Vorschau anzeigen'}
+              {cleanupLoading ? '…' : 'Preview'}
             </Button>
             {cleanupPreview && (
               <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
                 <div className={`px-3 py-2 text-xs font-medium ${cleanupPreview.count === 0 ? 'bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400' : 'bg-amber-50 text-amber-700'}`}>
-                  {cleanupPreview.count === 0
-                    ? 'Keine Einträge gefunden – nichts zu archivieren.'
-                    : `${cleanupPreview.count} Einträge werden archiviert`}
+                  {cleanupPreview.count === 0 ? 'Nothing to archive.' : `${cleanupPreview.count} entries will be archived`}
                 </div>
                 {cleanupPreview.items.slice(0, 8).map((a) => {
                   const member = allMembers.find((m) => m.id === a.memberId)
@@ -591,7 +584,7 @@ export default function RotationPage() {
                 })}
                 {cleanupPreview.count > 8 && (
                   <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-400 dark:text-slate-500">
-                    … und {cleanupPreview.count - 8} weitere
+                    … and {cleanupPreview.count - 8} more
                   </div>
                 )}
               </div>
@@ -604,9 +597,9 @@ export default function RotationPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => { if (deleteTarget) deleteAssignment(deleteTarget.id) }}
-        title="Zuweisung löschen"
-        message="Möchtest du diese Zuweisung wirklich löschen?"
-        confirmLabel="Löschen"
+        title={t('common.delete')}
+        message=""
+        confirmLabel={t('common.delete')}
       />
 
       <ConfirmDialog
@@ -617,13 +610,13 @@ export default function RotationPage() {
             try {
               await deleteResponsibilityType(deleteTypeTarget.id)
             } catch {
-              alert('Fehler beim Löschen.')
+              alert(t('admin.errorDeleting'))
             }
           }
         }}
-        title="Verantwortlichkeit löschen"
-        message={`Möchtest du „${deleteTypeTarget?.name}" wirklich löschen? Alle zugehörigen Zuweisungen bleiben erhalten, werden aber keinem Typ mehr zugeordnet.`}
-        confirmLabel="Löschen"
+        title={t('common.delete')}
+        message={deleteTypeTarget?.name ?? ''}
+        confirmLabel={t('common.delete')}
       />
     </div>
   )
@@ -638,7 +631,7 @@ function TypeChip({ label, active, color, onClick }: { label: string; active: bo
       }`}
       style={active ? { backgroundColor: color, borderColor: color } : {}}
     >
-      {label !== 'Alle' && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: active ? 'rgba(255,255,255,0.7)' : color }} />}
+      {label !== 'Alle' && label !== 'All' && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: active ? 'rgba(255,255,255,0.7)' : color }} />}
       {label}
     </button>
   )

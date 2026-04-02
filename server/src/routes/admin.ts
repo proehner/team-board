@@ -6,7 +6,7 @@ import crypto from 'crypto'
 
 const router = Router()
 
-// Alle Routen benötigen Auth + Admin-Rolle
+// All routes require auth + admin role
 router.use(requireAuth, requireAdmin)
 
 interface UserRow {
@@ -50,17 +50,17 @@ router.post('/users', (req, res) => {
     }
 
   if (!username || !password || !displayName) {
-    res.status(400).json({ error: 'Benutzername, Passwort und Anzeigename erforderlich' })
+    res.status(400).json({ error: 'Username, password and display name required' })
     return
   }
   if (password.length < 6) {
-    res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen haben' })
+    res.status(400).json({ error: 'Password must be at least 6 characters long' })
     return
   }
 
   const existing = dbGet('SELECT id FROM users WHERE username = ?', [username.toLowerCase().trim()])
   if (existing) {
-    res.status(409).json({ error: 'Benutzername bereits vergeben' })
+    res.status(409).json({ error: 'Username already taken' })
     return
   }
 
@@ -92,17 +92,17 @@ router.patch('/users/:id', (req, res) => {
 
   const user = dbGet<UserRow>('SELECT * FROM users WHERE id = ?', [id])
   if (!user) {
-    res.status(404).json({ error: 'Benutzer nicht gefunden' })
+    res.status(404).json({ error: 'User not found' })
     return
   }
 
-  // Letzten Admin nicht deaktivieren / degradieren
+  // Do not deactivate / demote the last admin
   if (user.role === 'admin' && (role === 'user' || isActive === false)) {
     const adminCount = dbGet<{ n: number }>(
       "SELECT COUNT(*) as n FROM users WHERE role = 'admin' AND is_active = 1",
     )
     if ((adminCount?.n ?? 0) <= 1) {
-      res.status(400).json({ error: 'Der letzte aktive Administrator kann nicht geändert werden' })
+      res.status(400).json({ error: 'The last active administrator cannot be modified' })
       return
     }
   }
@@ -116,7 +116,7 @@ router.patch('/users/:id', (req, res) => {
     : user.password_hash
 
   if (password && password.length > 0 && password.length < 6) {
-    res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen haben' })
+    res.status(400).json({ error: 'Password must be at least 6 characters long' })
     return
   }
 
@@ -135,17 +135,17 @@ router.delete('/users/:id', (req, res) => {
 
   const user = dbGet<UserRow>('SELECT * FROM users WHERE id = ?', [id])
   if (!user) {
-    res.status(404).json({ error: 'Benutzer nicht gefunden' })
+    res.status(404).json({ error: 'User not found' })
     return
   }
 
-  // Letzten Admin nicht löschen
+  // Do not delete the last admin
   if (user.role === 'admin') {
     const adminCount = dbGet<{ n: number }>(
       "SELECT COUNT(*) as n FROM users WHERE role = 'admin' AND is_active = 1",
     )
     if ((adminCount?.n ?? 0) <= 1) {
-      res.status(400).json({ error: 'Der letzte Administrator kann nicht gelöscht werden' })
+      res.status(400).json({ error: 'The last administrator cannot be deleted' })
       return
     }
   }

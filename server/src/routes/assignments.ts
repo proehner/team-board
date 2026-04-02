@@ -17,7 +17,7 @@ function toAssignment(row: Row) {
 }
 
 // GET /api/assignments/suggest/:type  — must be BEFORE /:id to avoid param conflict
-// Archivierte Einträge werden BEWUSST einbezogen – sie zählen für Fairness-Algorithmus und Statistik.
+// Archived entries are INTENTIONALLY included – they count for the fairness algorithm and statistics.
 router.get('/suggest/:type', (req, res) => {
   const { type } = req.params
   const members = dbAll<{ id: string }>('SELECT id FROM members WHERE isActive = 1')
@@ -27,7 +27,7 @@ router.get('/suggest/:type', (req, res) => {
   const lastDates: Record<string, string> = {}
   members.forEach((m) => { counts[m.id] = 0; lastDates[m.id] = '1900-01-01' })
 
-  // Alle nicht-synthetischen Einträge zählen (inkl. archivierter!)
+  // Count all non-synthetic entries (including archived ones!)
   const past = dbAll<{ memberId: string; endDate: string }>(
     'SELECT memberId, endDate FROM assignments WHERE type = ? AND isSynthetic = 0', [type],
   )
@@ -45,7 +45,7 @@ router.get('/suggest/:type', (req, res) => {
 })
 
 // GET /api/assignments/archive-preview?before=YYYY-MM-DD
-// Gibt alle Einträge zurück, die archiviert werden würden (zur Vorschau).
+// Returns all entries that would be archived (for preview purposes).
 router.get('/archive-preview', (req, res) => {
   const before = (req.query.before as string) || new Date().toISOString().split('T')[0]
   const rows = dbAll<Row>(
@@ -60,7 +60,7 @@ router.get('/archive-preview', (req, res) => {
 })
 
 // POST /api/assignments/archive-old
-// Archiviert alle abgelaufenen Einträge (endDate < before). Löscht nichts.
+// Archives all expired entries (endDate < before). Does not delete anything.
 router.post('/archive-old', (req, res) => {
   const before = (req.body.before as string) || new Date().toISOString().split('T')[0]
   const result = dbRun(
@@ -79,7 +79,7 @@ router.get('/', (_req, res) => {
 router.post('/', (req, res) => {
   const { type, memberId, sprintId, startDate, endDate, notes = '', isAutoSuggested = false } = req.body
   if (!type || !memberId || !startDate || !endDate) {
-    return res.status(400).json({ error: 'type, memberId, startDate und endDate sind erforderlich.' })
+    return res.status(400).json({ error: 'type, memberId, startDate and endDate are required.' })
   }
   const id = uid()
   dbRun(
@@ -93,7 +93,7 @@ router.post('/', (req, res) => {
 router.patch('/:id', (req, res) => {
   const { id } = req.params
   if (!dbGet('SELECT id FROM assignments WHERE id = ?', [id])) {
-    return res.status(404).json({ error: 'Zuweisung nicht gefunden.' })
+    return res.status(404).json({ error: 'Assignment not found.' })
   }
   const updates: string[] = []
   const values: unknown[] = []
@@ -116,7 +116,7 @@ router.patch('/:id', (req, res) => {
 // DELETE /api/assignments/:id
 router.delete('/:id', (req, res) => {
   const r = dbRun('DELETE FROM assignments WHERE id = ?', [req.params.id])
-  if (r.changes === 0) return res.status(404).json({ error: 'Zuweisung nicht gefunden.' })
+  if (r.changes === 0) return res.status(404).json({ error: 'Assignment not found.' })
   res.status(204).send()
 })
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
 import Avatar from '@/components/ui/Avatar'
 import Badge from '@/components/ui/Badge'
@@ -25,6 +26,7 @@ interface MemberFormData {
 const defaultForm: MemberFormData = { name: '', email: '', role: 'Developer', isActive: true }
 
 export default function TeamPage() {
+  const { t } = useTranslation()
   const members = useStore((s) => s.members)
   const memberSkills = useStore((s) => s.memberSkills)
   const addMember = useStore((s) => s.addMember)
@@ -61,8 +63,8 @@ export default function TeamPage() {
 
   function validate(): boolean {
     const e: Partial<MemberFormData> = {}
-    if (form.name.trim().length < 2) e.name = 'Name muss mindestens 2 Zeichen haben.'
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Ungültige E-Mail-Adresse.'
+    if (form.name.trim().length < 2) e.name = t('team.nameError')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = t('team.emailError')
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -77,7 +79,7 @@ export default function TeamPage() {
       }
       setShowModal(false)
     } catch {
-      alert('Fehler beim Speichern. Bitte prüfe, ob der Server läuft.')
+      alert(t('competencies.saveError'))
     }
   }
 
@@ -95,11 +97,11 @@ export default function TeamPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Team</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{members.filter((m) => m.isActive).length} aktive Mitglieder</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('team.title')}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('team.activeMembers', { count: members.filter((m) => m.isActive).length })}</p>
         </div>
         <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>
-          Mitglied hinzufügen
+          {t('team.addMember')}
         </Button>
       </div>
 
@@ -108,7 +110,7 @@ export default function TeamPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
-          placeholder="Suchen…"
+          placeholder={t('common.search')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
@@ -119,9 +121,9 @@ export default function TeamPage() {
       {filtered.length === 0 ? (
         <EmptyState
           icon={<Users className="w-12 h-12" />}
-          title="Keine Mitglieder gefunden"
-          description="Füge dein erstes Teammitglied hinzu, um loszulegen."
-          action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>Mitglied hinzufügen</Button>}
+          title={t('team.noMembersFound')}
+          description={t('team.noMembersSubtitle')}
+          action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>{t('team.addMember')}</Button>}
         />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -143,34 +145,34 @@ export default function TeamPage() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editTarget ? 'Mitglied bearbeiten' : 'Neues Mitglied'}
+        title={editTarget ? t('team.editMember') : t('team.newMember')}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Abbrechen</Button>
-            <Button variant="primary" onClick={handleSubmit}>{editTarget ? 'Speichern' : 'Hinzufügen'}</Button>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={handleSubmit}>{editTarget ? t('common.save') : t('common.add')}</Button>
           </>
         }
       >
         <div className="space-y-4">
-          <FormField label="Name" error={errors.name}>
+          <FormField label={t('common.name')} error={errors.name}>
             <input
               type="text"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="z. B. Anna Müller"
+              placeholder={t('team.namePlaceholder')}
               className="form-input"
             />
           </FormField>
-          <FormField label="E-Mail" error={errors.email}>
+          <FormField label={t('common.email')} error={errors.email}>
             <input
               type="email"
               value={form.email}
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-              placeholder="anna@team.de"
+              placeholder={t('team.emailPlaceholder')}
               className="form-input"
             />
           </FormField>
-          <FormField label="Rolle">
+          <FormField label={t('common.role')}>
             <select
               value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as MemberRole }))}
@@ -186,7 +188,7 @@ export default function TeamPage() {
               onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
               className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
             />
-            Aktives Mitglied
+            {t('team.activeMember')}
           </label>
         </div>
       </Modal>
@@ -196,9 +198,9 @@ export default function TeamPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => { if (deleteTarget) deleteMember(deleteTarget.id) }}
-        title="Mitglied entfernen"
-        message={`Möchtest du "${deleteTarget?.name}" wirklich entfernen? Alle zugehörigen Kompetenzdaten werden ebenfalls gelöscht.`}
-        confirmLabel="Entfernen"
+        title={t('team.removeMember')}
+        message={t('team.removeConfirm', { name: deleteTarget?.name })}
+        confirmLabel={t('common.remove')}
       />
     </div>
   )
@@ -214,6 +216,7 @@ interface MemberCardProps {
 }
 
 function MemberCard({ member, skillCount, avgLevel, onEdit, onDelete, onToggle }: MemberCardProps) {
+  const { t } = useTranslation()
   return (
     <div className={`bg-white dark:bg-slate-900 rounded-xl border shadow-sm p-5 space-y-4 transition-opacity ${member.isActive ? 'border-slate-200 dark:border-slate-700' : 'border-slate-100 dark:border-slate-800 opacity-60'}`}>
       <div className="flex items-start justify-between">
@@ -241,14 +244,14 @@ function MemberCard({ member, skillCount, avgLevel, onEdit, onDelete, onToggle }
         </div>
         <div className="flex items-center gap-2">
           <Calendar className="w-3.5 h-3.5 shrink-0" />
-          <span>Dabei seit {formatDate(member.joinedAt)}</span>
+          <span>{formatDate(member.joinedAt)}</span>
         </div>
       </div>
 
       <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3">
         <div className="flex gap-4 text-xs text-slate-500 dark:text-slate-400">
-          <span><span className="font-semibold text-slate-700 dark:text-slate-300">{skillCount}</span> Fähigkeiten</span>
-          {avgLevel > 0 && <span>Ø <span className="font-semibold text-slate-700 dark:text-slate-300">{avgLevel}</span> Niveau</span>}
+          <span><span className="font-semibold text-slate-700 dark:text-slate-300">{skillCount}</span></span>
+          {avgLevel > 0 && <span>Ø <span className="font-semibold text-slate-700 dark:text-slate-300">{avgLevel}</span></span>}
         </div>
         <button
           onClick={onToggle}
@@ -258,7 +261,7 @@ function MemberCard({ member, skillCount, avgLevel, onEdit, onDelete, onToggle }
               : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
           }`}
         >
-          {member.isActive ? 'Aktiv' : 'Inaktiv'}
+          {member.isActive ? t('common.active') : t('common.inactive')}
         </button>
       </div>
     </div>

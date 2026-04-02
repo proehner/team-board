@@ -2,13 +2,13 @@ import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 
 // ─── JWT Secret ───────────────────────────────────────────────────────────────
-// Kein Fallback: fehlt die Umgebungsvariable, startet der Server nicht.
+// No fallback: if the environment variable is missing, the server will not start.
 if (!process.env.JWT_SECRET) {
   console.error(
-    '\n❌  FEHLER: Umgebungsvariable JWT_SECRET ist nicht gesetzt.\n' +
-    '   Lege eine .env-Datei im server/-Verzeichnis an:\n' +
-    '   JWT_SECRET=<langer-zufälliger-wert>\n' +
-    '   Beispiel: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"\n',
+    '\n❌  ERROR: Environment variable JWT_SECRET is not set.\n' +
+    '   Create a .env file in the server/ directory:\n' +
+    '   JWT_SECRET=<long-random-value>\n' +
+    '   Example: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"\n',
   )
   process.exit(1)
 }
@@ -16,8 +16,8 @@ if (!process.env.JWT_SECRET) {
 export const JWT_SECRET     = process.env.JWT_SECRET
 export const JWT_EXPIRES_IN = '8h'
 
-// ─── Mapping: Seiten-Key → API-Pfad-Präfixe ──────────────────────────────────
-// Wird für die Backend-seitige Zugriffssteuerung (requirePageAccess) verwendet.
+// ─── Mapping: page key → API path prefixes ────────────────────────────────────
+// Used for server-side access control (requirePageAccess).
 const PAGE_TO_API: Record<string, string[]> = {
   team:           ['/api/members'],
   kompetenzen:    ['/api/skills'],
@@ -26,7 +26,7 @@ const PAGE_TO_API: Record<string, string[]> = {
   retro:          ['/api/retrospectives'],
   pulse:          ['/api/pulse'],
   'azure-ranking': ['/api/azure-ranking'],
-  // dashboard, health, stakeholder nutzen keine eigenen API-Endpunkte
+  // dashboard, health, stakeholder have no dedicated API endpoints
 }
 
 export interface AuthUser {
@@ -52,7 +52,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   const token  = header?.startsWith('Bearer ') ? header.slice(7) : null
 
   if (!token) {
-    res.status(401).json({ error: 'Nicht authentifiziert' })
+    res.status(401).json({ error: 'Not authenticated' })
     return
   }
 
@@ -61,30 +61,30 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     req.user = payload
     next()
   } catch {
-    res.status(401).json({ error: 'Token ungültig oder abgelaufen' })
+    res.status(401).json({ error: 'Token invalid or expired' })
   }
 }
 
 // ─── requireAdmin ─────────────────────────────────────────────────────────────
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   if (req.user?.role !== 'admin') {
-    res.status(403).json({ error: 'Keine Berechtigung' })
+    res.status(403).json({ error: 'Insufficient permissions' })
     return
   }
   next()
 }
 
 // ─── requirePageAccess ────────────────────────────────────────────────────────
-// Sperrt schreibende Operationen (POST/PUT/PATCH/DELETE) auf gesperrten Bereichen.
-// GET-Anfragen sind immer erlaubt, da Referenzdaten (z.B. Mitgliedernamen)
-// bereichsübergreifend benötigt werden (Dashboard, Sprints, Rotation etc.).
-// Admins haben immer Vollzugriff.
+// Blocks write operations (POST/PUT/PATCH/DELETE) on locked sections.
+// GET requests are always allowed because reference data (e.g. member names)
+// is needed across sections (Dashboard, Sprints, Rotation, etc.).
+// Admins always have full access.
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 export function requirePageAccess(req: Request, res: Response, next: NextFunction): void {
   const user = req.user
   if (!user) {
-    res.status(401).json({ error: 'Nicht authentifiziert' })
+    res.status(401).json({ error: 'Not authenticated' })
     return
   }
   if (user.role === 'admin' || user.forbiddenPages.length === 0) {
@@ -92,7 +92,7 @@ export function requirePageAccess(req: Request, res: Response, next: NextFunctio
     return
   }
 
-  // Lesezugriff (GET, HEAD, OPTIONS) ist immer erlaubt
+  // Read access (GET, HEAD, OPTIONS) is always allowed
   if (!WRITE_METHODS.has(req.method)) {
     next()
     return
@@ -104,7 +104,7 @@ export function requirePageAccess(req: Request, res: Response, next: NextFunctio
     const prefixes = PAGE_TO_API[page] ?? []
     for (const prefix of prefixes) {
       if (requestedPath.startsWith(prefix)) {
-        res.status(403).json({ error: `Kein Zugriff auf Bereich "${page}"` })
+        res.status(403).json({ error: `No access to section "${page}"` })
         return
       }
     }

@@ -31,14 +31,14 @@ router.get('/', (_req, res) => {
 router.post('/', (req, res) => {
   const { name, email, role, isActive = true } = req.body
   if (!name || !email || !role) {
-    return res.status(400).json({ error: 'name, email und role sind erforderlich.' })
+    return res.status(400).json({ error: 'name, email and role are required.' })
   }
   const id = uid()
   const joinedAt = new Date().toISOString().split('T')[0]
   dbRun('INSERT INTO members (id, name, email, role, avatarColor, joinedAt, isActive) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [id, name, email, role, pickColor(), joinedAt, isActive ? 1 : 0])
 
-  // Initiales Rotations-Leveling: neues Mitglied auf Mindest-Niveau der aktiven Mitglieder heben
+  // Initial rotation leveling: bring new member up to the minimum level of active members
   const activeOthers = dbAll<{ id: string }>('SELECT id FROM members WHERE isActive = 1 AND id != ?', [id])
   if (activeOthers.length > 0) {
     const types = dbAll<{ name: string }>('SELECT name FROM responsibility_types')
@@ -70,7 +70,7 @@ router.post('/', (req, res) => {
 router.patch('/:id', (req, res) => {
   const { id } = req.params
   if (!dbGet('SELECT id FROM members WHERE id = ?', [id])) {
-    return res.status(404).json({ error: 'Mitglied nicht gefunden.' })
+    return res.status(404).json({ error: 'Member not found.' })
   }
   const allowed = ['name', 'email', 'role', 'avatarColor', 'joinedAt'] as const
   const updates: string[] = []
@@ -81,7 +81,7 @@ router.patch('/:id', (req, res) => {
   if (req.body.isActive !== undefined) {
     updates.push('isActive = ?'); values.push(req.body.isActive ? 1 : 0)
   }
-  if (updates.length === 0) return res.status(400).json({ error: 'Keine Felder angegeben.' })
+  if (updates.length === 0) return res.status(400).json({ error: 'No fields provided.' })
   values.push(id)
   dbRun(`UPDATE members SET ${updates.join(', ')} WHERE id = ?`, values)
   res.json(toMember(dbGet<Row>('SELECT * FROM members WHERE id = ?', [id])!))
@@ -90,7 +90,7 @@ router.patch('/:id', (req, res) => {
 // DELETE /api/members/:id
 router.delete('/:id', (req, res) => {
   const r = dbRun('DELETE FROM members WHERE id = ?', [req.params.id])
-  if (r.changes === 0) return res.status(404).json({ error: 'Mitglied nicht gefunden.' })
+  if (r.changes === 0) return res.status(404).json({ error: 'Member not found.' })
   res.status(204).send()
 })
 

@@ -15,9 +15,9 @@ router.get('/', (_req, res) => {
 // POST /api/responsibility-types
 router.post('/', (req, res) => {
   const { name, color = '#6366f1' } = req.body
-  if (!name?.trim()) return res.status(400).json({ error: 'Name erforderlich.' })
+  if (!name?.trim()) return res.status(400).json({ error: 'Name required.' })
   if (dbGet('SELECT id FROM responsibility_types WHERE name = ?', [name.trim()])) {
-    return res.status(409).json({ error: 'Verantwortlichkeit mit diesem Namen existiert bereits.' })
+    return res.status(409).json({ error: 'A responsibility type with this name already exists.' })
   }
   const id = uid()
   const sortOrder = (dbGet<{ n: number }>('SELECT COALESCE(MAX(sortOrder),0)+1 AS n FROM responsibility_types')?.n ?? 1)
@@ -30,14 +30,14 @@ router.post('/', (req, res) => {
 router.patch('/:id', (req, res) => {
   const { id } = req.params
   if (!dbGet('SELECT id FROM responsibility_types WHERE id = ?', [id])) {
-    return res.status(404).json({ error: 'Verantwortlichkeit nicht gefunden.' })
+    return res.status(404).json({ error: 'Responsibility type not found.' })
   }
   const updates: string[] = []
   const values: unknown[] = []
   if (req.body.name !== undefined) { updates.push('name = ?'); values.push(req.body.name.trim()) }
   if (req.body.color !== undefined) { updates.push('color = ?'); values.push(req.body.color) }
   if (req.body.sortOrder !== undefined) { updates.push('sortOrder = ?'); values.push(req.body.sortOrder) }
-  if (updates.length === 0) return res.status(400).json({ error: 'Keine Felder angegeben.' })
+  if (updates.length === 0) return res.status(400).json({ error: 'No fields provided.' })
   values.push(id)
   dbRun(`UPDATE responsibility_types SET ${updates.join(', ')} WHERE id = ?`, values)
   res.json(dbGet<Row>('SELECT * FROM responsibility_types WHERE id = ?', [id]))
@@ -46,7 +46,7 @@ router.patch('/:id', (req, res) => {
 // DELETE /api/responsibility-types/:id
 router.delete('/:id', (req, res) => {
   const r = dbRun('DELETE FROM responsibility_types WHERE id = ?', [req.params.id])
-  if (r.changes === 0) return res.status(404).json({ error: 'Verantwortlichkeit nicht gefunden.' })
+  if (r.changes === 0) return res.status(404).json({ error: 'Responsibility type not found.' })
   res.status(204).send()
 })
 
