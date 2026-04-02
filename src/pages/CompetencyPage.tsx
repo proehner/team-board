@@ -98,7 +98,7 @@ export default function CompetencyPage() {
   }
 
   return (
-    <div className="p-6 space-y-5 max-w-full">
+    <div className="p-4 sm:p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('competencies.title')}</h1>

@@ -2,14 +2,18 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Star, Zap, RefreshCw, MessageSquare, Shield,
   HeartPulse, Activity, Eye, Trophy, Settings, LogOut, ChevronRight,
-  Sun, Moon, Globe,
+  Sun, Moon, Globe, Bug, X,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import i18n from '@/i18n'
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void
+}
+
+export default function Sidebar({ onClose }: SidebarProps) {
   const { t } = useTranslation()
   const user      = useAuthStore((s) => s.user)
   const logout    = useAuthStore((s) => s.logout)
@@ -29,6 +33,7 @@ export default function Sidebar() {
     { to: '/pulse',         icon: Activity,        label: t('nav.pulseCheck'),       page: 'pulse' },
     { to: '/stakeholder',   icon: Eye,             label: t('nav.stakeholder'),      page: 'stakeholder' },
     { to: '/azure-ranking', icon: Trophy,          label: t('nav.azureRankings'),    page: 'azure-ranking' },
+    { to: '/known-errors',  icon: Bug,             label: t('nav.knownErrors'),      page: 'known-errors' },
   ]
 
   function handleLogout() {
@@ -38,17 +43,33 @@ export default function Sidebar() {
 
   const visibleItems = navItems.filter((item) => isAllowed(item.page))
 
+  const navLinkCls = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+      isActive
+        ? 'bg-indigo-600 text-white'
+        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+    }`
+
   return (
     <aside className="w-60 shrink-0 bg-slate-900 flex flex-col h-full">
-      {/* Logo */}
+      {/* Logo + close button (mobile) */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
-        <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center shrink-0">
           <Shield className="w-4 h-4 text-white" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white leading-tight">Team Board</p>
-          <p className="text-xs text-slate-400 leading-tight">Scrum Dashboard</p>
+          <p className="text-xs text-slate-400 leading-tight">Scrum Management</p>
         </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+            aria-label="Navigation schließen"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
@@ -57,13 +78,8 @@ export default function Sidebar() {
           <NavLink
             key={to}
             to={to}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`
-            }
+            onClick={onClose}
+            className={navLinkCls}
           >
             <Icon className="w-4 h-4 shrink-0" />
             {label}
@@ -78,17 +94,11 @@ export default function Sidebar() {
             </div>
             <NavLink
               to="/admin"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-indigo-600 text-white'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                }`
-              }
+              onClick={onClose}
+              className={navLinkCls}
             >
               <Settings className="w-4 h-4 shrink-0" />
               {t('nav.userManagement')}
-              <ChevronRight className="w-3.5 h-3.5 ml-auto" />
             </NavLink>
           </>
         )}

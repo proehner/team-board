@@ -10,8 +10,9 @@
     "pulseCheck": "Pulse Check",
     "stakeholder": "Stakeholder",
     "azureRankings": "Azure Rankings",
+    "knownErrors": "Known Error DB",
     "administration": "Administration",
-    "userManagement": "User Management"
+    "userManagement": "Management"
   },
   "common": {
     "save": "Save",
@@ -370,7 +371,13 @@
     "serverUnreachable": "Server unreachable: "
   },
   "admin": {
-    "title": "User Management",
+    "pageTitle": "Administration",
+    "pageSubtitle": "Manage users and master data.",
+    "tab": {
+      "users": "Users",
+      "software": "Software"
+    },
+    "title": "Management",
     "subtitle": "Create, edit users and assign permissions.",
     "newUser": "New User",
     "userColumn": "User",
@@ -395,7 +402,75 @@
     "fullAccess": "Full Access",
     "noRestrictions": "No Restrictions",
     "me": "Me",
-    "deleteConfirm": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone."
+    "deleteConfirm": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
+    "software": {
+      "new": "New Software",
+      "edit": "Edit Software",
+      "delete": "Delete Software",
+      "deleteConfirm": "Are you sure you want to delete \"{{name}}\"?",
+      "empty": "No software added yet.",
+      "nameRequired": "Name is required.",
+      "saveError": "Error saving.",
+      "deleteError": "Error deleting.",
+      "vendor": "Vendor",
+      "version": "Version",
+      "description": "Description",
+      "descriptionPlaceholder": "Brief description of the software…"
+    }
+  },
+  "knownErrors": {
+    "title": "Known Error DB",
+    "count": "{{count}} entries",
+    "newEntry": "New Entry",
+    "backToList": "All Known Errors",
+    "notFound": "Entry not found.",
+    "noEntries": "No known errors yet",
+    "noEntriesSubtitle": "Document known issues and their solutions.",
+    "noResults": "No matches",
+    "noResultsSubtitle": "Try adjusting your search or filters.",
+    "noContent": "No content added.",
+    "noSoftwareAssigned": "No software assigned.",
+    "noSoftwareConfigured": "No software configured. Please add software under Administration → Software first.",
+    "noTags": "No tags.",
+    "searchPlaceholder": "Search by title, description or tag…",
+    "allSeverities": "All Severities",
+    "allStatuses": "All Statuses",
+    "allSoftware": "All Software",
+    "deleteEntry": "Delete Entry",
+    "deleteConfirm": "Are you sure you want to delete \"{{title}}\"?",
+    "titleRequired": "Title is required.",
+    "saveError": "Error saving.",
+    "saving": "Saving…",
+    "createdAt": "Created",
+    "updatedAt": "Updated",
+    "severity": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "status": {
+      "open": "Open",
+      "workaround": "Workaround available",
+      "resolved": "Resolved"
+    },
+    "fields": {
+      "title": "Title",
+      "titlePlaceholder": "e.g. Login fails after password reset",
+      "ticketNumber": "Ticket Number",
+      "ticketNumberPlaceholder": "e.g. PROJ-1234",
+      "severity": "Severity",
+      "status": "Status",
+      "description": "Problem Description",
+      "descriptionPlaceholder": "Describe the problem, when it occurs and what the impact is…",
+      "solution": "Solution",
+      "solutionPlaceholder": "Step-by-step instructions to resolve the issue…",
+      "workaround": "Temporary Workaround",
+      "workaroundPlaceholder": "If available: describe a temporary workaround…",
+      "affectedSoftware": "Affected Software",
+      "tags": "Tags",
+      "tagsPlaceholder": "e.g. login, auth, password (comma-separated)"
+    }
   },
   "skillLevel": {
     "0": "No Knowledge",
