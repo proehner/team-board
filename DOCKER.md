@@ -1,37 +1,39 @@
 # Docker – Build & Start
 
-Alle Docker-spezifischen Dateien liegen unter `docker/`.
+All Docker-specific files are located under `docker/`.
 
-Team Board läuft als zwei Docker-Container:
+Team Board runs as two Docker containers:
 
-| Container | Aufgabe |
-|-----------|---------|
-| `app` | Node.js – liefert Frontend (statische Dateien) und REST-API |
-| `nginx` | HTTPS-Termination (Port 443) + HTTP→HTTPS-Redirect (Port 80) |
+| Container | Role |
+| ----------- | --------- |
+| `app` | Node.js – serves the frontend (static files) and REST API |
+| `nginx` | HTTPS termination (port 443) + HTTP→HTTPS redirect (port 80) |
 
-Die SQLite-Datenbank wird in einem benannten Docker-Volume (`db-data`) gespeichert und bleibt über Neustarts und Updates erhalten.
-
----
-
-## Voraussetzungen
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) ≥ 25 (inkl. Docker Compose V2)
-- OpenSSL (für die Zertifikatsgenerierung)
-  - Windows: wird mit Git for Windows mitgeliefert, oder via [Chocolatey](https://chocolatey.org/): `choco install openssl`
-  - Linux/macOS: normalerweise bereits installiert
+The SQLite database is stored in a named Docker volume (`db-data`) and persists across restarts and updates.
 
 ---
 
-## 1. SSL-Zertifikat erstellen
+## Prerequisites
 
-Für die lokale Entwicklung wird ein selbstsigniertes Zertifikat benötigt.
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) ≥ 25 (including Docker Compose V2)
+- OpenSSL (for certificate generation)
+  - Windows: bundled with Git for Windows, or via [Chocolatey](https://chocolatey.org/): `choco install openssl`
+  - Linux/macOS: usually already installed
+
+---
+
+## 1. Create an SSL Certificate
+
+A self-signed certificate is required for local development.
 
 **Linux / macOS / Git Bash:**
+
 ```bash
 sh docker/scripts/generate-ssl.sh
 ```
 
-**Windows (PowerShell mit OpenSSL):**
+**Windows (PowerShell with OpenSSL):**
+
 ```powershell
 openssl req -x509 -nodes -newkey rsa:2048 -days 3650 `
   -keyout docker/nginx/ssl/key.pem `
@@ -40,33 +42,33 @@ openssl req -x509 -nodes -newkey rsa:2048 -days 3650 `
   -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 ```
 
-Die generierten Dateien `docker/nginx/ssl/cert.pem` und `docker/nginx/ssl/key.pem` werden von nginx gemountet und sind in `.gitignore` eingetragen.
+The generated files `docker/nginx/ssl/cert.pem` and `docker/nginx/ssl/key.pem` are mounted by nginx and are listed in `.gitignore`.
 
-> **Produktivbetrieb:** Ersetze die selbstsignierten Zertifikate durch echte (z. B. von Let's Encrypt oder dem internen CA). Lege die Dateien als `cert.pem` / `key.pem` in `docker/nginx/ssl/` ab.
+> **Production:** Replace the self-signed certificates with real ones (e.g. from Let's Encrypt or an internal CA). Place the files as `cert.pem` / `key.pem` in `docker/nginx/ssl/`.
 
 ---
 
-## 2. Umgebungsvariablen konfigurieren
+## 2. Configure Environment Variables
 
 ```bash
 cp docker/.env.docker.example docker/.env.docker
 ```
 
-Dann `docker/.env.docker` öffnen und den `JWT_SECRET` setzen:
+Then open `docker/.env.docker` and set the `JWT_SECRET`:
 
 ```bash
-# Sicheren Zufallswert generieren:
+# Generate a secure random value:
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-Wichtige Variablen:
+Key variables:
 
-| Variable | Pflicht | Beschreibung |
-|----------|---------|--------------|
-| `JWT_SECRET` | Ja | Mindestens 32 zufällige Zeichen |
-| `CORS_ORIGIN` | Nein | Standard: `https://localhost` |
-| `HTTP_PORT` | Nein | Host-Port für HTTP-Redirect (Standard: 80) |
-| `HTTPS_PORT` | Nein | Host-Port für HTTPS (Standard: 443) |
+| Variable | Required | Description |
+| ---------- | --------- | -------------- |
+| `JWT_SECRET` | Yes | At least 32 random characters |
+| `CORS_ORIGIN` | No | Default: `https://localhost` |
+| `HTTP_PORT` | No | Host port for HTTP redirect (default: 80) |
+| `HTTPS_PORT` | No | Host port for HTTPS (default: 443) |
 
 ---
 
@@ -76,53 +78,53 @@ Wichtige Variablen:
 docker compose -f docker/docker-compose.yml --env-file docker/.env.docker up -d --build
 ```
 
-Die App ist danach erreichbar unter: **https://localhost**
+The app is then available at: **<https://localhost>**
 
-Standard-Login: `admin` / `admin` (beim ersten Start wird automatisch ein Admin-Benutzer angelegt).
+Default login: `admin` / `admin` (an admin user is created automatically on first start).
 
 ---
 
-## Weitere Befehle
+## Other Commands
 
 ```bash
-# Logs beobachten
+# Follow logs
 docker compose -f docker/docker-compose.yml --env-file docker/.env.docker logs -f
 
-# Nur App-Logs
+# App logs only
 docker compose -f docker/docker-compose.yml --env-file docker/.env.docker logs -f app
 
-# Container stoppen (Daten bleiben erhalten)
+# Stop containers (data is preserved)
 docker compose -f docker/docker-compose.yml --env-file docker/.env.docker down
 
-# Container stoppen UND Datenbank löschen (!)
+# Stop containers AND delete the database (!)
 docker compose -f docker/docker-compose.yml --env-file docker/.env.docker down -v
 
-# Image neu bauen (nach Code-Änderungen)
+# Rebuild the image (after code changes)
 docker compose -f docker/docker-compose.yml --env-file docker/.env.docker up -d --build
 
-# Status prüfen
+# Check status
 docker compose -f docker/docker-compose.yml --env-file docker/.env.docker ps
 ```
 
 ---
 
-## Ports ändern
+## Changing Ports
 
-Wenn Port 80 oder 443 bereits belegt ist, können alternative Ports in `docker/.env.docker` gesetzt werden:
+If port 80 or 443 is already in use, alternative ports can be set in `docker/.env.docker`:
 
 ```env
 HTTP_PORT=8080
 HTTPS_PORT=8443
 ```
 
-Die App ist dann unter **https://localhost:8443** erreichbar.
+The app will then be available at **<https://localhost:8443>**.
 
 ---
 
-## Datenbank-Backup
+## Database Backup
 
-Die Datenbank wird bei jedem Start automatisch als `teamlead.db.backup-<timestamp>` gesichert.  
-Für ein manuelles Backup:
+The database is automatically backed up as `teamlead.db.backup-<timestamp>` on every start.  
+For a manual backup:
 
 ```bash
 docker run --rm \
@@ -133,21 +135,21 @@ docker run --rm \
 
 ---
 
-## Projektstruktur (Docker-relevant)
+## Project Structure (Docker-relevant)
 
-```
+```txt
 team-board/
-├── .dockerignore               # Exclude-Liste für den Docker Build-Kontext
-├── DOCKER.md                   # Diese Dokumentation
+├── .dockerignore               # Exclude list for the Docker build context
+├── DOCKER.md                   # This documentation
 └── docker/
-    ├── Dockerfile              # Multi-Stage Build (Frontend + Backend)
-    ├── docker-compose.yml      # Service-Orchestrierung
-    ├── .env.docker.example     # Vorlage für Umgebungsvariablen
+    ├── Dockerfile              # Multi-stage build (frontend + backend)
+    ├── docker-compose.yml      # Service orchestration
+    ├── .env.docker.example     # Template for environment variables
     ├── scripts/
-    │   └── generate-ssl.sh     # Hilfsskript für selbstsignierte Zertifikate
+    │   └── generate-ssl.sh     # Helper script for self-signed certificates
     └── nginx/
-        ├── nginx.conf          # nginx HTTPS-Konfiguration
+        ├── nginx.conf          # nginx HTTPS configuration
         └── ssl/
-            ├── cert.pem        # (nicht im Git – selbst generieren)
-            └── key.pem         # (nicht im Git – selbst generieren)
+            ├── cert.pem        # (not in Git – generate yourself)
+            └── key.pem         # (not in Git – generate yourself)
 ```
