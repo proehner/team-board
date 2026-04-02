@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Users, Plus, Pencil, Trash2, ShieldCheck, User, Loader2, Key } from 'lucide-react'
+import { Users, Plus, Pencil, Trash2, ShieldCheck, User, Loader2, Key, Monitor } from 'lucide-react'
 import { adminApi } from '@/api/client'
-import type { AdminUser } from '@/types'
+import type { AdminUser, Software } from '@/types'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useAuthStore } from '@/store/auth'
 import { useTranslation } from 'react-i18next'
+import { useStore } from '@/store'
 
 interface UserFormState {
   username: string
@@ -25,6 +26,15 @@ const emptyForm = (): UserFormState => ({
   isActive: true,
 })
 
+interface SoftwareFormState {
+  name: string
+  vendor: string
+  version: string
+  description: string
+}
+
+const emptySoftwareForm = (): SoftwareFormState => ({ name: '', vendor: '', version: '', description: '' })
+
 export default function AdminPage() {
   const { t } = useTranslation()
 
@@ -39,9 +49,13 @@ export default function AdminPage() {
     { key: 'pulse',        label: t('nav.pulseCheck') },
     { key: 'stakeholder',  label: t('nav.stakeholder') },
     { key: 'azure-ranking', label: t('nav.azureRankings') },
+    { key: 'known-errors',  label: t('nav.knownErrors') },
   ]
 
   const currentUser = useAuthStore((s) => s.user)
+  const [activeTab, setActiveTab] = useState<'users' | 'software'>('users')
+
+  // ─── Users ──────────────────────────────────────────────────────────────────
   const [users, setUsers]         = useState<AdminUser[]>([])
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
@@ -51,6 +65,18 @@ export default function AdminPage() {
   const [saving, setSaving]       = useState(false)
   const [formError, setFormError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
+
+  // ─── Software ───────────────────────────────────────────────────────────────
+  const software         = useStore((s) => s.software)
+  const addSoftware      = useStore((s) => s.addSoftware)
+  const updateSoftware   = useStore((s) => s.updateSoftware)
+  const deleteSoftware   = useStore((s) => s.deleteSoftware)
+  const [swModalOpen,    setSwModalOpen]    = useState(false)
+  const [editSw,         setEditSw]         = useState<Software | null>(null)
+  const [swForm,         setSwForm]         = useState<SoftwareFormState>(emptySoftwareForm())
+  const [swFormError,    setSwFormError]    = useState('')
+  const [swSaving,       setSwSaving]       = useState(false)
+  const [swDeleteTarget, setSwDeleteTarget] = useState<Software | null>(null)
 
   async function loadUsers() {
     try {
@@ -143,6 +169,56 @@ export default function AdminPage() {
     }
   }
 
+  // ─── Software handlers ────────────────────────────────────────────────────
+  function openCreateSw() {
+    setEditSw(null)
+    setSwForm(emptySoftwareForm())
+    setSwFormError('')
+    setSwModalOpen(true)
+  }
+
+  function openEditSw(sw: Software) {
+    setEditSw(sw)
+    setSwForm({ name: sw.name, vendor: sw.vendor ?? '', version: sw.version ?? '', description: sw.description ?? '' })
+    setSwFormError('')
+    setSwModalOpen(true)
+  }
+
+  async function handleSaveSw() {
+    setSwFormError('')
+    if (!swForm.name.trim()) { setSwFormError(t('admin.software.nameRequired')); return }
+    setSwSaving(true)
+    try {
+      const data = {
+        name: swForm.name.trim(),
+        vendor: swForm.vendor.trim() || undefined,
+        version: swForm.version.trim() || undefined,
+        description: swForm.description.trim() || undefined,
+      }
+      if (editSw) {
+        await updateSoftware(editSw.id, data)
+      } else {
+        await addSoftware(data)
+      }
+      setSwModalOpen(false)
+    } catch (err) {
+      setSwFormError(err instanceof Error ? err.message : t('admin.software.saveError'))
+    } finally {
+      setSwSaving(false)
+    }
+  }
+
+  async function handleDeleteSw() {
+    if (!swDeleteTarget) return
+    try {
+      await deleteSoftware(swDeleteTarget.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('admin.software.deleteError'))
+    } finally {
+      setSwDeleteTarget(null)
+    }
+  }
+
   function toggleForbidden(page: string) {
     setForm((prev) => ({
       ...prev,
@@ -153,7 +229,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -161,17 +237,45 @@ export default function AdminPage() {
             <Users className="w-5 h-5 text-indigo-600" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t('admin.title')}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{t('admin.subtitle')}</p>
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t('admin.pageTitle')}</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{t('admin.pageSubtitle')}</p>
           </div>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          {t('admin.newUser')}
-        </button>
+        {activeTab === 'users' ? (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {t('admin.newUser')}
+          </button>
+        ) : (
+          <button
+            onClick={openCreateSw}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {t('admin.software.new')}
+          </button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
+        {(['users', 'software'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === tab
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            {tab === 'users' ? <Users className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+            {tab === 'users' ? t('admin.tab.users') : t('admin.tab.software')}
+          </button>
+        ))}
       </div>
 
       {/* Error */}
@@ -179,14 +283,14 @@ export default function AdminPage() {
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{error}</p>
       )}
 
-      {/* Table */}
-      {loading ? (
+      {/* ─── Users Tab ─────────────────────────────────────────────────────── */}
+      {activeTab === 'users' && (loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
             <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
               <tr>
                 <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.userColumn')}</th>
@@ -270,6 +374,63 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      ))}
+
+      {/* ─── Software Tab ────────────────────────────────────────────────────── */}
+      {activeTab === 'software' && (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden overflow-x-auto">
+          {software.length === 0 ? (
+            <div className="py-16 text-center text-slate-400">
+              <Monitor className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">{t('admin.software.empty')}</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm min-w-[520px]">
+              <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                <tr>
+                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('common.name')}</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.software.vendor')}</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.software.version')}</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.software.description')}</th>
+                  <th className="px-5 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {software.map((sw) => (
+                  <tr key={sw.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center shrink-0">
+                          <Monitor className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                        </div>
+                        <span className="font-medium text-slate-800 dark:text-slate-200">{sw.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{sw.vendor ?? '—'}</td>
+                    <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{sw.version ? `v${sw.version}` : '—'}</td>
+                    <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400 max-w-xs truncate">{sw.description ?? '—'}</td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-1 justify-end">
+                        <button
+                          onClick={() => openEditSw(sw)}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-lg transition-colors"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setSwDeleteTarget(sw)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
@@ -397,7 +558,7 @@ export default function AdminPage() {
         </div>
       </Modal>
 
-      {/* Delete Confirm */}
+      {/* Delete User Confirm */}
       <ConfirmDialog
         isOpen={!!deleteTarget}
         title={t('admin.deleteUser')}
@@ -406,6 +567,87 @@ export default function AdminPage() {
         variant="danger"
         onConfirm={handleDelete}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      {/* Software Create / Edit Modal */}
+      <Modal
+        isOpen={swModalOpen}
+        onClose={() => setSwModalOpen(false)}
+        title={editSw ? t('admin.software.edit') : t('admin.software.new')}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('common.name')} *</label>
+            <input
+              autoFocus
+              type="text"
+              value={swForm.name}
+              onChange={(e) => setSwForm((p) => ({ ...p, name: e.target.value }))}
+              className="form-input w-full"
+              placeholder="z. B. SAP ERP"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.software.vendor')}</label>
+            <input
+              type="text"
+              value={swForm.vendor}
+              onChange={(e) => setSwForm((p) => ({ ...p, vendor: e.target.value }))}
+              className="form-input w-full"
+              placeholder="z. B. SAP SE"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.software.version')}</label>
+            <input
+              type="text"
+              value={swForm.version}
+              onChange={(e) => setSwForm((p) => ({ ...p, version: e.target.value }))}
+              className="form-input w-full"
+              placeholder="z. B. 2023.1"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.software.description')}</label>
+            <textarea
+              value={swForm.description}
+              onChange={(e) => setSwForm((p) => ({ ...p, description: e.target.value }))}
+              className="form-input w-full resize-none"
+              rows={3}
+              placeholder={t('admin.software.descriptionPlaceholder')}
+            />
+          </div>
+          {swFormError && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{swFormError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={() => setSwModalOpen(false)}
+              className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={handleSaveSw}
+              disabled={swSaving}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+            >
+              {swSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+              {editSw ? t('common.save') : t('common.create')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Software Delete Confirm */}
+      <ConfirmDialog
+        isOpen={!!swDeleteTarget}
+        title={t('admin.software.delete')}
+        message={t('admin.software.deleteConfirm', { name: swDeleteTarget?.name ?? '' })}
+        confirmLabel={t('common.delete')}
+        variant="danger"
+        onConfirm={handleDeleteSw}
+        onClose={() => setSwDeleteTarget(null)}
       />
     </div>
   )

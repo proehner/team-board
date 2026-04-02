@@ -14,6 +14,8 @@ import retrospectivesRouter from './routes/retrospectives'
 import responsibilityTypesRouter from './routes/responsibilityTypes'
 import pulseRouter from './routes/pulse'
 import azureRankingRouter from './routes/azureRanking'
+import softwareRouter from './routes/software'
+import knownErrorsRouter from './routes/knownErrors'
 
 const app = express()
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001
@@ -52,6 +54,8 @@ app.use('/api/retrospectives',       ...guard,       retrospectivesRouter)
 app.use('/api/responsibility-types', ...guard,       responsibilityTypesRouter)
 app.use('/api/pulse',                ...guard,       pulseRouter)
 app.use('/api/azure-ranking',        ...guard,       azureRankingRouter)
+app.use('/api/software',             ...guard,       softwareRouter)
+app.use('/api/known-errors',         ...guard,       knownErrorsRouter)
 
 // ─── Serve built frontend (production) ───────────────────────────────────────
 const DIST = path.join(__dirname, '..', '..', 'dist')

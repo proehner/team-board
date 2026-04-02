@@ -131,6 +131,34 @@ export interface Retrospective {
   createdAt: string
 }
 
+// ─── Known Error DB ───────────────────────────────────────────────────────────
+
+export type KnownErrorSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type KnownErrorStatus   = 'open' | 'workaround' | 'resolved'
+
+export interface Software {
+  id: string
+  name: string
+  vendor?: string
+  version?: string
+  description?: string
+}
+
+export interface KnownError {
+  id: string
+  title: string
+  ticketNumber?: string
+  description: string
+  solution: string
+  workaround?: string
+  severity: KnownErrorSeverity
+  status: KnownErrorStatus
+  softwareIds: string[]
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
 // ─── Auth / Users ─────────────────────────────────────────────────────────────
 
 export interface AppUser {

@@ -242,13 +242,13 @@ export default function RotationPage() {
   }, {} as Record<string, { member: typeof members[0]; count: number }[]>)
 
   return (
-    <div className="p-6 space-y-5 max-w-5xl">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-5 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('rotation.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('rotation.count', { count: assignments.filter((a) => !a.isSynthetic).length })}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="secondary" icon={<Archive className="w-4 h-4" />} onClick={openCleanup}>
             {t('rotation.cleanup')}
           </Button>

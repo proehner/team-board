@@ -30,7 +30,7 @@ export default function SprintDetailPage() {
 
   if (!sprint) {
     return (
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <p className="text-slate-500">{t('sprintDetail.notFound')}</p>
         <Button variant="ghost" onClick={() => navigate('/sprints')} icon={<ArrowLeft className="w-4 h-4" />} className="mt-3">
           {t('common.back')}
@@ -82,7 +82,7 @@ export default function SprintDetailPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
       {/* Back link */}
       <Link to="/sprints" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition-colors">
         <ArrowLeft className="w-4 h-4" /> {t('sprints.title')}

@@ -93,9 +93,9 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="p-6 space-y-5 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('team.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('team.activeMembers', { count: members.filter((m) => m.isActive).length })}</p>

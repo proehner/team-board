@@ -15,6 +15,8 @@ import PulsePage from '@/pages/PulsePage'
 import StakeholderPage from '@/pages/StakeholderPage'
 import AzureRankingPage from '@/pages/AzureRankingPage'
 import AdminPage from '@/pages/AdminPage'
+import KnownErrorDBPage from '@/pages/KnownErrorDBPage'
+import KnownErrorDetailPage from '@/pages/KnownErrorDetailPage'
 import LoginPage from '@/pages/LoginPage'
 import { useStore } from '@/store'
 import { useAuthStore } from '@/store/auth'
@@ -132,6 +134,8 @@ export default function App() {
         <Route path="stakeholder"       element={<ProtectedRoute page="stakeholder"><StakeholderPage /></ProtectedRoute>} />
         <Route path="azure-ranking"     element={<ProtectedRoute page="azure-ranking"><AzureRankingPage /></ProtectedRoute>} />
         <Route path="admin"             element={<ProtectedRoute page="admin"><AdminPage /></ProtectedRoute>} />
+        <Route path="known-errors"      element={<ProtectedRoute page="known-errors"><KnownErrorDBPage /></ProtectedRoute>} />
+        <Route path="known-errors/:errorId" element={<ProtectedRoute page="known-errors"><KnownErrorDetailPage /></ProtectedRoute>} />
       </Route>
     </Routes>
   )

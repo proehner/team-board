@@ -47,7 +47,7 @@ export default function RetroDetailPage() {
 
   if (!retro) {
     return (
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <p className="text-slate-500">{t('retroDetail.notFound')}</p>
         <Link to="/retro" className="inline-flex items-center gap-1 text-sm text-indigo-600 hover:underline mt-3">
           <ArrowLeft className="w-4 h-4" /> {t('common.back')}
@@ -71,7 +71,7 @@ export default function RetroDetailPage() {
   }
 
   return (
-    <div className="p-6 space-y-5 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
       {/* Back */}
       <Link to="/retro" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition-colors">
         <ArrowLeft className="w-4 h-4" /> {t('retroDetail.allRetros')}

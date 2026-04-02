@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import {
   membersApi, skillsApi, sprintsApi, assignmentsApi, retrosApi, responsibilityTypesApi, pulseApi,
+  softwareApi, knownErrorsApi,
 } from '@/api/client'
 import type {
   TeamMember, MemberRole,
@@ -9,6 +10,7 @@ import type {
   ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig,
   Retrospective, RetroItem, RetroItemType,
   PulseCheck,
+  Software, KnownError, KnownErrorSeverity, KnownErrorStatus,
 } from '@/types'
 
 interface AppState {
@@ -21,6 +23,8 @@ interface AppState {
   retrospectives: Retrospective[]
   responsibilityTypes: ResponsibilityTypeConfig[]
   pulseChecks: PulseCheck[]
+  software: Software[]
+  knownErrors: KnownError[]
 
   // ─── Loading / error ──────────────────────────────────────────────────────
   loading: boolean
@@ -75,6 +79,16 @@ interface AppState {
   respondPulse: (id: string, ratings: number[]) => Promise<void>
   closePulse:   (id: string) => Promise<void>
   deletePulse:  (id: string) => Promise<void>
+
+  // ─── Software ─────────────────────────────────────────────────────────────
+  addSoftware:    (data: Omit<Software, 'id'>) => Promise<string>
+  updateSoftware: (id: string, data: Partial<Omit<Software, 'id'>>) => Promise<void>
+  deleteSoftware: (id: string) => Promise<void>
+
+  // ─── Known Errors ─────────────────────────────────────────────────────────
+  addKnownError:    (data: { title: string; ticketNumber?: string; description: string; solution: string; workaround?: string; severity: KnownErrorSeverity; status: KnownErrorStatus; softwareIds: string[]; tags: string[] }) => Promise<string>
+  updateKnownError: (id: string, data: Partial<Omit<KnownError, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>
+  deleteKnownError: (id: string) => Promise<void>
 }
 
 // Helper: update a single retro's items in the state after an item mutation
@@ -100,6 +114,8 @@ export const useStore = create<AppState>()((set, _get) => ({
   retrospectives: [],
   responsibilityTypes: [],
   pulseChecks: [],
+  software: [],
+  knownErrors: [],
   loading: false,
   error: null,
 
@@ -107,7 +123,7 @@ export const useStore = create<AppState>()((set, _get) => ({
   loadAll: async () => {
     set({ loading: true, error: null })
     try {
-      const [members, { skills, memberSkills }, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks] =
+      const [members, { skills, memberSkills }, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors] =
         await Promise.all([
           membersApi.list(),
           skillsApi.list(),
@@ -116,8 +132,10 @@ export const useStore = create<AppState>()((set, _get) => ({
           retrosApi.list(),
           responsibilityTypesApi.list(),
           pulseApi.list(),
+          softwareApi.list(),
+          knownErrorsApi.list(),
         ])
-      set({ members, skills, memberSkills, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, loading: false })
+      set({ members, skills, memberSkills, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, loading: false })
     } catch (err) {
       set({ loading: false, error: String(err) })
     }
@@ -333,5 +351,39 @@ export const useStore = create<AppState>()((set, _get) => ({
   deletePulse: async (id) => {
     await pulseApi.delete(id)
     set((s) => ({ pulseChecks: s.pulseChecks.filter((p) => p.id !== id) }))
+  },
+
+  // ─── Software ─────────────────────────────────────────────────────────────
+  addSoftware: async (data) => {
+    const sw = await softwareApi.create(data)
+    set((s) => ({ software: [...s.software, sw].sort((a, b) => a.name.localeCompare(b.name)) }))
+    return sw.id
+  },
+
+  updateSoftware: async (id, data) => {
+    const updated = await softwareApi.update(id, data)
+    set((s) => ({ software: s.software.map((sw) => (sw.id === id ? updated : sw)).sort((a, b) => a.name.localeCompare(b.name)) }))
+  },
+
+  deleteSoftware: async (id) => {
+    await softwareApi.delete(id)
+    set((s) => ({ software: s.software.filter((sw) => sw.id !== id) }))
+  },
+
+  // ─── Known Errors ─────────────────────────────────────────────────────────
+  addKnownError: async (data) => {
+    const ke = await knownErrorsApi.create(data)
+    set((s) => ({ knownErrors: [ke, ...s.knownErrors] }))
+    return ke.id
+  },
+
+  updateKnownError: async (id, data) => {
+    const updated = await knownErrorsApi.update(id, data)
+    set((s) => ({ knownErrors: s.knownErrors.map((ke) => (ke.id === id ? updated : ke)) }))
+  },
+
+  deleteKnownError: async (id) => {
+    await knownErrorsApi.delete(id)
+    set((s) => ({ knownErrors: s.knownErrors.filter((ke) => ke.id !== id) }))
   },
 }))

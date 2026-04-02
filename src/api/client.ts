@@ -6,6 +6,7 @@ import type {
   Retrospective, RetroItemType, RetroItem,
   PulseCheck,
   AppUser, AdminUser,
+  Software, KnownError, KnownErrorSeverity, KnownErrorStatus,
 } from '@/types'
 import { getStoredToken } from '@/store/auth'
 
@@ -138,6 +139,36 @@ export const adminApi = {
   updateUser: (id: string, data: { displayName?: string; role?: 'admin' | 'user'; forbiddenPages?: string[]; isActive?: boolean; password?: string }) =>
     request<AdminUser>('PATCH', `/admin/users/${id}`, data),
   deleteUser: (id: string) => request<void>('DELETE', `/admin/users/${id}`),
+}
+
+// ─── Software ─────────────────────────────────────────────────────────────────
+export const softwareApi = {
+  list:   () => get<Software[]>('/software'),
+  create: (data: Omit<Software, 'id'>) => post<Software>('/software', data),
+  update: (id: string, data: Partial<Omit<Software, 'id'>>) => patch<Software>(`/software/${id}`, data),
+  delete: (id: string) => del(`/software/${id}`),
+}
+
+// ─── Known Errors ─────────────────────────────────────────────────────────────
+type KnownErrorCreateData = {
+  title: string
+  ticketNumber?: string
+  description: string
+  solution: string
+  workaround?: string
+  severity: KnownErrorSeverity
+  status: KnownErrorStatus
+  softwareIds: string[]
+  tags: string[]
+}
+type KnownErrorUpdateData = Partial<KnownErrorCreateData>
+
+export const knownErrorsApi = {
+  list:   () => get<KnownError[]>('/known-errors'),
+  get:    (id: string) => get<KnownError>(`/known-errors/${id}`),
+  create: (data: KnownErrorCreateData) => post<KnownError>('/known-errors', data),
+  update: (id: string, data: KnownErrorUpdateData) => patch<KnownError>(`/known-errors/${id}`, data),
+  delete: (id: string) => del(`/known-errors/${id}`),
 }
 
 // ─── Pulse ────────────────────────────────────────────────────────────────────

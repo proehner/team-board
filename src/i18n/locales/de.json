@@ -10,8 +10,9 @@
     "pulseCheck": "Pulse Check",
     "stakeholder": "Stakeholder",
     "azureRankings": "Azure Rankings",
+    "knownErrors": "Known Error DB",
     "administration": "Administration",
-    "userManagement": "Benutzerverwaltung"
+    "userManagement": "Verwaltung"
   },
   "common": {
     "save": "Speichern",
@@ -370,7 +371,13 @@
     "serverUnreachable": "Server nicht erreichbar: "
   },
   "admin": {
-    "title": "Benutzerverwaltung",
+    "pageTitle": "Administration",
+    "pageSubtitle": "Benutzer und Stammdaten verwalten.",
+    "tab": {
+      "users": "Benutzer",
+      "software": "Software"
+    },
+    "title": "Verwaltung",
     "subtitle": "Benutzer anlegen, bearbeiten und Berechtigungen vergeben.",
     "newUser": "Neuer Benutzer",
     "userColumn": "Benutzer",
@@ -395,7 +402,21 @@
     "fullAccess": "Vollzugriff",
     "noRestrictions": "Keine Einschränkungen",
     "me": "Ich",
-    "deleteConfirm": "Soll \"{{name}}\" wirklich gelöscht werden? Diese Aktion kann nicht rückgängig gemacht werden."
+    "deleteConfirm": "Soll \"{{name}}\" wirklich gelöscht werden? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "software": {
+      "new": "Neue Software",
+      "edit": "Software bearbeiten",
+      "delete": "Software löschen",
+      "deleteConfirm": "Möchtest du \"{{name}}\" wirklich löschen?",
+      "empty": "Noch keine Software angelegt.",
+      "nameRequired": "Name ist erforderlich.",
+      "saveError": "Fehler beim Speichern.",
+      "deleteError": "Fehler beim Löschen.",
+      "vendor": "Hersteller",
+      "version": "Version",
+      "description": "Beschreibung",
+      "descriptionPlaceholder": "Kurze Beschreibung der Software…"
+    }
   },
   "skillLevel": {
     "0": "Kein Wissen",
@@ -424,5 +445,59 @@
   "confirmDialog": {
     "confirm": "Bestätigen",
     "cancel": "Abbrechen"
+  },
+  "knownErrors": {
+    "title": "Known Error DB",
+    "count": "{{count}} Einträge",
+    "newEntry": "Neuer Eintrag",
+    "backToList": "Alle Known Errors",
+    "notFound": "Eintrag nicht gefunden.",
+    "noEntries": "Noch keine Known Errors",
+    "noEntriesSubtitle": "Dokumentiere bekannte Fehler und ihre Lösungswege.",
+    "noResults": "Keine Treffer",
+    "noResultsSubtitle": "Passe deine Suche oder die Filter an.",
+    "noContent": "Kein Inhalt hinterlegt.",
+    "noSoftwareAssigned": "Keine Software zugewiesen.",
+    "noSoftwareConfigured": "Keine Software angelegt. Bitte zuerst unter Administration → Software pflegen.",
+    "noTags": "Keine Tags vorhanden.",
+    "searchPlaceholder": "Titel, Beschreibung oder Tag suchen…",
+    "allSeverities": "Alle Schweregrade",
+    "allStatuses": "Alle Status",
+    "allSoftware": "Alle Software",
+    "deleteEntry": "Eintrag löschen",
+    "deleteConfirm": "Möchtest du \"{{title}}\" wirklich löschen?",
+    "titleRequired": "Titel ist erforderlich.",
+    "saveError": "Fehler beim Speichern.",
+    "saving": "Speichern…",
+    "createdAt": "Erstellt am",
+    "updatedAt": "Aktualisiert am",
+    "severity": {
+      "critical": "Kritisch",
+      "high": "Hoch",
+      "medium": "Mittel",
+      "low": "Niedrig"
+    },
+    "status": {
+      "open": "Offen",
+      "workaround": "Workaround vorhanden",
+      "resolved": "Gelöst"
+    },
+    "fields": {
+      "title": "Titel",
+      "titlePlaceholder": "z. B. Login schlägt nach Passwort-Reset fehl",
+      "ticketNumber": "Ticket-Nummer",
+      "ticketNumberPlaceholder": "z. B. PROJ-1234",
+      "severity": "Schweregrad",
+      "status": "Status",
+      "description": "Problembeschreibung",
+      "descriptionPlaceholder": "Beschreibe das Problem, wann es auftritt und welche Auswirkungen es hat…",
+      "solution": "Lösungsweg",
+      "solutionPlaceholder": "Schritt-für-Schritt-Anleitung zur Behebung des Problems…",
+      "workaround": "Temporärer Workaround",
+      "workaroundPlaceholder": "Falls vorhanden: Beschreibe einen temporären Workaround…",
+      "affectedSoftware": "Betroffene Software",
+      "tags": "Tags",
+      "tagsPlaceholder": "z. B. login, auth, password (kommagetrennt)"
+    }
   }
 }

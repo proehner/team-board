@@ -29,7 +29,7 @@ export default function StakeholderPage() {
   const locale = i18n.language === 'de' ? 'de-DE' : 'en-US'
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-3xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('stakeholder.title')}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('stakeholder.subtitle')} {new Date().toLocaleDateString(locale, { day: '2-digit', month: 'long', year: 'numeric' })}</p>

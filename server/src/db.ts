@@ -155,6 +155,29 @@ try {
     is_active      INTEGER NOT NULL DEFAULT 1,
     created_at     TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS software (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    vendor      TEXT,
+    version     TEXT,
+    description TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS known_errors (
+    id           TEXT PRIMARY KEY,
+    title        TEXT NOT NULL,
+    ticketNumber TEXT,
+    description  TEXT NOT NULL DEFAULT '',
+    solution     TEXT NOT NULL DEFAULT '',
+    workaround   TEXT,
+    severity     TEXT NOT NULL DEFAULT 'medium',
+    status       TEXT NOT NULL DEFAULT 'open',
+    softwareIds  TEXT NOT NULL DEFAULT '[]',
+    tags         TEXT NOT NULL DEFAULT '[]',
+    createdAt    TEXT NOT NULL,
+    updatedAt    TEXT NOT NULL
+  );
 `)
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err)
@@ -170,6 +193,12 @@ try {
 }
 
 // ─── Migrations (existing databases) ─────────────────────────────────────────
+// ─── Known Errors migration ───────────────────────────────────────────────────
+const knownErrorCols = db.prepare('PRAGMA table_info(known_errors)').all([]) as Array<{ name: string }>
+if (knownErrorCols.length > 0 && !knownErrorCols.some((c) => c.name === 'ticketNumber')) {
+  db.exec('ALTER TABLE known_errors ADD COLUMN ticketNumber TEXT')
+}
+
 const assignmentCols = db.prepare('PRAGMA table_info(assignments)').all([]) as Array<{ name: string }>
 if (!assignmentCols.some((c) => c.name === 'isSynthetic')) {
   db.exec('ALTER TABLE assignments ADD COLUMN isSynthetic INTEGER NOT NULL DEFAULT 0')
