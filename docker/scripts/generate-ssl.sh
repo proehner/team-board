@@ -13,7 +13,7 @@ OUT_DIR="$(dirname "$0")/../nginx/ssl"
 
 mkdir -p "$OUT_DIR"
 
-openssl req -x509 -nodes -newkey rsa:2048 \
+MSYS_NO_PATHCONV=1 openssl req -x509 -nodes -newkey rsa:2048 \
   -days 3650 \
   -keyout "$OUT_DIR/key.pem" \
   -out    "$OUT_DIR/cert.pem" \
