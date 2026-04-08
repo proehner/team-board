@@ -193,7 +193,8 @@
     "capacityHours": "Kapazität (h)",
     "remainingHours": "Remaining (h)",
     "averageBurndown": "Avg. Burndown",
-    "completedTimePercent": "Abgeschl. Zeit (%)"
+    "completedTimePercent": "Abgeschl. Zeit (%)",
+    "memberColumn": "Mitglied"
   },
   "rotation": {
     "title": "Rotation & Verantwortlichkeiten",

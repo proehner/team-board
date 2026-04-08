@@ -193,7 +193,8 @@
     "capacityHours": "Capacity (h)",
     "remainingHours": "Remaining (h)",
     "averageBurndown": "Avg. Burndown",
-    "completedTimePercent": "Completed Time (%)"
+    "completedTimePercent": "Completed Time (%)",
+    "memberColumn": "Member"
   },
   "rotation": {
     "title": "Rotation & Responsibilities",
