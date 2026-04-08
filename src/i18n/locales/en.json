@@ -38,6 +38,16 @@
     "average": "Average",
     "close": "Close"
   },
+  "teams": {
+    "selectTitle": "Select Team",
+    "selectSubtitle": "Choose a team to continue.",
+    "manage": "Manage Teams",
+    "createTeam": "New Team",
+    "teamName": "Team Name",
+    "description": "Description",
+    "deleteConfirm": "Really delete this team? All team data will be permanently deleted.",
+    "lastTeamError": "Cannot delete the last team."
+  },
   "sidebar": {
     "enableLightMode": "Enable Light Mode",
     "enableDarkMode": "Enable Dark Mode",

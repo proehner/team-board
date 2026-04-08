@@ -169,6 +169,15 @@ export interface KnownError {
   updatedAt: string
 }
 
+// ─── Teams ────────────────────────────────────────────────────────────────────
+
+export interface Team {
+  id: string
+  name: string
+  description?: string
+  createdAt: string
+}
+
 // ─── Auth / Users ─────────────────────────────────────────────────────────────
 
 export interface AppUser {

@@ -38,6 +38,16 @@
     "average": "Durchschnitt",
     "close": "Schließen"
   },
+  "teams": {
+    "selectTitle": "Team auswählen",
+    "selectSubtitle": "Wähle ein Team, um fortzufahren.",
+    "manage": "Teams verwalten",
+    "createTeam": "Neues Team",
+    "teamName": "Teamname",
+    "description": "Beschreibung",
+    "deleteConfirm": "Team wirklich löschen? Alle Daten des Teams werden unwiderruflich gelöscht.",
+    "lastTeamError": "Das letzte Team kann nicht gelöscht werden."
+  },
   "sidebar": {
     "enableLightMode": "Light-Modus aktivieren",
     "enableDarkMode": "Dark-Modus aktivieren",

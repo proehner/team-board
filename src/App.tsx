@@ -20,8 +20,8 @@ import KnownErrorDetailPage from '@/pages/KnownErrorDetailPage'
 import LoginPage from '@/pages/LoginPage'
 import { useStore } from '@/store'
 import { useAuthStore } from '@/store/auth'
-import { authApi } from '@/api/client'
-import { Loader2, AlertTriangle } from 'lucide-react'
+import { authApi, teamsApi } from '@/api/client'
+import { Loader2, AlertTriangle, Users } from 'lucide-react'
 
 function ProtectedRoute({ page, children }: { page: string; children: React.ReactNode }) {
   const { t } = useTranslation()
@@ -40,6 +40,63 @@ function ProtectedRoute({ page, children }: { page: string; children: React.Reac
   return <>{children}</>
 }
 
+// ─── Team Selection Screen ─────────────────────────────────────────────────────
+function TeamSelectionScreen() {
+  const { t }       = useTranslation()
+  const teams       = useAuthStore((s) => s.teams)
+  const selectTeam  = useAuthStore((s) => s.selectTeam)
+  const logout      = useAuthStore((s) => s.logout)
+  const user        = useAuthStore((s) => s.user)
+
+  return (
+    <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8 max-w-sm w-full shadow-sm space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-indigo-500 flex items-center justify-center shrink-0">
+            <Users className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-base font-semibold text-slate-800 dark:text-slate-100">{t('teams.selectTitle')}</h1>
+            <p className="text-xs text-slate-500">{t('teams.selectSubtitle')}</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {teams.map((team) => (
+            <button
+              key={team.id}
+              onClick={() => selectTeam(team.id)}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors text-left"
+            >
+              <div className="w-8 h-8 rounded-md bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center shrink-0">
+                <span className="text-indigo-600 dark:text-indigo-300 text-sm font-bold">
+                  {team.name.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{team.name}</p>
+                {team.description && (
+                  <p className="text-xs text-slate-500 truncate">{team.description}</p>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <div className="pt-1 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <span className="text-xs text-slate-500">{user?.displayName}</span>
+          <button
+            onClick={logout}
+            className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+          >
+            {t('sidebar.logout')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const { t } = useTranslation()
   const loadAll = useStore((s) => s.loadAll)
@@ -47,12 +104,14 @@ export default function App() {
   const error   = useStore((s) => s.error)
   const members = useStore((s) => s.members)
 
-  const token   = useAuthStore((s) => s.token)
-  const user    = useAuthStore((s) => s.user)
-  const login   = useAuthStore((s) => s.login)
-  const logout  = useAuthStore((s) => s.logout)
+  const token         = useAuthStore((s) => s.token)
+  const user          = useAuthStore((s) => s.user)
+  const currentTeamId = useAuthStore((s) => s.currentTeamId)
+  const login         = useAuthStore((s) => s.login)
+  const logout        = useAuthStore((s) => s.logout)
+  const setTeams      = useAuthStore((s) => s.setTeams)
 
-  // Token vorhanden aber kein User → /me abfragen (nach Seiten-Reload)
+  // Token present but no user → fetch /me after page reload
   useEffect(() => {
     if (token && !user) {
       authApi.me()
@@ -61,14 +120,20 @@ export default function App() {
     }
   }, [token, user, login, logout])
 
-  // Daten laden sobald eingeloggt
+  // Load teams once logged in
   useEffect(() => {
-    if (token && user) loadAll()
-  }, [token, user, loadAll])
+    if (token && user) {
+      teamsApi.list().then(setTeams).catch(() => {/* ignore */})
+    }
+  }, [token, user, setTeams])
 
-  // Nicht eingeloggt → Login-Seite
+  // Load team data once a team is selected
+  useEffect(() => {
+    if (token && user && currentTeamId) loadAll()
+  }, [token, user, currentTeamId, loadAll])
+
+  // Not logged in → login page
   if (!token || (!user && !loading)) {
-    // Wenn Token vorhanden, aber /me noch lädt: Warte-Screen
     if (token && !user) {
       return (
         <div className="flex h-screen items-center justify-center bg-slate-50 gap-3 text-slate-500">
@@ -78,6 +143,11 @@ export default function App() {
       )
     }
     return <LoginPage />
+  }
+
+  // Logged in but no team selected → team selection screen
+  if (user && !currentTeamId) {
+    return <TeamSelectionScreen />
   }
 
   if (loading && members.length === 0) {

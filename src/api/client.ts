@@ -7,8 +7,11 @@ import type {
   PulseCheck,
   AppUser, AdminUser,
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus,
+  Team,
 } from '@/types'
-import { getStoredToken } from '@/store/auth'
+import { getStoredToken, getStoredTeamId } from '@/store/auth'
+
+export type { Team }
 
 // import.meta.env.BASE_URL is set by Vite from the 'base' config option.
 // Root deployment ('/'):        BASE_URL = '/'  → API at '/api'
@@ -16,10 +19,12 @@ import { getStoredToken } from '@/store/auth'
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api'
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const token = getStoredToken()
+  const token  = getStoredToken()
+  const teamId = getStoredTeamId()
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (token)  headers['Authorization'] = `Bearer ${token}`
+  if (teamId) headers['X-Team-ID']     = teamId
 
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -37,6 +42,14 @@ const post   = <T>(path: string, body: unknown) => request<T>('POST', path, body
 const patch  = <T>(path: string, body: unknown) => request<T>('PATCH', path, body)
 const put    = <T>(path: string, body: unknown) => request<T>('PUT', path, body)
 const del    = (path: string) => request<void>('DELETE', path)
+
+// ─── Teams ────────────────────────────────────────────────────────────────────
+export const teamsApi = {
+  list:   () => get<Team[]>('/teams'),
+  create: (data: { name: string; description?: string }) => post<Team>('/teams', data),
+  update: (id: string, data: { name?: string; description?: string }) => patch<Team>(`/teams/${id}`, data),
+  delete: (id: string) => del(`/teams/${id}`),
+}
 
 // ─── Members ──────────────────────────────────────────────────────────────────
 export const membersApi = {

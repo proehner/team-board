@@ -16,25 +16,27 @@ function toRetro(row: Row) {
 }
 
 // GET /api/retrospectives
-router.get('/', (_req, res) => {
-  res.json(dbAll<Row>('SELECT * FROM retrospectives ORDER BY date DESC').map(toRetro))
+router.get('/', (req, res) => {
+  const { teamId } = req
+  res.json(dbAll<Row>('SELECT * FROM retrospectives WHERE teamId = ? ORDER BY date DESC', [teamId]).map(toRetro))
 })
 
 // GET /api/retrospectives/:id
 router.get('/:id', (req, res) => {
-  const row = dbGet<Row>('SELECT * FROM retrospectives WHERE id = ?', [req.params.id])
+  const row = dbGet<Row>('SELECT * FROM retrospectives WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])
   if (!row) return res.status(404).json({ error: 'Retrospective not found.' })
   res.json(toRetro(row))
 })
 
 // POST /api/retrospectives
 router.post('/', (req, res) => {
+  const { teamId } = req
   const { title, date, sprintId, facilitatorId, isFinalized = false } = req.body
   if (!title || !date) return res.status(400).json({ error: 'title and date are required.' })
   const id = uid()
   dbRun(
-    'INSERT INTO retrospectives (id, sprintId, title, date, facilitatorId, isFinalized, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, sprintId ?? null, title, date, facilitatorId ?? null, isFinalized ? 1 : 0, new Date().toISOString()],
+    'INSERT INTO retrospectives (id, sprintId, title, date, facilitatorId, isFinalized, createdAt, teamId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, sprintId ?? null, title, date, facilitatorId ?? null, isFinalized ? 1 : 0, new Date().toISOString(), teamId],
   )
   res.status(201).json(toRetro(dbGet<Row>('SELECT * FROM retrospectives WHERE id = ?', [id])!))
 })
@@ -42,7 +44,7 @@ router.post('/', (req, res) => {
 // PATCH /api/retrospectives/:id
 router.patch('/:id', (req, res) => {
   const { id } = req.params
-  if (!dbGet('SELECT id FROM retrospectives WHERE id = ?', [id])) {
+  if (!dbGet('SELECT id FROM retrospectives WHERE id = ? AND teamId = ?', [id, req.teamId])) {
     return res.status(404).json({ error: 'Retrospective not found.' })
   }
   const updates: string[] = []
@@ -62,7 +64,7 @@ router.patch('/:id', (req, res) => {
 
 // DELETE /api/retrospectives/:id
 router.delete('/:id', (req, res) => {
-  const r = dbRun('DELETE FROM retrospectives WHERE id = ?', [req.params.id])
+  const r = dbRun('DELETE FROM retrospectives WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])
   if (r.changes === 0) return res.status(404).json({ error: 'Retrospective not found.' })
   res.status(204).send()
 })
@@ -72,7 +74,7 @@ router.delete('/:id', (req, res) => {
 // POST /api/retrospectives/:id/items
 router.post('/:id/items', (req, res) => {
   const { id } = req.params
-  if (!dbGet('SELECT id FROM retrospectives WHERE id = ?', [id])) {
+  if (!dbGet('SELECT id FROM retrospectives WHERE id = ? AND teamId = ?', [id, req.teamId])) {
     return res.status(404).json({ error: 'Retrospective not found.' })
   }
   const { type, text } = req.body

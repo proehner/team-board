@@ -15,8 +15,9 @@ function getSprintWithCapacity(id: string) {
 }
 
 // GET /api/sprints
-router.get('/', (_req, res) => {
-  const sprints = dbAll<Row>('SELECT * FROM sprints ORDER BY createdAt DESC')
+router.get('/', (req, res) => {
+  const { teamId } = req
+  const sprints = dbAll<Row>('SELECT * FROM sprints WHERE teamId = ? ORDER BY createdAt DESC', [teamId])
   res.json(sprints.map((sp) => ({
     ...sp,
     capacity: dbAll('SELECT * FROM sprint_capacity WHERE sprintId = ?', [sp.id as string]),
@@ -25,21 +26,23 @@ router.get('/', (_req, res) => {
 
 // GET /api/sprints/:id
 router.get('/:id', (req, res) => {
-  const sprint = getSprintWithCapacity(req.params.id)
-  if (!sprint) return res.status(404).json({ error: 'Sprint not found.' })
-  res.json(sprint)
+  if (!dbGet('SELECT id FROM sprints WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])) {
+    return res.status(404).json({ error: 'Sprint not found.' })
+  }
+  res.json(getSprintWithCapacity(req.params.id))
 })
 
 // POST /api/sprints
 router.post('/', (req, res) => {
+  const { teamId } = req
   const { name, goal = '', startDate, endDate, notes = '' } = req.body
   if (!name || !startDate || !endDate) {
     return res.status(400).json({ error: 'name, startDate and endDate are required.' })
   }
   const id = uid()
   dbRun(
-    'INSERT INTO sprints (id, name, goal, startDate, endDate, status, plannedPoints, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, name, goal, startDate, endDate, 'Geplant', 0, notes, new Date().toISOString()],
+    'INSERT INTO sprints (id, name, goal, startDate, endDate, status, plannedPoints, notes, createdAt, teamId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, name, goal, startDate, endDate, 'Geplant', 0, notes, new Date().toISOString(), teamId],
   )
   res.status(201).json(getSprintWithCapacity(id))
 })
@@ -47,7 +50,7 @@ router.post('/', (req, res) => {
 // PATCH /api/sprints/:id
 router.patch('/:id', (req, res) => {
   const { id } = req.params
-  if (!dbGet('SELECT id FROM sprints WHERE id = ?', [id])) {
+  if (!dbGet('SELECT id FROM sprints WHERE id = ? AND teamId = ?', [id, req.teamId])) {
     return res.status(404).json({ error: 'Sprint not found.' })
   }
   const updates: string[] = []
@@ -64,7 +67,7 @@ router.patch('/:id', (req, res) => {
 
 // DELETE /api/sprints/:id
 router.delete('/:id', (req, res) => {
-  const r = dbRun('DELETE FROM sprints WHERE id = ?', [req.params.id])
+  const r = dbRun('DELETE FROM sprints WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])
   if (r.changes === 0) return res.status(404).json({ error: 'Sprint not found.' })
   res.status(204).send()
 })
@@ -72,6 +75,9 @@ router.delete('/:id', (req, res) => {
 // PUT /api/sprints/:id/capacity/:memberId
 router.put('/:id/capacity/:memberId', (req, res) => {
   const { id, memberId } = req.params
+  if (!dbGet('SELECT id FROM sprints WHERE id = ? AND teamId = ?', [id, req.teamId])) {
+    return res.status(404).json({ error: 'Sprint not found.' })
+  }
   const { availableDays, plannedPoints } = req.body
   if (availableDays === undefined || plannedPoints === undefined) {
     return res.status(400).json({ error: 'availableDays and plannedPoints are required.' })
@@ -88,6 +94,9 @@ router.put('/:id/capacity/:memberId', (req, res) => {
 // DELETE /api/sprints/:id/capacity/:memberId
 router.delete('/:id/capacity/:memberId', (req, res) => {
   const { id, memberId } = req.params
+  if (!dbGet('SELECT id FROM sprints WHERE id = ? AND teamId = ?', [id, req.teamId])) {
+    return res.status(404).json({ error: 'Sprint not found.' })
+  }
   dbRun('DELETE FROM sprint_capacity WHERE sprintId = ? AND memberId = ?', [id, memberId])
   const sum = (dbGet<{ s: number }>('SELECT COALESCE(SUM(plannedPoints),0) as s FROM sprint_capacity WHERE sprintId = ?', [id])?.s ?? 0)
   dbRun('UPDATE sprints SET plannedPoints = ? WHERE id = ?', [sum, id])

@@ -2,10 +2,11 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import path from 'path'
-import { seedIfEmpty, seedResponsibilityTypes } from './seed'
-import { requireAuth, requirePageAccess } from './middleware/auth'
+import { seedIfEmpty, seedResponsibilityTypesForAllTeams } from './seed'
+import { requireAuth, requirePageAccess, requireTeam } from './middleware/auth'
 import authRouter, { seedAdminUser } from './routes/auth'
 import adminRouter from './routes/admin'
+import teamsRouter from './routes/teams'
 import membersRouter from './routes/members'
 import skillsRouter from './routes/skills'
 import sprintsRouter from './routes/sprints'
@@ -58,21 +59,24 @@ app.get('/api/health', (_req, res) => {
 })
 
 // ─── Protected API Routes ─────────────────────────────────────────────────────
-// requireAuth    → valid JWT required
+// requireAuth       → valid JWT required
 // requirePageAccess → page locks are also enforced at the API level
-const guard = [requireAuth, requirePageAccess]
+// requireTeam       → X-Team-ID header required (team-scoped routes only)
+const guard      = [requireAuth, requirePageAccess]
+const teamGuard  = [requireAuth, requirePageAccess, requireTeam]
 
 app.use('/api/admin',                requireAuth,   adminRouter)   // page lock not relevant here
-app.use('/api/members',              ...guard,       membersRouter)
-app.use('/api/skills',               ...guard,       skillsRouter)
-app.use('/api/sprints',              ...guard,       sprintsRouter)
-app.use('/api/assignments',          ...guard,       assignmentsRouter)
-app.use('/api/retrospectives',       ...guard,       retrospectivesRouter)
-app.use('/api/responsibility-types', ...guard,       responsibilityTypesRouter)
-app.use('/api/pulse',                ...guard,       pulseRouter)
-app.use('/api/azure-ranking',        ...guard,       azureRankingRouter)
-app.use('/api/software',             ...guard,       softwareRouter)
-app.use('/api/known-errors',         ...guard,       knownErrorsRouter)
+app.use('/api/teams',                requireAuth,   teamsRouter)   // team list is global, CRUD requires admin
+app.use('/api/members',              ...teamGuard,  membersRouter)
+app.use('/api/skills',               ...guard,      skillsRouter)
+app.use('/api/sprints',              ...teamGuard,  sprintsRouter)
+app.use('/api/assignments',          ...teamGuard,  assignmentsRouter)
+app.use('/api/retrospectives',       ...teamGuard,  retrospectivesRouter)
+app.use('/api/responsibility-types', ...teamGuard,  responsibilityTypesRouter)
+app.use('/api/pulse',                ...teamGuard,  pulseRouter)
+app.use('/api/azure-ranking',        ...guard,      azureRankingRouter)
+app.use('/api/software',             ...guard,      softwareRouter)
+app.use('/api/known-errors',         ...guard,      knownErrorsRouter)
 
 // ─── Serve built frontend (production) ───────────────────────────────────────
 const DIST = path.join(__dirname, '..', '..', 'dist')
@@ -83,7 +87,7 @@ app.get('*', (_req, res) => {
 
 // ─── Seed & Start ─────────────────────────────────────────────────────────────
 seedIfEmpty()
-seedResponsibilityTypes()
+seedResponsibilityTypesForAllTeams()
 seedAdminUser()
 
 app.listen(PORT, () => {

@@ -17,19 +17,23 @@ function toAssignment(row: Row) {
 }
 
 // GET /api/assignments/suggest/:type  — must be BEFORE /:id to avoid param conflict
-// Archived entries are INTENTIONALLY included – they count for the fairness algorithm and statistics.
+// Archived entries are INTENTIONALLY included – they count for the fairness algorithm.
 router.get('/suggest/:type', (req, res) => {
   const { type } = req.params
-  const members = dbAll<{ id: string }>('SELECT id FROM members WHERE isActive = 1')
+  const { teamId } = req
+  const members = dbAll<{ id: string }>(
+    'SELECT id FROM members WHERE isActive = 1 AND teamId = ?', [teamId],
+  )
   if (members.length === 0) return res.json({ memberId: null })
 
   const counts: Record<string, number> = {}
   const lastDates: Record<string, string> = {}
   members.forEach((m) => { counts[m.id] = 0; lastDates[m.id] = '1900-01-01' })
 
-  // Count all non-synthetic entries (including archived ones!)
+  // Count all non-synthetic entries for this team (including archived ones!)
   const past = dbAll<{ memberId: string; endDate: string }>(
-    'SELECT memberId, endDate FROM assignments WHERE type = ? AND isSynthetic = 0', [type],
+    'SELECT memberId, endDate FROM assignments WHERE type = ? AND isSynthetic = 0 AND teamId = ?',
+    [type, teamId],
   )
   for (const a of past) {
     if (counts[a.memberId] !== undefined) {
@@ -45,46 +49,51 @@ router.get('/suggest/:type', (req, res) => {
 })
 
 // GET /api/assignments/archive-preview?before=YYYY-MM-DD
-// Returns all entries that would be archived (for preview purposes).
 router.get('/archive-preview', (req, res) => {
+  const { teamId } = req
   const before = (req.query.before as string) || new Date().toISOString().split('T')[0]
   const rows = dbAll<Row>(
     `SELECT a.*, m.name as memberName
      FROM assignments a
      LEFT JOIN members m ON m.id = a.memberId
-     WHERE a.endDate < ? AND a.isSynthetic = 0 AND a.isArchived = 0
+     WHERE a.endDate < ? AND a.isSynthetic = 0 AND a.isArchived = 0 AND a.teamId = ?
      ORDER BY a.endDate DESC`,
-    [before],
+    [before, teamId],
   )
   res.json({ count: rows.length, items: rows.map(toAssignment) })
 })
 
 // POST /api/assignments/archive-old
-// Archives all expired entries (endDate < before). Does not delete anything.
 router.post('/archive-old', (req, res) => {
+  const { teamId } = req
   const before = (req.body.before as string) || new Date().toISOString().split('T')[0]
   const result = dbRun(
-    'UPDATE assignments SET isArchived = 1 WHERE endDate < ? AND isSynthetic = 0 AND isArchived = 0',
-    [before],
+    'UPDATE assignments SET isArchived = 1 WHERE endDate < ? AND isSynthetic = 0 AND isArchived = 0 AND teamId = ?',
+    [before, teamId],
   )
   res.json({ archived: result.changes })
 })
 
 // GET /api/assignments
-router.get('/', (_req, res) => {
-  res.json(dbAll<Row>('SELECT * FROM assignments ORDER BY startDate DESC').map(toAssignment))
+router.get('/', (req, res) => {
+  const { teamId } = req
+  res.json(
+    dbAll<Row>('SELECT * FROM assignments WHERE teamId = ? ORDER BY startDate DESC', [teamId])
+      .map(toAssignment),
+  )
 })
 
 // POST /api/assignments
 router.post('/', (req, res) => {
+  const { teamId } = req
   const { type, memberId, sprintId, startDate, endDate, notes = '', isAutoSuggested = false } = req.body
   if (!type || !memberId || !startDate || !endDate) {
     return res.status(400).json({ error: 'type, memberId, startDate and endDate are required.' })
   }
   const id = uid()
   dbRun(
-    'INSERT INTO assignments (id, type, memberId, sprintId, startDate, endDate, notes, isAutoSuggested, isSynthetic, isArchived) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)',
-    [id, type, memberId, sprintId ?? null, startDate, endDate, notes, isAutoSuggested ? 1 : 0],
+    'INSERT INTO assignments (id, type, memberId, sprintId, startDate, endDate, notes, isAutoSuggested, isSynthetic, isArchived, teamId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)',
+    [id, type, memberId, sprintId ?? null, startDate, endDate, notes, isAutoSuggested ? 1 : 0, teamId],
   )
   res.status(201).json(toAssignment(dbGet<Row>('SELECT * FROM assignments WHERE id = ?', [id])!))
 })
@@ -92,7 +101,7 @@ router.post('/', (req, res) => {
 // PATCH /api/assignments/:id
 router.patch('/:id', (req, res) => {
   const { id } = req.params
-  if (!dbGet('SELECT id FROM assignments WHERE id = ?', [id])) {
+  if (!dbGet('SELECT id FROM assignments WHERE id = ? AND teamId = ?', [id, req.teamId])) {
     return res.status(404).json({ error: 'Assignment not found.' })
   }
   const updates: string[] = []
@@ -115,7 +124,7 @@ router.patch('/:id', (req, res) => {
 
 // DELETE /api/assignments/:id
 router.delete('/:id', (req, res) => {
-  const r = dbRun('DELETE FROM assignments WHERE id = ?', [req.params.id])
+  const r = dbRun('DELETE FROM assignments WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])
   if (r.changes === 0) return res.status(404).json({ error: 'Assignment not found.' })
   res.status(204).send()
 })
