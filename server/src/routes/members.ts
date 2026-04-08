@@ -19,7 +19,14 @@ function pickColor(): string {
 type Row = Record<string, unknown>
 
 function toMember(row: Row) {
-  return { ...row, isActive: row.isActive === 1 || row.isActive === true }
+  const { role, isActive, ...rest } = row
+  let roles: string[]
+  try {
+    roles = JSON.parse(role as string)
+  } catch {
+    roles = [role as string]
+  }
+  return { ...rest, roles, isActive: isActive === 1 || isActive === true }
 }
 
 // GET /api/members
@@ -29,14 +36,14 @@ router.get('/', (_req, res) => {
 
 // POST /api/members
 router.post('/', (req, res) => {
-  const { name, email, role, isActive = true } = req.body
-  if (!name || !email || !role) {
-    return res.status(400).json({ error: 'name, email and role are required.' })
+  const { name, email, roles, isActive = true } = req.body
+  if (!name || !email || !Array.isArray(roles) || roles.length === 0) {
+    return res.status(400).json({ error: 'name, email and roles are required.' })
   }
   const id = uid()
   const joinedAt = new Date().toISOString().split('T')[0]
   dbRun('INSERT INTO members (id, name, email, role, avatarColor, joinedAt, isActive) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, name, email, role, pickColor(), joinedAt, isActive ? 1 : 0])
+    [id, name, email, JSON.stringify(roles), pickColor(), joinedAt, isActive ? 1 : 0])
 
   // Initial rotation leveling: bring new member up to the minimum level of active members
   const activeOthers = dbAll<{ id: string }>('SELECT id FROM members WHERE isActive = 1 AND id != ?', [id])
@@ -72,11 +79,14 @@ router.patch('/:id', (req, res) => {
   if (!dbGet('SELECT id FROM members WHERE id = ?', [id])) {
     return res.status(404).json({ error: 'Member not found.' })
   }
-  const allowed = ['name', 'email', 'role', 'avatarColor', 'joinedAt'] as const
+  const allowed = ['name', 'email', 'avatarColor', 'joinedAt'] as const
   const updates: string[] = []
   const values: unknown[] = []
   for (const f of allowed) {
     if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f]) }
+  }
+  if (req.body.roles !== undefined) {
+    updates.push('role = ?'); values.push(JSON.stringify(req.body.roles))
   }
   if (req.body.isActive !== undefined) {
     updates.push('isActive = ?'); values.push(req.body.isActive ? 1 : 0)

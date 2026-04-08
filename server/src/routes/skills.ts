@@ -7,21 +7,34 @@ const uid = () => crypto.randomUUID()
 
 type Row = Record<string, unknown>
 
+function toSkill(row: Row) {
+  const { category, ...rest } = row
+  let categories: string[]
+  try {
+    categories = JSON.parse(category as string)
+  } catch {
+    categories = [category as string]
+  }
+  return { ...rest, categories }
+}
+
 // GET /api/skills
 router.get('/', (_req, res) => {
-  const skills = dbAll('SELECT * FROM skills ORDER BY category, name')
+  const skills = dbAll('SELECT * FROM skills ORDER BY name').map(toSkill)
   const memberSkills = dbAll('SELECT * FROM member_skills')
   res.json({ skills, memberSkills })
 })
 
 // POST /api/skills
 router.post('/', (req, res) => {
-  const { name, category, description } = req.body
-  if (!name || !category) return res.status(400).json({ error: 'name and category are required.' })
+  const { name, categories, description } = req.body
+  if (!name || !Array.isArray(categories) || categories.length === 0) {
+    return res.status(400).json({ error: 'name and categories are required.' })
+  }
   const id = uid()
   dbRun('INSERT INTO skills (id, name, category, description) VALUES (?, ?, ?, ?)',
-    [id, name, category, description ?? null])
-  res.status(201).json(dbGet<Row>('SELECT * FROM skills WHERE id = ?', [id]))
+    [id, name, JSON.stringify(categories), description ?? null])
+  res.status(201).json(toSkill(dbGet<Row>('SELECT * FROM skills WHERE id = ?', [id])!))
 })
 
 // PATCH /api/skills/:id
@@ -32,13 +45,16 @@ router.patch('/:id', (req, res) => {
   }
   const updates: string[] = []
   const values: unknown[] = []
-  for (const f of ['name', 'category', 'description']) {
+  for (const f of ['name', 'description']) {
     if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f] ?? null) }
+  }
+  if (req.body.categories !== undefined) {
+    updates.push('category = ?'); values.push(JSON.stringify(req.body.categories))
   }
   if (updates.length === 0) return res.status(400).json({ error: 'No fields provided.' })
   values.push(id)
   dbRun(`UPDATE skills SET ${updates.join(', ')} WHERE id = ?`, values)
-  res.json(dbGet<Row>('SELECT * FROM skills WHERE id = ?', [id]))
+  res.json(toSkill(dbGet<Row>('SELECT * FROM skills WHERE id = ?', [id])!))
 })
 
 // DELETE /api/skills/:id

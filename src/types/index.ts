@@ -14,7 +14,7 @@ export interface TeamMember {
   id: string
   name: string
   email: string
-  role: MemberRole
+  roles: MemberRole[]
   avatarColor: string
   joinedAt: string
   isActive: boolean
@@ -45,7 +45,7 @@ export type SkillCategory =
 export interface Skill {
   id: string
   name: string
-  category: SkillCategory
+  categories: SkillCategory[]
   description?: string
 }
 

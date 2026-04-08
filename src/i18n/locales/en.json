@@ -97,6 +97,7 @@
     "activeMember": "Active Member",
     "nameError": "Name must be at least 2 characters.",
     "emailError": "Invalid email address.",
+    "rolesError": "Please select at least one role.",
     "removeMember": "Remove Member",
     "removeConfirm": "Do you really want to remove \"{{name}}\"? All related competency data will also be deleted."
   },

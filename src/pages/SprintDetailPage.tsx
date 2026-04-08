@@ -209,7 +209,7 @@ export default function SprintDetailPage() {
                           <Avatar name={member.name} color={member.avatarColor} size="sm" />
                           <div>
                             <p className="font-medium text-slate-900 dark:text-slate-100">{member.name}</p>
-                            <p className="text-xs text-slate-400 dark:text-slate-500">{member.role}</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">{member.roles.join(', ')}</p>
                           </div>
                         </div>
                       </td>

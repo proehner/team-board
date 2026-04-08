@@ -38,7 +38,7 @@ export default function CompetencyPage() {
   const [showSkillModal, setShowSkillModal] = useState(false)
   const [editSkill, setEditSkill] = useState<Skill | null>(null)
   const [deleteSkillTarget, setDeleteSkillTarget] = useState<Skill | null>(null)
-  const [skillForm, setSkillForm] = useState({ name: '', category: 'Frontend' as SkillCategory, description: '' })
+  const [skillForm, setSkillForm] = useState({ name: '', categories: ['Frontend'] as SkillCategory[], description: '' })
 
   // Popover state for cell editing
   const [activeCell, setActiveCell] = useState<{ memberId: string; skillId: string } | null>(null)
@@ -63,28 +63,37 @@ export default function CompetencyPage() {
   const filteredSkills =
     filterCategory === 'Alle'
       ? skills
-      : skills.filter((s) => s.category === filterCategory)
+      : skills.filter((s) => s.categories.includes(filterCategory))
 
   const groupedSkills = CATEGORIES.reduce((acc, cat) => {
-    const catSkills = filteredSkills.filter((s) => s.category === cat)
+    const catSkills = filteredSkills.filter((s) => s.categories.includes(cat))
     if (catSkills.length > 0) acc[cat] = catSkills
     return acc
   }, {} as Record<string, Skill[]>)
 
   function openAddSkill() {
     setEditSkill(null)
-    setSkillForm({ name: '', category: 'Frontend', description: '' })
+    setSkillForm({ name: '', categories: ['Frontend'], description: '' })
     setShowSkillModal(true)
   }
 
   function openEditSkill(sk: Skill) {
     setEditSkill(sk)
-    setSkillForm({ name: sk.name, category: sk.category, description: sk.description ?? '' })
+    setSkillForm({ name: sk.name, categories: sk.categories, description: sk.description ?? '' })
     setShowSkillModal(true)
   }
 
+  function toggleCategory(cat: SkillCategory) {
+    setSkillForm((f) => ({
+      ...f,
+      categories: f.categories.includes(cat)
+        ? f.categories.filter((c) => c !== cat)
+        : [...f.categories, cat],
+    }))
+  }
+
   async function handleSkillSubmit() {
-    if (!skillForm.name.trim()) return
+    if (!skillForm.name.trim() || skillForm.categories.length === 0) return
     try {
       if (editSkill) {
         await updateSkill(editSkill.id, skillForm)
@@ -186,13 +195,19 @@ export default function CompetencyPage() {
           </div>
           <div className="space-y-1">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('competencies.category')}</label>
-            <select
-              value={skillForm.category}
-              onChange={(e) => setSkillForm((f) => ({ ...f, category: e.target.value as SkillCategory }))}
-              className="form-input"
-            >
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <div className="grid grid-cols-2 gap-1.5 border border-slate-200 dark:border-slate-600 rounded-lg p-3">
+              {CATEGORIES.map((c) => (
+                <label key={c} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={skillForm.categories.includes(c)}
+                    onChange={() => toggleCategory(c)}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  {c}
+                </label>
+              ))}
+            </div>
           </div>
           <div className="space-y-1">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('competencies.descriptionLabel')}</label>
@@ -376,9 +391,13 @@ function CatalogTab({ filteredSkills, memberSkills, members, onEdit, onDelete }:
             <div className="flex items-start justify-between mb-2">
               <div>
                 <p className="font-semibold text-slate-900 dark:text-slate-100">{sk.name}</p>
-                <span className="inline-block mt-0.5 px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full">
-                  {sk.category}
-                </span>
+                <div className="flex flex-wrap gap-1 mt-0.5">
+                  {sk.categories.map((c) => (
+                    <span key={c} className="px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full">
+                      {c}
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="flex gap-1">
                 <button onClick={() => onEdit(sk)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">

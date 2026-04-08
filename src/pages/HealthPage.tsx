@@ -151,7 +151,7 @@ export default function HealthPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{skill.name}</span>
-                <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">{skill.category}</span>
+                <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">{skill.categories.join(', ')}</span>
               </div>
               <div className="flex gap-1.5 flex-wrap justify-end">
                 {experts.map((m) => (
@@ -226,7 +226,7 @@ export default function HealthPage() {
                         <div key={sk.id} className="bg-red-50 border border-red-200 rounded-lg p-3 mb-2">
                           <div className="flex justify-between mb-1.5">
                             <span className="text-xs font-semibold text-red-700">{sk.name}</span>
-                            <span className="text-xs text-red-400">{sk.category}</span>
+                            <span className="text-xs text-red-400">{sk.categories.join(', ')}</span>
                           </div>
                           {covers.length > 0 ? (
                             <div className="flex items-center gap-1 flex-wrap">

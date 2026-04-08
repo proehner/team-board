@@ -46,35 +46,35 @@ export function seedIfEmpty(): void {
 
   // ─── Members ──────────────────────────────────────────────────────────────
   const memberData = [
-    { name: 'Anna Müller',   email: 'anna.mueller@team.de',   role: 'Senior Developer', color: AVATAR_COLORS[0], joined: '2022-03-15' },
-    { name: 'Max Berger',    email: 'max.berger@team.de',     role: 'Developer',        color: AVATAR_COLORS[2], joined: '2023-01-10' },
-    { name: 'Thomas Schulz', email: 'thomas.schulz@team.de', role: 'DevOps Engineer',  color: AVATAR_COLORS[1], joined: '2021-07-01' },
-    { name: 'Sarah Koch',    email: 'sarah.koch@team.de',     role: 'QA Engineer',     color: AVATAR_COLORS[3], joined: '2022-09-20' },
-    { name: 'David Fischer', email: 'david.fischer@team.de', role: 'Developer',        color: AVATAR_COLORS[4], joined: '2023-06-05' },
+    { name: 'Anna Müller',   email: 'anna.mueller@team.de',   roles: ['Senior Developer'], color: AVATAR_COLORS[0], joined: '2022-03-15' },
+    { name: 'Max Berger',    email: 'max.berger@team.de',     roles: ['Developer'],        color: AVATAR_COLORS[2], joined: '2023-01-10' },
+    { name: 'Thomas Schulz', email: 'thomas.schulz@team.de', roles: ['DevOps Engineer'],  color: AVATAR_COLORS[1], joined: '2021-07-01' },
+    { name: 'Sarah Koch',    email: 'sarah.koch@team.de',     roles: ['QA Engineer'],      color: AVATAR_COLORS[3], joined: '2022-09-20' },
+    { name: 'David Fischer', email: 'david.fischer@team.de', roles: ['Developer'],        color: AVATAR_COLORS[4], joined: '2023-06-05' },
   ]
   const memberIds = memberData.map((m) => {
     const id = uid()
     dbRun('INSERT INTO members (id, name, email, role, avatarColor, joinedAt, isActive) VALUES (?, ?, ?, ?, ?, ?, 1)',
-      [id, m.name, m.email, m.role, m.color, m.joined])
+      [id, m.name, m.email, JSON.stringify(m.roles), m.color, m.joined])
     return id
   })
 
   // ─── Skills ───────────────────────────────────────────────────────────────
   const skillData = [
-    { name: 'React',          cat: 'Frontend',    desc: 'React-Bibliothek inkl. Hooks und modernes Ökosystem' },
-    { name: 'TypeScript',     cat: 'Frontend',    desc: 'Typisiertes JavaScript' },
-    { name: 'Node.js',        cat: 'Backend',     desc: 'Server-seitige JavaScript-Entwicklung' },
-    { name: 'PostgreSQL',     cat: 'Datenbank',   desc: 'Relationale Datenbankentwicklung' },
-    { name: 'Docker',         cat: 'DevOps',      desc: 'Containerisierung von Anwendungen' },
-    { name: 'Kubernetes',     cat: 'DevOps',      desc: 'Container-Orchestrierung' },
-    { name: 'Jest / Testing', cat: 'Testing',     desc: 'Unit- und Integrationstests' },
-    { name: 'Cypress',        cat: 'Testing',     desc: 'End-to-End-Tests im Browser' },
-    { name: 'Kommunikation',  cat: 'Soft Skills', desc: 'Klare und effektive Kommunikation im Team' },
-    { name: 'Agile / Scrum',  cat: 'Soft Skills', desc: 'Kenntnisse in agilen Methoden' },
+    { name: 'React',          cats: ['Frontend'],    desc: 'React-Bibliothek inkl. Hooks und modernes Ökosystem' },
+    { name: 'TypeScript',     cats: ['Frontend'],    desc: 'Typisiertes JavaScript' },
+    { name: 'Node.js',        cats: ['Backend'],     desc: 'Server-seitige JavaScript-Entwicklung' },
+    { name: 'PostgreSQL',     cats: ['Datenbank'],   desc: 'Relationale Datenbankentwicklung' },
+    { name: 'Docker',         cats: ['DevOps'],      desc: 'Containerisierung von Anwendungen' },
+    { name: 'Kubernetes',     cats: ['DevOps'],      desc: 'Container-Orchestrierung' },
+    { name: 'Jest / Testing', cats: ['Testing'],     desc: 'Unit- und Integrationstests' },
+    { name: 'Cypress',        cats: ['Testing'],     desc: 'End-to-End-Tests im Browser' },
+    { name: 'Kommunikation',  cats: ['Soft Skills'], desc: 'Klare und effektive Kommunikation im Team' },
+    { name: 'Agile / Scrum',  cats: ['Soft Skills'], desc: 'Kenntnisse in agilen Methoden' },
   ]
   const skillIds = skillData.map((sk) => {
     const id = uid()
-    dbRun('INSERT INTO skills (id, name, category, description) VALUES (?, ?, ?, ?)', [id, sk.name, sk.cat, sk.desc])
+    dbRun('INSERT INTO skills (id, name, category, description) VALUES (?, ?, ?, ?)', [id, sk.name, JSON.stringify(sk.cats), sk.desc])
     return id
   })
 

@@ -41,7 +41,7 @@ const del    = (path: string) => request<void>('DELETE', path)
 // ─── Members ──────────────────────────────────────────────────────────────────
 export const membersApi = {
   list:   () => get<TeamMember[]>('/members'),
-  create: (data: { name: string; email: string; role: MemberRole; isActive?: boolean }) =>
+  create: (data: { name: string; email: string; roles: MemberRole[]; isActive?: boolean }) =>
     post<TeamMember>('/members', data),
   update: (id: string, data: Partial<TeamMember>) =>
     patch<TeamMember>(`/members/${id}`, data),

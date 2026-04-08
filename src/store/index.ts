@@ -34,7 +34,7 @@ interface AppState {
   loadAll: () => Promise<void>
 
   // ─── Members ──────────────────────────────────────────────────────────────
-  addMember:    (data: { name: string; email: string; role: MemberRole; isActive?: boolean }) => Promise<string>
+  addMember:    (data: { name: string; email: string; roles: MemberRole[]; isActive?: boolean }) => Promise<string>
   updateMember: (id: string, data: Partial<TeamMember>) => Promise<void>
   deleteMember: (id: string) => Promise<void>
 

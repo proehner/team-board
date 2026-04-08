@@ -19,11 +19,17 @@ const ROLES: MemberRole[] = [
 interface MemberFormData {
   name: string
   email: string
-  role: MemberRole
+  roles: MemberRole[]
   isActive: boolean
 }
 
-const defaultForm: MemberFormData = { name: '', email: '', role: 'Developer', isActive: true }
+interface MemberFormErrors {
+  name?: string
+  email?: string
+  roles?: string
+}
+
+const defaultForm: MemberFormData = { name: '', email: '', roles: ['Developer'], isActive: true }
 
 export default function TeamPage() {
   const { t } = useTranslation()
@@ -38,13 +44,13 @@ export default function TeamPage() {
   const [editTarget, setEditTarget] = useState<TeamMember | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TeamMember | null>(null)
   const [form, setForm] = useState<MemberFormData>(defaultForm)
-  const [errors, setErrors] = useState<Partial<MemberFormData>>({})
+  const [errors, setErrors] = useState<MemberFormErrors>({})
 
   const filtered = members.filter(
     (m) =>
       m.name.toLowerCase().includes(search.toLowerCase()) ||
       m.email.toLowerCase().includes(search.toLowerCase()) ||
-      m.role.toLowerCase().includes(search.toLowerCase()),
+      m.roles.some((r) => r.toLowerCase().includes(search.toLowerCase())),
   )
 
   function openAdd() {
@@ -56,15 +62,25 @@ export default function TeamPage() {
 
   function openEdit(m: TeamMember) {
     setEditTarget(m)
-    setForm({ name: m.name, email: m.email, role: m.role, isActive: m.isActive })
+    setForm({ name: m.name, email: m.email, roles: m.roles, isActive: m.isActive })
     setErrors({})
     setShowModal(true)
   }
 
+  function toggleRole(role: MemberRole) {
+    setForm((f) => ({
+      ...f,
+      roles: f.roles.includes(role)
+        ? f.roles.filter((r) => r !== role)
+        : [...f.roles, role],
+    }))
+  }
+
   function validate(): boolean {
-    const e: Partial<MemberFormData> = {}
+    const e: MemberFormErrors = {}
     if (form.name.trim().length < 2) e.name = t('team.nameError')
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = t('team.emailError')
+    if (form.roles.length === 0) e.roles = t('team.rolesError')
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -172,14 +188,20 @@ export default function TeamPage() {
               className="form-input"
             />
           </FormField>
-          <FormField label={t('common.role')}>
-            <select
-              value={form.role}
-              onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as MemberRole }))}
-              className="form-input"
-            >
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
+          <FormField label={t('common.role')} error={errors.roles}>
+            <div className="grid grid-cols-2 gap-1.5 border border-slate-200 dark:border-slate-600 rounded-lg p-3">
+              {ROLES.map((r) => (
+                <label key={r} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.roles.includes(r)}
+                    onChange={() => toggleRole(r)}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  {r}
+                </label>
+              ))}
+            </div>
           </FormField>
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
             <input
@@ -220,14 +242,16 @@ function MemberCard({ member, skillCount, avgLevel, onEdit, onDelete, onToggle }
   return (
     <div className={`bg-white dark:bg-slate-900 rounded-xl border shadow-sm p-5 space-y-4 transition-opacity ${member.isActive ? 'border-slate-200 dark:border-slate-700' : 'border-slate-100 dark:border-slate-800 opacity-60'}`}>
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex items-start gap-3">
           <Avatar name={member.name} color={member.avatarColor} size="lg" />
           <div>
             <p className="font-semibold text-slate-900 dark:text-slate-100">{member.name}</p>
-            <Badge label={member.role} variant="info" />
+            <div className="flex flex-wrap gap-1 mt-1">
+              {member.roles.map((r) => <Badge key={r} label={r} variant="info" />)}
+            </div>
           </div>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 shrink-0">
           <button onClick={onEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">
             <Edit2 className="w-4 h-4" />
           </button>

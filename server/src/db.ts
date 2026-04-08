@@ -220,6 +220,10 @@ if (!assignmentCols.some((c) => c.name === 'isArchived')) {
   db.exec('ALTER TABLE assignments ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0')
 }
 
+// Migrate members.role and skills.category to JSON arrays (idempotent)
+db.exec("UPDATE members SET role = json_array(role) WHERE role NOT LIKE '[%'")
+db.exec("UPDATE skills SET category = json_array(category) WHERE category NOT LIKE '[%'")
+
 export default db
 
 // ─── Typed query helpers ──────────────────────────────────────────────────────

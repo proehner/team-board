@@ -97,6 +97,7 @@
     "activeMember": "Aktives Mitglied",
     "nameError": "Name muss mindestens 2 Zeichen haben.",
     "emailError": "Ungültige E-Mail-Adresse.",
+    "rolesError": "Bitte mindestens eine Rolle auswählen.",
     "removeMember": "Mitglied entfernen",
     "removeConfirm": "Möchtest du \"{{name}}\" wirklich entfernen? Alle zugehörigen Kompetenzdaten werden ebenfalls gelöscht."
   },
