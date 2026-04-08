@@ -60,6 +60,7 @@ export interface MemberSkill {
 // ─── Sprints ──────────────────────────────────────────────────────────────────
 
 export type SprintStatus = 'Geplant' | 'Aktiv' | 'Abgeschlossen' | 'Abgebrochen'
+export type SprintGoalMet = 'Ja' | 'Teilweise' | 'Nein'
 
 export interface SprintMemberCapacity {
   memberId: string
@@ -76,6 +77,14 @@ export interface Sprint {
   status: SprintStatus
   velocity?: number
   plannedPoints: number
+  plannedItems?: number
+  completedItems?: number
+  goalMet?: SprintGoalMet
+  teamSatisfaction?: number
+  impediments: string
+  capacityHours?: number
+  remainingHours?: number
+  averageBurndown?: number
   capacity: SprintMemberCapacity[]
   notes: string
   createdAt: string
@@ -108,7 +117,7 @@ export interface ResponsibilityAssignment {
 // ─── Retrospectives ───────────────────────────────────────────────────────────
 
 export type RetroItemType = 'GutGelaufen' | 'Verbesserung' | 'Aktionspunkt'
-export type RetroItemStatus = 'Offen' | 'InBearbeitung' | 'Erledigt'
+export type RetroItemStatus = 'Offen' | 'InBearbeitung' | 'Erledigt' | 'Extern'
 
 export interface RetroItem {
   id: string
@@ -118,6 +127,7 @@ export interface RetroItem {
   assigneeId?: string
   status: RetroItemStatus
   dueDate?: string
+  ticketUrl?: string | null
 }
 
 export interface Retrospective {

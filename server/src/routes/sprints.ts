@@ -52,7 +52,7 @@ router.patch('/:id', (req, res) => {
   }
   const updates: string[] = []
   const values: unknown[] = []
-  for (const f of ['name', 'goal', 'startDate', 'endDate', 'status', 'velocity', 'plannedPoints', 'notes']) {
+  for (const f of ['name', 'goal', 'startDate', 'endDate', 'status', 'velocity', 'plannedPoints', 'notes', 'goalMet', 'completedItems', 'plannedItems', 'teamSatisfaction', 'impediments', 'capacityHours', 'remainingHours', 'averageBurndown']) {
     if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f] ?? null) }
   }
   if (updates.length > 0) {

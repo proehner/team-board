@@ -34,7 +34,9 @@
     "active": "Aktiv",
     "inactive": "Inaktiv",
     "details": "Details",
-    "confirm": "Bestätigen"
+    "confirm": "Bestätigen",
+    "average": "Durchschnitt",
+    "close": "Schließen"
   },
   "sidebar": {
     "enableLightMode": "Light-Modus aktivieren",
@@ -75,6 +77,10 @@
     "teamCapacity": "Team-Kapazität (aktueller Sprint)",
     "noCapacityData": "Keine Kapazitätsdaten für diesen Sprint.",
     "noActiveSprint": "Kein aktiver Sprint.",
+    "planned": "geplant",
+    "velocity": "Velocity",
+    "sprintHistory": "Sprint-Verlauf",
+    "noCompletedSprints": "Noch keine abgeschlossenen Sprints.",
     "noCurrentAssignments": "Keine aktuellen Zuweisungen.",
     "noOpenActionItems": "Keine offenen Aktionspunkte.",
     "totalAvailableDays": "Verfügbare Tage gesamt",
@@ -145,20 +151,39 @@
     "endDateRequired": "Enddatum erforderlich.",
     "endDateAfterStart": "Enddatum muss nach dem Startdatum liegen.",
     "deleteSprint": "Sprint löschen",
-    "deleteConfirm": "Möchtest du \"{{name}}\" wirklich löschen?"
+    "deleteConfirm": "Möchtest du \"{{name}}\" wirklich löschen?",
+    "analysis": "Auswertung",
+    "analysisEmpty": "Keine Daten",
+    "analysisEmptySubtitle": "Mindestens 2 abgeschlossene Sprints mit Daten werden für die Auswertung benötigt.",
+    "tableSprint": "Sprint",
+    "tableCapacityH": "Kapazität (h)",
+    "tableRemainingH": "Remaining (h)",
+    "tableAvgBurndown": "Avg. Burndown",
+    "tableCompletedTimePct": "Abgeschl. Zeit",
+    "tableCompletedItems": "Abgeschl. Items",
+    "tableVelocity": "Velocity (SP)",
+    "tableGoalMet": "Ziel erreicht"
   },
   "sprintDetail": {
     "notFound": "Sprint nicht gefunden.",
-    "membersHeader": "Mitglieder",
-    "availableDays": "Verfügbare Tage",
-    "plannedStoryPoints": "Geplante Story Points",
-    "velocity": "Velocity (SP)",
-    "noMembers": "Noch keine Mitglieder hinzugefügt. Wähle oben ein Mitglied aus.",
-    "selectMember": "Mitglied wählen…",
-    "capacityPlanning": "Kapazitätsplanung",
-    "memberColumn": "Mitglied",
-    "spPerDay": "SP/Tag",
-    "total": "Gesamt"
+    "days": "Tage",
+    "metrics": "Metriken & Auswertung",
+    "goalMet": "Sprint-Ziel erreicht?",
+    "goalMet_Ja": "Ja",
+    "goalMet_Teilweise": "Teilweise",
+    "goalMet_Nein": "Nein",
+    "plannedPoints": "Geplante SP",
+    "velocity": "Velocity (abgeschl. SP)",
+    "plannedItems": "Geplante Items",
+    "completedItems": "Abgeschl. Items",
+    "teamSatisfaction": "Team-Zufriedenheit",
+    "impediments": "Impediments",
+    "impedimentsPlaceholder": "Welche Hindernisse gab es im Sprint?",
+    "burndown": "Burndown",
+    "capacityHours": "Kapazität (h)",
+    "remainingHours": "Remaining (h)",
+    "averageBurndown": "Avg. Burndown",
+    "completedTimePercent": "Abgeschl. Zeit (%)"
   },
   "rotation": {
     "title": "Rotation & Verantwortlichkeiten",
@@ -204,7 +229,16 @@
     "finalize": "Finalisieren",
     "deleteItem": "Item löschen",
     "deleteItemConfirm": "Möchtest du dieses Retro-Item wirklich löschen?",
-    "noOwner": "Kein Verantwortlicher"
+    "noOwner": "Kein Verantwortlicher",
+    "ticketUrlPlaceholder": "Ticket-URL (optional)",
+    "openTicket": "Ticket öffnen",
+    "ticketUrl": "Ticket-URL",
+    "copyLink": "Link kopieren",
+    "linkCopied": "Link kopiert!",
+    "actionItemDetail": "Aktionspunkt",
+    "status": "Status",
+    "owner": "Verantwortlich",
+    "dueDate": "Fällig am"
   },
   "health": {
     "title": "Team-Gesundheit",
@@ -218,6 +252,10 @@
     "fromRetros": "aus Retros",
     "developmentSuggestions": "Entwicklungsvorschläge",
     "inTotal": "insgesamt",
+    "sprintDelivery": "Sprint-Lieferung",
+    "goalAchievementRate": "Zielerreichung",
+    "avgVelocity": "Ø Velocity",
+    "noCompletedSprints": "Noch keine abgeschlossenen Sprints.",
     "busFactor": "Bus-Faktor & Wissenskonzentration",
     "critical": "kritisch",
     "noOneLevel3": "Niemand auf Niveau 3+",
@@ -443,7 +481,8 @@
   "retroItemStatus": {
     "Offen": "Offen",
     "InBearbeitung": "In Bearbeitung",
-    "Erledigt": "Erledigt"
+    "Erledigt": "Erledigt",
+    "Extern": "Extern"
   },
   "confirmDialog": {
     "confirm": "Bestätigen",

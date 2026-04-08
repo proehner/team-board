@@ -5,8 +5,14 @@ import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
 import Badge from '@/components/ui/Badge'
 import { formatDate, daysUntil, isOverdue, isCurrentlyActive } from '@/utils/date'
-import { Users, Zap, AlertCircle, Star, ArrowRight, Calendar, Target } from 'lucide-react'
-import type { SprintStatus } from '@/types'
+import { Users, Zap, AlertCircle, Star, ArrowRight, Calendar, Target, TrendingUp } from 'lucide-react'
+import type { SprintGoalMet, SprintStatus } from '@/types'
+
+const GOAL_MET_CLASSES: Record<SprintGoalMet, string> = {
+  Ja:       'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  Teilweise:'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  Nein:     'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+}
 
 const sprintStatusVariant: Record<SprintStatus, 'info' | 'success' | 'default' | 'danger'> = {
   Geplant: 'default',
@@ -39,9 +45,11 @@ export default function Dashboard() {
   })
 
   const daysLeft = activeSprint ? daysUntil(activeSprint.endDate) : null
-  const capacity = activeSprint?.capacity ?? []
-  const totalDays = capacity.reduce((s, c) => s + c.availableDays, 0)
-  const totalPoints = capacity.reduce((s, c) => s + c.plannedPoints, 0)
+
+  const recentSprints = [...sprints]
+    .filter((s) => s.status === 'Abgeschlossen')
+    .sort((a, b) => b.endDate.localeCompare(a.endDate))
+    .slice(0, 5)
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
@@ -108,15 +116,24 @@ export default function Dashboard() {
                   {formatDate(activeSprint.startDate)} – {formatDate(activeSprint.endDate)}
                 </div>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-950 rounded-lg p-3 space-y-1">
-                <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                  <span>{t('dashboard.totalAvailableDays')}</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-300">{totalDays}</span>
-                </div>
-                <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                  <span>{t('dashboard.plannedStoryPoints')}</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-300">{totalPoints}</span>
-                </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {activeSprint.plannedPoints > 0 && (
+                  <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                    <Target className="w-3.5 h-3.5" />
+                    {activeSprint.plannedPoints} SP {t('dashboard.planned')}
+                  </span>
+                )}
+                {activeSprint.velocity !== undefined && (
+                  <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    {activeSprint.velocity} SP {t('dashboard.velocity')}
+                  </span>
+                )}
+                {activeSprint.goalMet && (
+                  <span className={`px-2 py-0.5 rounded-full font-medium ${GOAL_MET_CLASSES[activeSprint.goalMet]}`}>
+                    {t(`sprintDetail.goalMet_${activeSprint.goalMet}`)}
+                  </span>
+                )}
               </div>
             </div>
           ) : (
@@ -158,32 +175,68 @@ export default function Dashboard() {
           )}
         </Card>
 
-        {/* Team Capacity */}
-        <Card title={t('dashboard.teamCapacity')}>
-          {capacity.length > 0 ? (
-            <div className="space-y-2.5">
-              {capacity.map((c) => {
-                const member = members.find((m) => m.id === c.memberId)
-                if (!member) return null
-                const maxDays = 10
-                const pct = Math.round((c.availableDays / maxDays) * 100)
+        {/* Sprint History */}
+        <Card
+          title={t('dashboard.sprintHistory')}
+          action={
+            <Link to="/sprints" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+              {t('dashboard.all')} <ArrowRight className="w-3 h-3" />
+            </Link>
+          }
+        >
+          {recentSprints.length === 0 ? (
+            <p className="text-sm text-slate-400 dark:text-slate-500">{t('dashboard.noCompletedSprints')}</p>
+          ) : (
+            <div className="space-y-3">
+              {recentSprints.map((sp) => {
+                const velocity = sp.velocity ?? 0
+                const planned = sp.plannedPoints
+                const maxVal = Math.max(...recentSprints.map((s) => Math.max(s.velocity ?? 0, s.plannedPoints)), 1)
+                const barPct = Math.min((velocity / maxVal) * 100, 100)
+                const plannedPct = Math.min((planned / maxVal) * 100, 100)
+                const hitGoal = velocity > 0 && planned > 0 && velocity >= planned
                 return (
-                  <div key={c.memberId} className="flex items-center gap-3">
-                    <Avatar name={member.name} color={member.avatarColor} size="xs" />
-                    <span className="text-xs text-slate-600 dark:text-slate-400 w-24 shrink-0 truncate">{member.name}</span>
-                    <div className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-full h-2">
-                      <div
-                        className="h-2 rounded-full transition-all"
-                        style={{ width: `${Math.min(100, pct)}%`, backgroundColor: member.avatarColor }}
-                      />
+                  <div key={sp.id} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <Link
+                        to={`/sprints/${sp.id}`}
+                        className="text-xs font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 truncate"
+                      >
+                        {sp.name}
+                      </Link>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {sp.goalMet && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${GOAL_MET_CLASSES[sp.goalMet]}`}>
+                            {t(`sprintDetail.goalMet_${sp.goalMet}`)}
+                          </span>
+                        )}
+                        {velocity > 0 && (
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {velocity} SP
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-xs text-slate-500 dark:text-slate-400 w-12 text-right">{c.availableDays}T / {c.plannedPoints}SP</span>
+                    {(planned > 0 || velocity > 0) && (
+                      <div className="relative h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        {planned > 0 && (
+                          <div
+                            className="absolute inset-y-0 left-0 bg-slate-200 dark:bg-slate-700 rounded-full"
+                            style={{ width: `${plannedPct}%` }}
+                          />
+                        )}
+                        {velocity > 0 && (
+                          <div
+                            className={`absolute inset-y-0 left-0 rounded-full ${hitGoal ? 'bg-green-400' : 'bg-indigo-400'}`}
+                            style={{ width: `${barPct}%` }}
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}
             </div>
-          ) : (
-            <p className="text-sm text-slate-400">{t('dashboard.noCapacityData')}</p>
           )}
         </Card>
 

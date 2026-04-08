@@ -206,6 +206,24 @@ try {
 }
 
 // ─── Migrations (existing databases) ─────────────────────────────────────────
+// ─── Sprint metric columns ────────────────────────────────────────────────────
+const sprintCols = db.prepare('PRAGMA table_info(sprints)').all([]) as Array<{ name: string }>
+const sprintColNames = new Set(sprintCols.map((c) => c.name))
+if (!sprintColNames.has('goalMet'))          db.exec('ALTER TABLE sprints ADD COLUMN goalMet TEXT')
+if (!sprintColNames.has('completedItems'))   db.exec('ALTER TABLE sprints ADD COLUMN completedItems INTEGER')
+if (!sprintColNames.has('plannedItems'))     db.exec('ALTER TABLE sprints ADD COLUMN plannedItems INTEGER')
+if (!sprintColNames.has('teamSatisfaction')) db.exec('ALTER TABLE sprints ADD COLUMN teamSatisfaction INTEGER')
+if (!sprintColNames.has('impediments'))      db.exec("ALTER TABLE sprints ADD COLUMN impediments TEXT NOT NULL DEFAULT ''")
+if (!sprintColNames.has('capacityHours'))    db.exec('ALTER TABLE sprints ADD COLUMN capacityHours INTEGER')
+if (!sprintColNames.has('remainingHours'))   db.exec('ALTER TABLE sprints ADD COLUMN remainingHours INTEGER')
+if (!sprintColNames.has('averageBurndown'))  db.exec('ALTER TABLE sprints ADD COLUMN averageBurndown REAL')
+
+// ─── Retro Items migration ────────────────────────────────────────────────────
+const retroItemCols = db.prepare('PRAGMA table_info(retro_items)').all([]) as Array<{ name: string }>
+if (retroItemCols.length > 0 && !retroItemCols.some((c) => c.name === 'ticketUrl')) {
+  db.exec('ALTER TABLE retro_items ADD COLUMN ticketUrl TEXT')
+}
+
 // ─── Known Errors migration ───────────────────────────────────────────────────
 const knownErrorCols = db.prepare('PRAGMA table_info(known_errors)').all([]) as Array<{ name: string }>
 if (knownErrorCols.length > 0 && !knownErrorCols.some((c) => c.name === 'ticketNumber')) {

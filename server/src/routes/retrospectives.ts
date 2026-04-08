@@ -93,7 +93,7 @@ router.patch('/:id/items/:itemId', (req, res) => {
   }
   const updates: string[] = []
   const values: unknown[] = []
-  for (const f of ['text', 'votes', 'assigneeId', 'status', 'dueDate']) {
+  for (const f of ['text', 'votes', 'assigneeId', 'status', 'dueDate', 'ticketUrl']) {
     if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f] ?? null) }
   }
   if (updates.length > 0) {

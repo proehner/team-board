@@ -1,7 +1,7 @@
 import type {
   TeamMember, MemberRole,
   Skill, MemberSkill, SkillLevel,
-  Sprint, SprintStatus,
+  Sprint, SprintStatus, SprintGoalMet,
   ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig,
   Retrospective, RetroItemType, RetroItem,
   PulseCheck,
@@ -60,7 +60,24 @@ export const skillsApi = {
 
 // ─── Sprints ──────────────────────────────────────────────────────────────────
 type SprintCreateData = { name: string; goal: string; startDate: string; endDate: string; notes?: string }
-type SprintUpdateData = { name?: string; goal?: string; startDate?: string; endDate?: string; status?: SprintStatus; velocity?: number; notes?: string }
+type SprintUpdateData = {
+  name?: string
+  goal?: string
+  startDate?: string
+  endDate?: string
+  status?: SprintStatus
+  velocity?: number | null
+  plannedPoints?: number
+  plannedItems?: number | null
+  completedItems?: number | null
+  goalMet?: SprintGoalMet | null
+  teamSatisfaction?: number | null
+  impediments?: string
+  capacityHours?: number | null
+  remainingHours?: number | null
+  averageBurndown?: number | null
+  notes?: string
+}
 
 export const sprintsApi = {
   list:           () => get<Sprint[]>('/sprints'),
