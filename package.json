@@ -1,11 +1,12 @@
 {
-  "name": "team-lead",
+  "name": "team-dev-board",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:iis": "node -e \"require('child_process').execSync('npm run build',{stdio:'inherit',env:{...process.env,VITE_BASE_PATH:'/DevBoard/'}})\"",
     "preview": "vite preview",
     "server:dev": "npm run dev --prefix server",
     "server:build": "npm run build --prefix server",

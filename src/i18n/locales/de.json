@@ -368,7 +368,9 @@
     "statRejections": "Ablehnungen",
     "statTicketsDone": "Tickets erledigt",
     "statTicketComments": "Ticket-Komm.",
-    "serverUnreachable": "Server nicht erreichbar: "
+    "serverUnreachable": "Server nicht erreichbar: ",
+    "noConfigHint": "Keine Azure DevOps-Konfiguration vorhanden. Bitte richte die Verbindung ein, um Daten zu laden.",
+    "configure": "Konfigurieren"
   },
   "admin": {
     "pageTitle": "Administration",

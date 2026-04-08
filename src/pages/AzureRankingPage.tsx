@@ -128,9 +128,11 @@ function getNextLevelName(currentName: string) {
   return next ? `${icons[next]} ${next}` : ''
 }
 
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '')
+
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   const token = localStorage.getItem('teamlead_token')
-  const res   = await fetch(path, {
+  const res   = await fetch(`${API_BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -381,9 +383,10 @@ export default function AzureRankingPage() {
   const [search, setSearch]           = useState('')
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
   const [configStatus, setConfigStatus] = useState<ConfigStatus | null>(null)
-  const [showSetup, setShowSetup]     = useState(false)
-  const [detailDev, setDetailDev]     = useState<DevStats | null>(null)
-  const [loadError, setLoadError]     = useState<string | null>(null)
+  const [showSetup, setShowSetup]         = useState(false)
+  const [setupDismissed, setSetupDismissed] = useState(false)
+  const [detailDev, setDetailDev]         = useState<DevStats | null>(null)
+  const [loadError, setLoadError]         = useState<string | null>(null)
   const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null)
   // stable ref to always-current loadStats, so boot effect doesn't re-run on days change
   const loadStatsRef                  = useRef<(d?: number) => Promise<void>>(async () => {})
@@ -415,7 +418,11 @@ export default function AzureRankingPage() {
         setCacheStatus(status)
         if (!status.loading) {
           stopPolling()
-          if (status.hasData && !status.error) await loadStatsRef.current()
+          if (status.error) {
+            setLoadError(status.error)
+          } else if (status.hasData) {
+            await loadStatsRef.current()
+          }
         }
       } catch { stopPolling() }
     }, 2500)
@@ -495,10 +502,14 @@ export default function AzureRankingPage() {
       {/* Setup Modal */}
       {showSetup && (
         <SetupModal
-          showCancel={!!data}
-          onClose={() => setShowSetup(false)}
+          showCancel={true}
+          onClose={() => {
+            setShowSetup(false)
+            if (!configStatus?.configured) setSetupDismissed(true)
+          }}
           onSaved={(org, project) => {
             setConfigStatus({ configured: true, organization: org, project })
+            setSetupDismissed(false)
             setShowSetup(false)
             triggerLoad()
           }}
@@ -568,8 +579,18 @@ export default function AzureRankingPage() {
       {/* Error Banner */}
       {loadError && (
         <div style={{ background: 'rgba(248,81,73,.12)', border: '1px solid rgba(248,81,73,.35)', borderRadius: 10, color: '#f85149', padding: '.75rem 1rem', margin: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-          <span>{loadError}</span>
+          <span>⚠️ {loadError}</span>
           <button onClick={() => setLoadError(null)} style={{ background: 'none', border: 'none', color: '#f85149', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+        </div>
+      )}
+
+      {/* No-config Banner */}
+      {!configStatus?.configured && setupDismissed && (
+        <div style={{ background: 'rgba(210,153,34,.12)', border: '1px solid rgba(210,153,34,.35)', borderRadius: 10, color: '#d29922', padding: '.75rem 1rem', margin: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+          <span>⚙️ {t('azureRanking.noConfigHint')}</span>
+          <button onClick={() => setShowSetup(true)} style={{ background: 'rgba(210,153,34,.2)', border: '1px solid rgba(210,153,34,.5)', color: '#d29922', borderRadius: 6, padding: '.3rem .75rem', fontSize: '.85rem', fontWeight: 600, cursor: 'pointer' }}>
+            {t('azureRanking.configure')}
+          </button>
         </div>
       )}
 

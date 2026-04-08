@@ -10,9 +10,10 @@ import type {
 } from '@/types'
 import { getStoredToken } from '@/store/auth'
 
-// Im lokalen Dev-Betrieb leer (Proxy via Vite).
-// Für GitHub Pages: VITE_API_URL=https://mein-server.example.com setzen.
-const BASE = (import.meta.env.VITE_API_URL ?? '') + '/api'
+// import.meta.env.BASE_URL is set by Vite from the 'base' config option.
+// Root deployment ('/'):        BASE_URL = '/'  → API at '/api'
+// Subdirectory ('/board/'):     BASE_URL = '/board/' → API at '/board/api'
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api'
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getStoredToken()

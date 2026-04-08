@@ -18,7 +18,7 @@ import softwareRouter from './routes/software'
 import knownErrorsRouter from './routes/knownErrors'
 
 const app = express()
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001
+const PORT: string | number = process.env.PORT ?? 3001
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 // Configure allowed origin via environment variable.
@@ -31,6 +31,23 @@ app.use(cors({
   credentials: true,
 }))
 app.use(express.json())
+
+// ─── IIS sub-application prefix handling ──────────────────────────────────────
+// When running under iisnode as an IIS Application (e.g. at /board/),
+// req.url contains the full path including the application prefix.
+// Express routes expect URLs without that prefix, so we strip it here.
+const APP_BASE_PATH = (process.env.APP_BASE_PATH || '').replace(/\/$/, '')
+if (APP_BASE_PATH) {
+  app.use((req, _res, next) => {
+    if (req.url.startsWith(APP_BASE_PATH)) {
+      req.url = req.url.slice(APP_BASE_PATH.length) || '/'
+    }
+    if (req.originalUrl.startsWith(APP_BASE_PATH)) {
+      req.originalUrl = req.originalUrl.slice(APP_BASE_PATH.length) || '/'
+    }
+    next()
+  })
+}
 
 // ─── Public Routes (no token required) ───────────────────────────────────────
 app.use('/api/auth', authRouter)

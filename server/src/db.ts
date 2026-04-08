@@ -18,6 +18,19 @@ if (fs.existsSync(lockDir)) {
 
 // Create a backup of the database (if it exists)
 if (fs.existsSync(DB_PATH)) {
+  // Remove backups older than 30 days
+  const maxAgeMs = 30 * 24 * 60 * 60 * 1000
+  const backupPrefix = path.basename(DB_PATH) + '.backup-'
+  const dir = path.dirname(DB_PATH)
+  for (const file of fs.readdirSync(dir)) {
+    if (!file.startsWith(backupPrefix)) continue
+    const ts = parseInt(file.slice(backupPrefix.length), 10)
+    if (!isNaN(ts) && Date.now() - ts > maxAgeMs) {
+      fs.unlinkSync(path.join(dir, file))
+      console.info(`Old database backup removed: ${file}`)
+    }
+  }
+
   const backupPath = `${DB_PATH}.backup-${Date.now()}`
   fs.copyFileSync(DB_PATH, backupPath)
   console.info(`Database backup created: ${backupPath}`)
