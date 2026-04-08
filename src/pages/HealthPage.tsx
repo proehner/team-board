@@ -33,7 +33,6 @@ export default function HealthPage() {
   const retrospectives = useStore((s) => s.retrospectives)
 
   const activeMembers = members.filter((m) => m.isActive)
-  const activeSprint = sprints.find((s) => s.status === 'Aktiv')
   const [absentMemberId, setAbsentMemberId] = useState<string | null>(null)
   const [expandedSection, setExpandedSection] = useState<string | null>('busfactor')
 
@@ -55,14 +54,22 @@ export default function HealthPage() {
   const criticalSkills = skillRisks.filter((s) => s.factor <= 1)
   const atRiskSkills = skillRisks.filter((s) => s.factor === 2)
 
-  const workloads = activeSprint
-    ? activeSprint.capacity.map((c) => {
-        const member = activeMembers.find((m) => m.id === c.memberId)
-        return member ? { member, availableDays: c.availableDays, plannedPoints: c.plannedPoints } : null
-      }).filter(Boolean) as { member: TeamMember; availableDays: number; plannedPoints: number }[]
-    : []
-  const maxPlanned = Math.max(...workloads.map((w) => w.plannedPoints), 1)
-  const avgPlanned = workloads.length ? workloads.reduce((s, w) => s + w.plannedPoints, 0) / workloads.length : 0
+  const completedSprints = sprints
+    .filter((s) => s.status === 'Abgeschlossen')
+    .sort((a, b) => b.endDate.localeCompare(a.endDate))
+
+  const sprintsWithVelocity = completedSprints.filter((s) => s.velocity !== undefined && s.velocity > 0)
+  const avgVelocity = sprintsWithVelocity.length
+    ? Math.round(sprintsWithVelocity.reduce((s, sp) => s + (sp.velocity ?? 0), 0) / sprintsWithVelocity.length)
+    : 0
+  const maxVelocity = Math.max(...sprintsWithVelocity.map((s) => Math.max(s.velocity ?? 0, s.plannedPoints)), 1)
+
+  const sprintsWithGoalMet = completedSprints.filter((s) => s.goalMet !== undefined && s.goalMet !== null)
+  const goalMetCount = sprintsWithGoalMet.filter((s) => s.goalMet === 'Ja').length
+  const goalPartialCount = sprintsWithGoalMet.filter((s) => s.goalMet === 'Teilweise').length
+  const goalMetRate = sprintsWithGoalMet.length
+    ? Math.round(((goalMetCount + goalPartialCount * 0.5) / sprintsWithGoalMet.length) * 100)
+    : null
 
   const absentMember = absentMemberId ? activeMembers.find((m) => m.id === absentMemberId) : null
   const affectedAssignments = absentMemberId
@@ -151,7 +158,7 @@ export default function HealthPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{skill.name}</span>
-                <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">{skill.category}</span>
+                <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">{skill.categories.join(', ')}</span>
               </div>
               <div className="flex gap-1.5 flex-wrap justify-end">
                 {experts.map((m) => (
@@ -168,29 +175,67 @@ export default function HealthPage() {
         </div>
       </Section>
 
-      {/* Workload */}
-      <Section id="workload" title={`${t('health.workloadDistribution')}${activeSprint ? ` — ${activeSprint.name}` : ''}`} badge={!activeSprint ? t('health.noActiveSprint') : undefined} badgeColor="slate" expanded={expandedSection === 'workload'} onToggle={() => toggleSection('workload')}>
-        {activeSprint ? (
-          <div className="space-y-3 pt-2">
-            {workloads.length === 0 && <p className="text-sm text-slate-400">{t('health.noCapacityData')}</p>}
-            {workloads.map(({ member, plannedPoints, availableDays }) => {
-              const deviation = avgPlanned > 0 ? ((plannedPoints - avgPlanned) / avgPlanned) * 100 : 0
-              const barColor = Math.abs(deviation) > 30 ? 'bg-amber-400' : 'bg-indigo-400'
-              return (
-                <div key={member.id} className="flex items-center gap-3">
-                  <Avatar name={member.name} color={member.avatarColor} size="xs" />
-                  <span className="text-xs text-slate-600 dark:text-slate-400 w-28 shrink-0 truncate">{member.name}</span>
-                  <div className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-full h-2.5">
-                    <div className={`h-2.5 rounded-full ${barColor}`} style={{ width: `${Math.min((plannedPoints / maxPlanned) * 100, 100)}%` }} />
-                  </div>
-                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300 w-20 text-right shrink-0">{plannedPoints} SP / {availableDays} T</span>
-                  {Math.abs(deviation) > 30 && <span className="text-xs text-amber-600 w-12 text-right shrink-0">{deviation > 0 ? '+' : ''}{Math.round(deviation)}%</span>}
+      {/* Sprint Delivery */}
+      <Section id="workload" title={t('health.sprintDelivery')} expanded={expandedSection === 'workload'} onToggle={() => toggleSection('workload')}>
+        {completedSprints.length === 0 ? (
+          <p className="text-sm text-slate-400 pt-2">{t('health.noCompletedSprints')}</p>
+        ) : (
+          <div className="space-y-4 pt-2">
+            {/* Goal achievement summary */}
+            {sprintsWithGoalMet.length > 0 && (
+              <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                <span>{t('health.goalAchievementRate')}:</span>
+                <div className="flex gap-2 flex-wrap">
+                  <span className="text-green-600 font-medium">{goalMetCount}× {t('sprintDetail.goalMet_Ja')}</span>
+                  <span className="text-amber-600 font-medium">{goalPartialCount}× {t('sprintDetail.goalMet_Teilweise')}</span>
+                  <span className="text-red-500 font-medium">{sprintsWithGoalMet.filter((s) => s.goalMet === 'Nein').length}× {t('sprintDetail.goalMet_Nein')}</span>
+                  {goalMetRate !== null && <span className="text-slate-400">({goalMetRate}%)</span>}
                 </div>
-              )
-            })}
-            {workloads.length > 0 && <p className="text-xs text-slate-400 dark:text-slate-500 pt-1">{t('health.avgSp', { avg: Math.round(avgPlanned) })}</p>}
+              </div>
+            )}
+            {/* Velocity bars */}
+            <div className="space-y-2.5">
+              {completedSprints.slice(0, 6).map((sp) => {
+                const velocity = sp.velocity ?? 0
+                const planned = sp.plannedPoints
+                const barPct = maxVelocity > 0 ? Math.min((velocity / maxVelocity) * 100, 100) : 0
+                const plannedPct = maxVelocity > 0 ? Math.min((planned / maxVelocity) * 100, 100) : 0
+                const hitGoal = velocity > 0 && planned > 0 && velocity >= planned
+                return (
+                  <div key={sp.id} className="flex items-center gap-3">
+                    <span className="text-xs text-slate-600 dark:text-slate-400 w-24 shrink-0 truncate">{sp.name}</span>
+                    <div className="flex-1 relative h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      {planned > 0 && (
+                        <div className="absolute inset-y-0 left-0 bg-slate-200 dark:bg-slate-700 rounded-full" style={{ width: `${plannedPct}%` }} />
+                      )}
+                      {velocity > 0 && (
+                        <div
+                          className={`absolute inset-y-0 left-0 rounded-full ${hitGoal ? 'bg-green-400' : 'bg-indigo-400'}`}
+                          style={{ width: `${barPct}%` }}
+                        />
+                      )}
+                    </div>
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300 w-14 text-right shrink-0">
+                      {velocity > 0 ? `${velocity} SP` : '—'}
+                    </span>
+                    {sp.goalMet && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 font-medium ${
+                        sp.goalMet === 'Ja' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                        : sp.goalMet === 'Teilweise' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      }`}>
+                        {t(`sprintDetail.goalMet_${sp.goalMet}`)}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            {avgVelocity > 0 && (
+              <p className="text-xs text-slate-400 dark:text-slate-500">{t('health.avgVelocity')}: {avgVelocity} SP</p>
+            )}
           </div>
-        ) : <p className="text-sm text-slate-400 pt-2">{t('health.noActiveSprint')}.</p>}
+        )}
       </Section>
 
       {/* Absence Simulator */}
@@ -226,7 +271,7 @@ export default function HealthPage() {
                         <div key={sk.id} className="bg-red-50 border border-red-200 rounded-lg p-3 mb-2">
                           <div className="flex justify-between mb-1.5">
                             <span className="text-xs font-semibold text-red-700">{sk.name}</span>
-                            <span className="text-xs text-red-400">{sk.category}</span>
+                            <span className="text-xs text-red-400">{sk.categories.join(', ')}</span>
                           </div>
                           {covers.length > 0 ? (
                             <div className="flex items-center gap-1 flex-wrap">

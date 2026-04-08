@@ -120,135 +120,146 @@ The application is then available at **<http://localhost:3001>**.
 ### IIS Prerequisites
 
 - Windows Server with IIS installed
-- **IIS Module:** [iisnode](https://github.com/Azure/iisnode/releases) installed  
-  (allows IIS to host Node.js processes as IIS applications)
-- **URL Rewrite Module** for IIS installed  
-  (Download: <https://www.iis.net/downloads/microsoft/url-rewrite>)
-- Node.js installed on the server (in PATH)
+- **iisnode** installed: <https://github.com/Azure/iisnode/releases>
+- **URL Rewrite Module** installed: <https://www.iis.net/downloads/microsoft/url-rewrite>
+- Node.js installed on the server and available in the PATH of the IIS application pool user
 
-### Step 1 – Create a Build (on dev machine or server)
+### Architecture
+
+iisnode acts as an IIS handler that forwards HTTP requests directly to a Node.js process via a named pipe — no separate TCP port needed. The `web.config` at the application root controls routing:
+
+```txt
+Browser → IIS → URL Rewrite
+                  ├── /assets/*   → dist/assets/*  (static, IIS serves directly)
+                  ├── /api/*      → iisnode → Node.js/Express
+                  └── /*          → iisnode → Node.js → index.html (SPA)
+```
+
+> **Critical:** The deployment directory **must be configured as an IIS Application**, not just a virtual directory. Without this, iisnode is never invoked. See Step 3.
+
+---
+
+### Step 1 – Create a Build
+
+The frontend must be built with the correct subpath so that asset URLs and API calls include the `/board/` prefix.
 
 ```bash
+# Install dependencies (first time or after changes)
 npm install
-npm run build
-cd server && npm install
-cd .. && npm run server:build
+cd server && npm install && cd ..
+
+# Build frontend for IIS subdirectory deployment
+npm run build:iis
+
+# Build server
+npm run server:build
 ```
+
+`npm run build:iis` sets `VITE_BASE_PATH=/board/` automatically. To deploy under a different alias, adjust the `build:iis` script in `package.json` accordingly.
 
 ### Step 2 – Transfer Files to the Server
 
-The following directories/files are required:
+Copy the following to `C:\inetpub\wwwroot\board\` (or your target directory):
 
 ```txt
-team-lead/
-├── dist/                    ← rendered frontend
+board/
+├── dist/                    ← frontend build output (from npm run build:iis)
 ├── server/
-│   ├── dist/                ← compiled server
-│   ├── data/                ← database directory (must be writable)
+│   ├── dist/                ← compiled server (from npm run server:build)
+│   ├── data/                ← database directory (must be writable by IIS app pool)
 │   └── node_modules/        ← server dependencies
-└── web.config               ← IIS configuration (see below)
+├── server/.env              ← server environment file (JWT_SECRET etc.)
+└── web.config               ← copy from repo root, adjust DB_PATH
 ```
 
-### Step 3 – Create `web.config`
+The `web.config` is included in the repository root — copy it to the deployment directory and adjust the `DB_PATH` value.
 
-Create the file `web.config` in the **root directory** of the application:
+### Step 3 – Configure as IIS Application (mandatory)
+
+> This step is **required**. iisnode only works within an IIS Application context. A plain virtual directory is not sufficient.
+
+1. Open **IIS Manager** (`inetmgr`)
+2. Expand the tree: **Sites → Default Web Site**
+3. If the `board` folder already exists as a virtual directory: right-click → **Convert to Application**  
+   If it does not exist yet: right-click on **Default Web Site** → **Add Application...**
+   - **Alias:** `board`
+   - **Physical path:** `C:\inetpub\wwwroot\board`
+4. In the Application Pool settings:
+   - `.NET CLR Version:` **No Managed Code**
+   - **Pipeline mode:** Integrated
+5. Click **OK**
+
+### Step 4 – Set Permissions
+
+The IIS application pool user (e.g. `IIS AppPool\board` or `DefaultAppPool`) needs:
+
+- **Read** access on the entire `board/` directory
+- **Write** access on `board/server/data/` (SQLite database file)
+
+```powershell
+# Example (adjust user name as needed):
+icacls "C:\inetpub\wwwroot\board\server\data" /grant "IIS AppPool\board:(OI)(CI)M"
+```
+
+### Step 5 – Configure `web.config`
+
+The `web.config` from the repository root is already correct. After copying, only adjust the `DB_PATH`:
 
 ```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <system.webServer>
-
-    <!-- iisnode: host the Node.js process -->
-    <handlers>
-      <add name="iisnode"
-           path="server/dist/index.js"
-           verb="*"
-           modules="iisnode" />
-    </handlers>
-
-    <!-- URL Rewrite: route all requests to the Node server -->
-    <rewrite>
-      <rules>
-        <!-- Serve static files (frontend bundle) directly -->
-        <rule name="StaticContent" stopProcessing="true">
-          <match url="^dist/(.+)" />
-          <action type="Rewrite" url="dist/{R:1}" />
-        </rule>
-
-        <!-- Route all other requests to iisnode (Node.js) -->
-        <rule name="NodeApp">
-          <match url=".*" />
-          <action type="Rewrite" url="server/dist/index.js" />
-        </rule>
-      </rules>
-    </rewrite>
-
-    <!-- iisnode configuration -->
-    <iisnode
-      nodeProcessCommandLine="node"
-      watchedFiles="*.js"
-      loggingEnabled="true"
-      logDirectory="iisnode"
-      debuggingEnabled="false" />
-
-    <!-- Disable error pages (Node.js handles them) -->
-    <httpErrors existingResponse="PassThrough" />
-
-  </system.webServer>
-
-  <!-- Environment variables for the Node.js process -->
-  <appSettings>
-    <add key="PORT" value="3001" />
-    <add key="DB_PATH" value="C:\inetpub\wwwroot\team-lead\server\data\teamlead.db" />
-  </appSettings>
-</configuration>
+<appSettings>
+  <add key="DB_PATH" value="C:\inetpub\wwwroot\board\server\data\teamlead.db" />
+</appSettings>
 ```
 
-> **Note:** Adjust the `DB_PATH` value to the actual installation path.
+> Do **not** set `PORT` — iisnode ignores it and communicates via a named pipe instead.
 
-### Step 4 – Configure the IIS Application
+### Step 6 – Verify
 
-1. Open **IIS Manager**
-2. Under **Sites** → desired website → **Add Application**
-   - Alias: e.g. `team-lead`
-   - Physical path: path to the root directory (where `web.config` is located)
-3. Configure the **Application Pool**:
-   - `.NET CLR Version`: **No Managed Code**
-   - Pipeline mode: **Integrated**
-4. Set **Permissions**:
-   - The application pool user (e.g. `IIS AppPool\team-lead`) needs **write access** to the `server/data/` directory
-
-### Step 5 – Verify Accessibility
-
-After setup, the application is reachable at:
+After restarting the IIS site, the application is available at:
 
 ```txt
-http://<servername>/team-lead/
+http://<servername>/board/
 ```
 
-or, if configured as the root site:
+Check that iisnode is working — a log directory should appear after the first request:
 
 ```txt
-http://<servername>/
+C:\inetpub\wwwroot\board\iisnode-logs\
 ```
+
+If this directory does not appear, iisnode is not being invoked. Most common cause: `board` is not configured as an IIS Application (see Step 3).
+
+---
+
+### Redeployment (after code changes)
+
+```bash
+# Rebuild
+npm run build:iis
+npm run server:build
+
+# Copy to IIS (adjust path as needed)
+xcopy /E /Y dist\ C:\inetpub\wwwroot\board\dist\
+xcopy /E /Y server\dist\ C:\inetpub\wwwroot\board\server\dist\
+
+# Restart the IIS application (recycles the Node.js process)
+iisreset /noforce
+```
+
+---
 
 ### Alternative: PM2 as a Windows Service (without iisnode)
 
-If iisnode is not desired, PM2 can be used as a Windows service:
+If iisnode is not available, PM2 can manage the Node.js process as a Windows service with IIS acting as a reverse proxy.
 
 ```bash
-# Install PM2 globally
 npm install -g pm2 pm2-windows-startup
-
-# Register the server as a service
-pm2 start server/dist/index.js --name "team-lead" -e server/logs/err.log -o server/logs/out.log
+pm2 start server/dist/index.js --name "team-board"
 pm2 save
 pm2-startup install
-
-# Configure IIS as reverse proxy (forwards port 80 → 3001)
 ```
 
-`web.config` for the IIS reverse proxy (alternative to iisnode):
+`web.config` for the reverse proxy (requires the ARR module):
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -259,17 +270,12 @@ pm2-startup install
         <rule name="ReverseProxy" stopProcessing="true">
           <match url="(.*)" />
           <action type="Rewrite" url="http://localhost:3001/{R:1}" />
-          <serverVariables>
-            <set name="HTTP_X_ORIGINAL_URL" value="{R:0}" />
-          </serverVariables>
         </rule>
       </rules>
     </rewrite>
   </system.webServer>
 </configuration>
 ```
-
-> **Requirement:** The ARR (Application Request Routing) module for IIS must be installed.
 
 ---
 

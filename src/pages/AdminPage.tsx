@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Users, Plus, Pencil, Trash2, ShieldCheck, User, Loader2, Key, Monitor } from 'lucide-react'
-import { adminApi } from '@/api/client'
-import type { AdminUser, Software } from '@/types'
+import { Users, Plus, Pencil, Trash2, ShieldCheck, User, Loader2, Key, Monitor, UsersRound } from 'lucide-react'
+import { adminApi, teamsApi } from '@/api/client'
+import type { AdminUser, Software, Team } from '@/types'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useAuthStore } from '@/store/auth'
@@ -53,7 +53,8 @@ export default function AdminPage() {
   ]
 
   const currentUser = useAuthStore((s) => s.user)
-  const [activeTab, setActiveTab] = useState<'users' | 'software'>('users')
+  const setTeams    = useAuthStore((s) => s.setTeams)
+  const [activeTab, setActiveTab] = useState<'users' | 'software' | 'teams'>('users')
 
   // ─── Users ──────────────────────────────────────────────────────────────────
   const [users, setUsers]         = useState<AdminUser[]>([])
@@ -78,6 +79,53 @@ export default function AdminPage() {
   const [swSaving,       setSwSaving]       = useState(false)
   const [swDeleteTarget, setSwDeleteTarget] = useState<Software | null>(null)
 
+  // ─── Teams ───────────────────────────────────────────────────────────────────
+  const [teamList,        setTeamList]        = useState<Team[]>([])
+  const [teamModalOpen,   setTeamModalOpen]   = useState(false)
+  const [editTeam,        setEditTeam]        = useState<Team | null>(null)
+  const [teamForm,        setTeamForm]        = useState({ name: '', description: '' })
+  const [teamFormError,   setTeamFormError]   = useState('')
+  const [teamSaving,      setTeamSaving]      = useState(false)
+  const [teamDeleteTarget, setTeamDeleteTarget] = useState<Team | null>(null)
+
+  async function loadTeams() {
+    try {
+      const data = await teamsApi.list()
+      setTeamList(data)
+      setTeams(data)
+    } catch { /* ignore */ }
+  }
+
+  async function saveTeam() {
+    if (!teamForm.name.trim()) { setTeamFormError(t('teams.teamName') + ' erforderlich / required.'); return }
+    setTeamSaving(true); setTeamFormError('')
+    try {
+      if (editTeam) {
+        await teamsApi.update(editTeam.id, teamForm)
+      } else {
+        await teamsApi.create(teamForm)
+      }
+      await loadTeams()
+      setTeamModalOpen(false)
+    } catch (err) {
+      setTeamFormError(err instanceof Error ? err.message : t('admin.errorLoading'))
+    } finally {
+      setTeamSaving(false)
+    }
+  }
+
+  async function confirmDeleteTeam() {
+    if (!teamDeleteTarget) return
+    try {
+      await teamsApi.delete(teamDeleteTarget.id)
+      await loadTeams()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t('teams.lastTeamError'))
+    } finally {
+      setTeamDeleteTarget(null)
+    }
+  }
+
   async function loadUsers() {
     try {
       setLoading(true)
@@ -91,7 +139,7 @@ export default function AdminPage() {
     }
   }
 
-  useEffect(() => { loadUsers() }, [])
+  useEffect(() => { loadUsers(); loadTeams() }, [])
 
   function openCreate() {
     setEditUser(null)
@@ -241,39 +289,40 @@ export default function AdminPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400">{t('admin.pageSubtitle')}</p>
           </div>
         </div>
-        {activeTab === 'users' ? (
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {t('admin.newUser')}
+        {activeTab === 'users' && (
+          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
+            <Plus className="w-4 h-4" /> {t('admin.newUser')}
           </button>
-        ) : (
-          <button
-            onClick={openCreateSw}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {t('admin.software.new')}
+        )}
+        {activeTab === 'software' && (
+          <button onClick={openCreateSw} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
+            <Plus className="w-4 h-4" /> {t('admin.software.new')}
+          </button>
+        )}
+        {activeTab === 'teams' && (
+          <button onClick={() => { setEditTeam(null); setTeamForm({ name: '', description: '' }); setTeamFormError(''); setTeamModalOpen(true) }} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
+            <Plus className="w-4 h-4" /> {t('teams.createTeam')}
           </button>
         )}
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
-        {(['users', 'software'] as const).map((tab) => (
+        {([
+          { key: 'users',    icon: <Users className="w-4 h-4" />,       label: t('admin.tab.users') },
+          { key: 'teams',    icon: <UsersRound className="w-4 h-4" />,  label: t('teams.manage') },
+          { key: 'software', icon: <Monitor className="w-4 h-4" />,     label: t('admin.tab.software') },
+        ] as const).map(({ key, icon, label }) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            key={key}
+            onClick={() => setActiveTab(key)}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              activeTab === tab
+              activeTab === key
                 ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
                 : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >
-            {tab === 'users' ? <Users className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
-            {tab === 'users' ? t('admin.tab.users') : t('admin.tab.software')}
+            {icon}{label}
           </button>
         ))}
       </div>
@@ -433,6 +482,102 @@ export default function AdminPage() {
           )}
         </div>
       )}
+
+      {/* ─── Teams Tab ──────────────────────────────────────────────────────── */}
+      {activeTab === 'teams' && (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden overflow-x-auto">
+          {teamList.length === 0 ? (
+            <div className="py-16 text-center text-slate-400">
+              <UsersRound className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">{t('teams.selectTitle')}</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm min-w-[400px]">
+              <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                <tr>
+                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('teams.teamName')}</th>
+                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('teams.description')}</th>
+                  <th className="px-5 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {teamList.map((team) => (
+                  <tr key={team.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center shrink-0 text-indigo-600 dark:text-indigo-400 text-xs font-bold">
+                          {team.name.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="font-medium text-slate-800 dark:text-slate-200">{team.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{team.description ?? '—'}</td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-1 justify-end">
+                        <button
+                          onClick={() => { setEditTeam(team); setTeamForm({ name: team.name, description: team.description ?? '' }); setTeamFormError(''); setTeamModalOpen(true) }}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-lg transition-colors"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setTeamDeleteTarget(team)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Team Create / Edit Modal */}
+      <Modal isOpen={teamModalOpen} onClose={() => setTeamModalOpen(false)} title={editTeam ? t('common.edit') : t('teams.createTeam')}>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('teams.teamName')}</label>
+            <input
+              type="text"
+              value={teamForm.name}
+              onChange={(e) => setTeamForm((p) => ({ ...p, name: e.target.value }))}
+              className="form-input w-full"
+              placeholder="Frontend-Team"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('teams.description')}</label>
+            <input
+              type="text"
+              value={teamForm.description}
+              onChange={(e) => setTeamForm((p) => ({ ...p, description: e.target.value }))}
+              className="form-input w-full"
+              placeholder={t('teams.description')}
+            />
+          </div>
+          {teamFormError && <p className="text-sm text-red-600">{teamFormError}</p>}
+          <div className="flex justify-end gap-3 pt-1">
+            <button onClick={() => setTeamModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">{t('common.cancel')}</button>
+            <button onClick={saveTeam} disabled={teamSaving} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+              {teamSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {t('common.save')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Team Delete Confirm */}
+      <ConfirmDialog
+        isOpen={!!teamDeleteTarget}
+        title={t('common.delete')}
+        message={`${t('teams.deleteConfirm')} "${teamDeleteTarget?.name}"?`}
+        onConfirm={confirmDeleteTeam}
+        onClose={() => setTeamDeleteTarget(null)}
+      />
 
       {/* Create / Edit Modal */}
       <Modal

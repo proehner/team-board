@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
+import { dbGet } from '../db'
 
 // ─── JWT Secret ───────────────────────────────────────────────────────────────
 // No fallback: if the environment variable is missing, the server will not start.
@@ -42,6 +43,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthUser
+      teamId?: string
     }
   }
 }
@@ -71,6 +73,24 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     res.status(403).json({ error: 'Insufficient permissions' })
     return
   }
+  next()
+}
+
+// ─── requireTeam ─────────────────────────────────────────────────────────────
+// Validates the X-Team-ID header and attaches teamId to req.
+// Must be used after requireAuth.
+export function requireTeam(req: Request, res: Response, next: NextFunction): void {
+  const teamId = req.headers['x-team-id'] as string | undefined
+  if (!teamId) {
+    res.status(400).json({ error: 'X-Team-ID header required' })
+    return
+  }
+  const team = dbGet<{ id: string }>('SELECT id FROM teams WHERE id = ?', [teamId])
+  if (!team) {
+    res.status(404).json({ error: 'Team not found' })
+    return
+  }
+  req.teamId = teamId
   next()
 }
 

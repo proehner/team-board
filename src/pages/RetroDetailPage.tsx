@@ -1,24 +1,26 @@
-import { useState, useRef } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useStore } from '@/store'
 import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
 import Badge from '@/components/ui/Badge'
+import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { formatDate } from '@/utils/date'
 import {
   ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Lock, Unlock,
-  Edit2, Check, X,
+  Edit2, Check, X, ExternalLink, Link2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { RetroItemType, RetroItemStatus, RetroItem, TeamMember } from '@/types'
 
-const STATUS_OPTIONS: RetroItemStatus[] = ['Offen', 'InBearbeitung', 'Erledigt']
+const STATUS_OPTIONS: RetroItemStatus[] = ['Offen', 'InBearbeitung', 'Erledigt', 'Extern']
 
-const STATUS_VARIANTS: Record<RetroItemStatus, 'default' | 'warning' | 'success'> = {
+const STATUS_VARIANTS: Record<RetroItemStatus, 'default' | 'warning' | 'success' | 'info'> = {
   Offen: 'default',
   InBearbeitung: 'warning',
   Erledigt: 'success',
+  Extern: 'info',
 }
 
 export default function RetroDetailPage() {
@@ -31,6 +33,7 @@ export default function RetroDetailPage() {
   ]
 
   const { retroId } = useParams<{ retroId: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const members = useStore((s) => s.members)
   const sprints = useStore((s) => s.sprints)
   const retrospectives = useStore((s) => s.retrospectives)
@@ -44,6 +47,17 @@ export default function RetroDetailPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [newTexts, setNewTexts] = useState<Partial<Record<RetroItemType, string>>>({})
+
+  const dialogItemId = searchParams.get('item')
+  const dialogItem = retro?.items.find((i) => i.id === dialogItemId) ?? null
+
+  function closeDialog() {
+    setSearchParams((prev) => { prev.delete('item'); return prev }, { replace: true })
+  }
+
+  function openDialog(itemId: string) {
+    setSearchParams((prev) => { prev.set('item', itemId); return prev }, { replace: true })
+  }
 
   if (!retro) {
     return (
@@ -139,6 +153,7 @@ export default function RetroDetailPage() {
                     onUpdate={(data) => updateRetroItem(retro.id, item.id, data)}
                     onDelete={() => setDeleteTarget(item.id)}
                     onVote={(delta) => voteRetroItem(retro.id, item.id, delta)}
+                    onOpenDialog={() => openDialog(item.id)}
                     colColor={col.color}
                   />
                 ))}
@@ -174,6 +189,16 @@ export default function RetroDetailPage() {
         message={t('retroDetail.deleteItemConfirm')}
         confirmLabel={t('common.delete')}
       />
+
+      {dialogItem && (
+        <RetroItemDialog
+          item={dialogItem}
+          members={members}
+          isFinalized={retro.isFinalized}
+          onUpdate={(data) => updateRetroItem(retro.id, dialogItem.id, data)}
+          onClose={closeDialog}
+        />
+      )}
     </div>
   )
 }
@@ -185,18 +210,30 @@ interface RetroItemCardProps {
   onUpdate: (data: Partial<RetroItem>) => void
   onDelete: () => void
   onVote: (delta: 1 | -1) => void
+  onOpenDialog: () => void
   colColor: string
 }
 
-function RetroItemCard({ item, members, isFinalized, onUpdate, onDelete, onVote, colColor }: RetroItemCardProps) {
+function RetroItemCard({ item, members, isFinalized, onUpdate, onDelete, onVote, onOpenDialog, colColor }: RetroItemCardProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(item.text)
+  const [copied, setCopied] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   function saveEdit() {
     if (editText.trim()) onUpdate({ text: editText.trim() })
     setEditing(false)
+  }
+
+  function handleCopyLink() {
+    const hash = window.location.hash.split('?')[0]
+    const url = `${window.location.origin}${window.location.pathname}${hash}?item=${item.id}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+    onOpenDialog()
   }
 
   return (
@@ -263,6 +300,27 @@ function RetroItemCard({ item, members, isFinalized, onUpdate, onDelete, onVote,
             disabled={isFinalized}
             className="w-full text-xs border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white dark:bg-slate-900 dark:text-slate-300"
           />
+          <div className="flex items-center gap-1.5">
+            <input
+              type="url"
+              placeholder={t('retroDetail.ticketUrlPlaceholder')}
+              value={item.ticketUrl ?? ''}
+              onChange={(e) => onUpdate({ ticketUrl: e.target.value || null })}
+              disabled={isFinalized}
+              className="flex-1 text-xs border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white dark:bg-slate-900 dark:text-slate-300"
+            />
+            {item.ticketUrl && (
+              <a
+                href={item.ticketUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1 rounded text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors flex-shrink-0"
+                title={t('retroDetail.openTicket')}
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
+          </div>
         </div>
       )}
 
@@ -288,6 +346,15 @@ function RetroItemCard({ item, members, isFinalized, onUpdate, onDelete, onVote,
           </button>
         </div>
         <div className="flex gap-1">
+          {item.type === 'Aktionspunkt' && (
+            <button
+              onClick={handleCopyLink}
+              className={`p-1 rounded transition-colors ${copied ? 'text-green-500' : 'text-slate-300 dark:text-slate-600 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-slate-800'}`}
+              title={t('retroDetail.copyLink')}
+            >
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Link2 className="w-3.5 h-3.5" />}
+            </button>
+          )}
           {!isFinalized && (
             <>
               <button
@@ -307,5 +374,196 @@ function RetroItemCard({ item, members, isFinalized, onUpdate, onDelete, onVote,
         </div>
       </div>
     </div>
+  )
+}
+
+interface RetroItemDialogProps {
+  item: RetroItem
+  members: TeamMember[]
+  isFinalized: boolean
+  onUpdate: (data: Partial<RetroItem>) => void
+  onClose: () => void
+}
+
+function RetroItemDialog({ item, members, isFinalized, onUpdate, onClose }: RetroItemDialogProps) {
+  const { t } = useTranslation()
+  const [editText, setEditText] = useState(item.text)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    setEditText(item.text)
+  }, [item.id])
+
+  function saveText() {
+    const trimmed = editText.trim()
+    if (trimmed && trimmed !== item.text) onUpdate({ text: trimmed })
+  }
+
+  function handleCopyLink() {
+    const hash = window.location.hash.split('?')[0]
+    const url = `${window.location.origin}${window.location.pathname}${hash}?item=${item.id}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  const assignee = members.find((m) => m.id === item.assigneeId)
+
+  return (
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={t('retroDetail.actionItemDetail')}
+      size="md"
+      footer={
+        <div className="flex items-center justify-between w-full">
+          <button
+            onClick={handleCopyLink}
+            className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
+              copied
+                ? 'text-green-600 bg-green-50'
+                : 'text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-700'
+            }`}
+          >
+            {copied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />}
+            {copied ? t('retroDetail.linkCopied') : t('retroDetail.copyLink')}
+          </button>
+          <Button variant="secondary" onClick={onClose}>{t('common.close')}</Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        {/* Text */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+            {t('retroDetail.actionItems')}
+          </label>
+          {isFinalized ? (
+            <p className="text-sm text-slate-800 dark:text-slate-200 leading-snug">{item.text}</p>
+          ) : (
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onBlur={saveText}
+              rows={3}
+              className="w-full text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white dark:bg-slate-900 dark:text-slate-100 resize-none"
+            />
+          )}
+        </div>
+
+        {/* Status */}
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-wide w-24 shrink-0">
+            {t('retroDetail.status')}
+          </label>
+          <div className="flex items-center gap-2">
+            <select
+              value={item.status}
+              onChange={(e) => onUpdate({ status: e.target.value as RetroItemStatus })}
+              disabled={isFinalized}
+              className="text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white dark:bg-slate-900 dark:text-slate-300"
+            >
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>{t(`retroItemStatus.${s}`)}</option>
+              ))}
+            </select>
+            <Badge label={t(`retroItemStatus.${item.status}`)} variant={STATUS_VARIANTS[item.status]} />
+          </div>
+        </div>
+
+        {/* Assignee */}
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-wide w-24 shrink-0">
+            {t('retroDetail.owner')}
+          </label>
+          {isFinalized ? (
+            assignee ? (
+              <div className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300">
+                <Avatar name={assignee.name} color={assignee.avatarColor} size="xs" />
+                {assignee.name}
+              </div>
+            ) : (
+              <span className="text-sm text-slate-400">{t('retroDetail.noOwner')}</span>
+            )
+          ) : (
+            <select
+              value={item.assigneeId ?? ''}
+              onChange={(e) => onUpdate({ assigneeId: e.target.value || undefined })}
+              className="flex-1 text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white dark:bg-slate-900 dark:text-slate-300"
+            >
+              <option value="">{t('retroDetail.noOwner')}</option>
+              {members.filter((m) => m.isActive).map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Due Date */}
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-wide w-24 shrink-0">
+            {t('retroDetail.dueDate')}
+          </label>
+          {isFinalized ? (
+            <span className="text-sm text-slate-700 dark:text-slate-300">
+              {item.dueDate ? formatDate(item.dueDate) : <span className="text-slate-400">—</span>}
+            </span>
+          ) : (
+            <input
+              type="date"
+              value={item.dueDate ?? ''}
+              onChange={(e) => onUpdate({ dueDate: e.target.value || undefined })}
+              className="text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white dark:bg-slate-900 dark:text-slate-300"
+            />
+          )}
+        </div>
+
+        {/* Ticket URL */}
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-wide w-24 shrink-0">
+            {t('retroDetail.ticketUrl')}
+          </label>
+          <div className="flex-1 flex items-center gap-1.5">
+            {isFinalized ? (
+              item.ticketUrl ? (
+                <a
+                  href={item.ticketUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:underline flex items-center gap-1 truncate"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                  {item.ticketUrl}
+                </a>
+              ) : (
+                <span className="text-sm text-slate-400">—</span>
+              )
+            ) : (
+              <>
+                <input
+                  type="url"
+                  placeholder={t('retroDetail.ticketUrlPlaceholder')}
+                  value={item.ticketUrl ?? ''}
+                  onChange={(e) => onUpdate({ ticketUrl: e.target.value || null })}
+                  className="flex-1 text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white dark:bg-slate-900 dark:text-slate-300"
+                />
+                {item.ticketUrl && (
+                  <a
+                    href={item.ticketUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 rounded text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors shrink-0"
+                    title={t('retroDetail.openTicket')}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </Modal>
   )
 }

@@ -1,24 +1,30 @@
 import type {
   TeamMember, MemberRole,
   Skill, MemberSkill, SkillLevel,
-  Sprint, SprintStatus,
+  Sprint, SprintStatus, SprintGoalMet,
   ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig,
   Retrospective, RetroItemType, RetroItem,
   PulseCheck,
   AppUser, AdminUser,
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus,
+  Team,
 } from '@/types'
-import { getStoredToken } from '@/store/auth'
+import { getStoredToken, getStoredTeamId } from '@/store/auth'
 
-// Im lokalen Dev-Betrieb leer (Proxy via Vite).
-// Für GitHub Pages: VITE_API_URL=https://mein-server.example.com setzen.
-const BASE = (import.meta.env.VITE_API_URL ?? '') + '/api'
+export type { Team }
+
+// import.meta.env.BASE_URL is set by Vite from the 'base' config option.
+// Root deployment ('/'):        BASE_URL = '/'  → API at '/api'
+// Subdirectory ('/board/'):     BASE_URL = '/board/' → API at '/board/api'
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api'
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const token = getStoredToken()
+  const token  = getStoredToken()
+  const teamId = getStoredTeamId()
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (token)  headers['Authorization'] = `Bearer ${token}`
+  if (teamId) headers['X-Team-ID']     = teamId
 
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -37,10 +43,18 @@ const patch  = <T>(path: string, body: unknown) => request<T>('PATCH', path, bod
 const put    = <T>(path: string, body: unknown) => request<T>('PUT', path, body)
 const del    = (path: string) => request<void>('DELETE', path)
 
+// ─── Teams ────────────────────────────────────────────────────────────────────
+export const teamsApi = {
+  list:   () => get<Team[]>('/teams'),
+  create: (data: { name: string; description?: string }) => post<Team>('/teams', data),
+  update: (id: string, data: { name?: string; description?: string }) => patch<Team>(`/teams/${id}`, data),
+  delete: (id: string) => del(`/teams/${id}`),
+}
+
 // ─── Members ──────────────────────────────────────────────────────────────────
 export const membersApi = {
   list:   () => get<TeamMember[]>('/members'),
-  create: (data: { name: string; email: string; role: MemberRole; isActive?: boolean }) =>
+  create: (data: { name: string; email: string; roles: MemberRole[]; isActive?: boolean }) =>
     post<TeamMember>('/members', data),
   update: (id: string, data: Partial<TeamMember>) =>
     patch<TeamMember>(`/members/${id}`, data),
@@ -59,7 +73,24 @@ export const skillsApi = {
 
 // ─── Sprints ──────────────────────────────────────────────────────────────────
 type SprintCreateData = { name: string; goal: string; startDate: string; endDate: string; notes?: string }
-type SprintUpdateData = { name?: string; goal?: string; startDate?: string; endDate?: string; status?: SprintStatus; velocity?: number; notes?: string }
+type SprintUpdateData = {
+  name?: string
+  goal?: string
+  startDate?: string
+  endDate?: string
+  status?: SprintStatus
+  velocity?: number | null
+  plannedPoints?: number
+  plannedItems?: number | null
+  completedItems?: number | null
+  goalMet?: SprintGoalMet | null
+  teamSatisfaction?: number | null
+  impediments?: string
+  capacityHours?: number | null
+  remainingHours?: number | null
+  averageBurndown?: number | null
+  notes?: string
+}
 
 export const sprintsApi = {
   list:           () => get<Sprint[]>('/sprints'),

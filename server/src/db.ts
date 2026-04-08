@@ -1,6 +1,7 @@
 import { Database } from 'node-sqlite3-wasm'
 import path from 'path'
 import fs from 'fs'
+import crypto from 'crypto'
 
 const DATA_DIR = path.join(__dirname, '..', 'data')
 if (!fs.existsSync(DATA_DIR)) {
@@ -18,6 +19,19 @@ if (fs.existsSync(lockDir)) {
 
 // Create a backup of the database (if it exists)
 if (fs.existsSync(DB_PATH)) {
+  // Remove backups older than 30 days
+  const maxAgeMs = 30 * 24 * 60 * 60 * 1000
+  const backupPrefix = path.basename(DB_PATH) + '.backup-'
+  const dir = path.dirname(DB_PATH)
+  for (const file of fs.readdirSync(dir)) {
+    if (!file.startsWith(backupPrefix)) continue
+    const ts = parseInt(file.slice(backupPrefix.length), 10)
+    if (!isNaN(ts) && Date.now() - ts > maxAgeMs) {
+      fs.unlinkSync(path.join(dir, file))
+      console.info(`Old database backup removed: ${file}`)
+    }
+  }
+
   const backupPath = `${DB_PATH}.backup-${Date.now()}`
   fs.copyFileSync(DB_PATH, backupPath)
   console.info(`Database backup created: ${backupPath}`)
@@ -37,6 +51,13 @@ db.exec(`PRAGMA foreign_keys = ON`)
 
 try {
   db.exec(`
+  CREATE TABLE IF NOT EXISTS teams (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT,
+    createdAt   TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS members (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -44,7 +65,8 @@ try {
     role        TEXT NOT NULL,
     avatarColor TEXT NOT NULL,
     joinedAt    TEXT NOT NULL,
-    isActive    INTEGER NOT NULL DEFAULT 1
+    isActive    INTEGER NOT NULL DEFAULT 1,
+    teamId      TEXT
   );
 
   CREATE TABLE IF NOT EXISTS skills (
@@ -75,7 +97,8 @@ try {
     velocity      INTEGER,
     plannedPoints INTEGER NOT NULL DEFAULT 0,
     notes         TEXT NOT NULL DEFAULT '',
-    createdAt     TEXT NOT NULL
+    createdAt     TEXT NOT NULL,
+    teamId        TEXT
   );
 
   CREATE TABLE IF NOT EXISTS sprint_capacity (
@@ -96,14 +119,17 @@ try {
     endDate         TEXT NOT NULL,
     notes           TEXT NOT NULL DEFAULT '',
     isAutoSuggested INTEGER NOT NULL DEFAULT 0,
-    isSynthetic     INTEGER NOT NULL DEFAULT 0
+    isSynthetic     INTEGER NOT NULL DEFAULT 0,
+    teamId          TEXT
   );
 
   CREATE TABLE IF NOT EXISTS responsibility_types (
     id        TEXT PRIMARY KEY,
-    name      TEXT NOT NULL UNIQUE,
+    name      TEXT NOT NULL,
+    teamId    TEXT,
     color     TEXT NOT NULL DEFAULT '#6366f1',
-    sortOrder INTEGER NOT NULL DEFAULT 0
+    sortOrder INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(name, teamId)
   );
 
   CREATE TABLE IF NOT EXISTS retrospectives (
@@ -113,7 +139,8 @@ try {
     date          TEXT NOT NULL,
     facilitatorId TEXT,
     isFinalized   INTEGER NOT NULL DEFAULT 0,
-    createdAt     TEXT NOT NULL
+    createdAt     TEXT NOT NULL,
+    teamId        TEXT
   );
 
   CREATE TABLE IF NOT EXISTS retro_items (
@@ -134,7 +161,8 @@ try {
     questions TEXT NOT NULL,
     sprintId  TEXT,
     createdAt TEXT NOT NULL,
-    closedAt  TEXT
+    closedAt  TEXT,
+    teamId    TEXT
   );
 
   CREATE TABLE IF NOT EXISTS pulse_responses (
@@ -193,6 +221,24 @@ try {
 }
 
 // ─── Migrations (existing databases) ─────────────────────────────────────────
+// ─── Sprint metric columns ────────────────────────────────────────────────────
+const sprintCols = db.prepare('PRAGMA table_info(sprints)').all([]) as Array<{ name: string }>
+const sprintColNames = new Set(sprintCols.map((c) => c.name))
+if (!sprintColNames.has('goalMet'))          db.exec('ALTER TABLE sprints ADD COLUMN goalMet TEXT')
+if (!sprintColNames.has('completedItems'))   db.exec('ALTER TABLE sprints ADD COLUMN completedItems INTEGER')
+if (!sprintColNames.has('plannedItems'))     db.exec('ALTER TABLE sprints ADD COLUMN plannedItems INTEGER')
+if (!sprintColNames.has('teamSatisfaction')) db.exec('ALTER TABLE sprints ADD COLUMN teamSatisfaction INTEGER')
+if (!sprintColNames.has('impediments'))      db.exec("ALTER TABLE sprints ADD COLUMN impediments TEXT NOT NULL DEFAULT ''")
+if (!sprintColNames.has('capacityHours'))    db.exec('ALTER TABLE sprints ADD COLUMN capacityHours INTEGER')
+if (!sprintColNames.has('remainingHours'))   db.exec('ALTER TABLE sprints ADD COLUMN remainingHours INTEGER')
+if (!sprintColNames.has('averageBurndown'))  db.exec('ALTER TABLE sprints ADD COLUMN averageBurndown REAL')
+
+// ─── Retro Items migration ────────────────────────────────────────────────────
+const retroItemCols = db.prepare('PRAGMA table_info(retro_items)').all([]) as Array<{ name: string }>
+if (retroItemCols.length > 0 && !retroItemCols.some((c) => c.name === 'ticketUrl')) {
+  db.exec('ALTER TABLE retro_items ADD COLUMN ticketUrl TEXT')
+}
+
 // ─── Known Errors migration ───────────────────────────────────────────────────
 const knownErrorCols = db.prepare('PRAGMA table_info(known_errors)').all([]) as Array<{ name: string }>
 if (knownErrorCols.length > 0 && !knownErrorCols.some((c) => c.name === 'ticketNumber')) {
@@ -205,6 +251,61 @@ if (!assignmentCols.some((c) => c.name === 'isSynthetic')) {
 }
 if (!assignmentCols.some((c) => c.name === 'isArchived')) {
   db.exec('ALTER TABLE assignments ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0')
+}
+
+// Migrate members.role and skills.category to JSON arrays (idempotent)
+db.exec("UPDATE members SET role = json_array(role) WHERE role NOT LIKE '[%'")
+db.exec("UPDATE skills SET category = json_array(category) WHERE category NOT LIKE '[%'")
+
+// ─── Multi-team migration ─────────────────────────────────────────────────────
+// Add teamId columns to existing tables (idempotent)
+const memberCols  = db.prepare('PRAGMA table_info(members)').all([])  as Array<{ name: string }>
+const sprintCols2 = db.prepare('PRAGMA table_info(sprints)').all([])  as Array<{ name: string }>
+const assignCols2 = db.prepare('PRAGMA table_info(assignments)').all([]) as Array<{ name: string }>
+const retroCols   = db.prepare('PRAGMA table_info(retrospectives)').all([]) as Array<{ name: string }>
+const pulseCols   = db.prepare('PRAGMA table_info(pulse_checks)').all([])  as Array<{ name: string }>
+
+if (!memberCols.some((c) => c.name === 'teamId'))  db.exec('ALTER TABLE members ADD COLUMN teamId TEXT')
+if (!sprintCols2.some((c) => c.name === 'teamId')) db.exec('ALTER TABLE sprints ADD COLUMN teamId TEXT')
+if (!assignCols2.some((c) => c.name === 'teamId')) db.exec('ALTER TABLE assignments ADD COLUMN teamId TEXT')
+if (!retroCols.some((c) => c.name === 'teamId'))   db.exec('ALTER TABLE retrospectives ADD COLUMN teamId TEXT')
+if (!pulseCols.some((c) => c.name === 'teamId'))   db.exec('ALTER TABLE pulse_checks ADD COLUMN teamId TEXT')
+
+// ─── responsibility_types: migrate to UNIQUE(name, teamId) ───────────────────
+// The old schema had UNIQUE(name) which prevents multiple teams having the same
+// type name. We recreate the table without the global UNIQUE(name) constraint.
+const rtColsCheck = db.prepare('PRAGMA table_info(responsibility_types)').all([]) as Array<{ name: string }>
+if (!rtColsCheck.some((c) => c.name === 'teamId')) {
+  db.exec(`
+    CREATE TABLE responsibility_types_new (
+      id        TEXT PRIMARY KEY,
+      name      TEXT NOT NULL,
+      teamId    TEXT,
+      color     TEXT NOT NULL DEFAULT '#6366f1',
+      sortOrder INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO responsibility_types_new (id, name, teamId, color, sortOrder)
+      SELECT id, name, NULL, color, sortOrder FROM responsibility_types;
+    DROP TABLE responsibility_types;
+    ALTER TABLE responsibility_types_new RENAME TO responsibility_types;
+  `)
+}
+
+// ─── Assign existing data to the default team if no team exists yet ──────────
+// This ensures that databases upgraded from single-team mode keep all their data.
+const teamCount = (db.prepare('SELECT COUNT(*) as n FROM teams').get([]) as { n: number }).n
+if (teamCount === 0) {
+  const defaultTeamId = crypto.randomUUID()
+  db.prepare('INSERT INTO teams (id, name, description, createdAt) VALUES (?, ?, ?, ?)').run([
+    defaultTeamId, 'Team', 'Standard-Team (automatisch migriert)', new Date().toISOString(),
+  ])
+  db.prepare('UPDATE members  SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
+  db.prepare('UPDATE sprints  SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
+  db.prepare('UPDATE assignments SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
+  db.prepare('UPDATE retrospectives SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
+  db.prepare('UPDATE pulse_checks SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
+  db.prepare('UPDATE responsibility_types SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
+  console.info(`Multi-team migration: existing data assigned to default team "${defaultTeamId}"`)
 }
 
 export default db

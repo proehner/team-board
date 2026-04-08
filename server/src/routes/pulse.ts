@@ -22,29 +22,33 @@ function toCheck(row: Row) {
   return { ...row, questions, responseCount, averageRatings }
 }
 
-router.get('/', (_req, res) => {
-  res.json(dbAll<Row>('SELECT * FROM pulse_checks ORDER BY createdAt DESC').map(toCheck))
+router.get('/', (req, res) => {
+  const { teamId } = req
+  res.json(dbAll<Row>('SELECT * FROM pulse_checks WHERE teamId = ? ORDER BY createdAt DESC', [teamId]).map(toCheck))
 })
 
 router.get('/:id', (req, res) => {
-  const row = dbGet<Row>('SELECT * FROM pulse_checks WHERE id = ?', [req.params.id])
+  const row = dbGet<Row>('SELECT * FROM pulse_checks WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])
   if (!row) return res.status(404).json({ error: 'Not found.' })
   res.json(toCheck(row))
 })
 
 router.post('/', (req, res) => {
+  const { teamId } = req
   const { title, questions, sprintId } = req.body
   if (!title || !Array.isArray(questions) || questions.length === 0) {
     return res.status(400).json({ error: 'title and questions are required.' })
   }
   const id = uid()
-  dbRun('INSERT INTO pulse_checks (id, title, questions, sprintId, createdAt) VALUES (?, ?, ?, ?, ?)',
-    [id, title, JSON.stringify(questions), sprintId ?? null, new Date().toISOString()])
+  dbRun(
+    'INSERT INTO pulse_checks (id, title, questions, sprintId, createdAt, teamId) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, title, JSON.stringify(questions), sprintId ?? null, new Date().toISOString(), teamId],
+  )
   res.status(201).json(toCheck(dbGet<Row>('SELECT * FROM pulse_checks WHERE id = ?', [id])!))
 })
 
 router.post('/:id/respond', (req, res) => {
-  const row = dbGet<Row>('SELECT * FROM pulse_checks WHERE id = ?', [req.params.id])
+  const row = dbGet<Row>('SELECT * FROM pulse_checks WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])
   if (!row) return res.status(404).json({ error: 'Not found.' })
   if (row.closedAt) return res.status(409).json({ error: 'Check is already closed.' })
   const { ratings } = req.body
@@ -56,19 +60,19 @@ router.post('/:id/respond', (req, res) => {
 
 router.patch('/:id', (req, res) => {
   const { id } = req.params
-  if (!dbGet('SELECT id FROM pulse_checks WHERE id = ?', [id])) {
+  if (!dbGet('SELECT id FROM pulse_checks WHERE id = ? AND teamId = ?', [id, req.teamId])) {
     return res.status(404).json({ error: 'Not found.' })
   }
   const updates: string[] = []
   const values: unknown[] = []
-  if (req.body.title !== undefined) { updates.push('title = ?'); values.push(req.body.title) }
+  if (req.body.title !== undefined)    { updates.push('title = ?');    values.push(req.body.title) }
   if (req.body.closedAt !== undefined) { updates.push('closedAt = ?'); values.push(req.body.closedAt) }
   if (updates.length > 0) { values.push(id); dbRun(`UPDATE pulse_checks SET ${updates.join(', ')} WHERE id = ?`, values) }
   res.json(toCheck(dbGet<Row>('SELECT * FROM pulse_checks WHERE id = ?', [id])!))
 })
 
 router.delete('/:id', (req, res) => {
-  const r = dbRun('DELETE FROM pulse_checks WHERE id = ?', [req.params.id])
+  const r = dbRun('DELETE FROM pulse_checks WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])
   if (r.changes === 0) return res.status(404).json({ error: 'Not found.' })
   res.status(204).send()
 })

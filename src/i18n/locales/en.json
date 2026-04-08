@@ -34,7 +34,19 @@
     "active": "Active",
     "inactive": "Inactive",
     "details": "Details",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "average": "Average",
+    "close": "Close"
+  },
+  "teams": {
+    "selectTitle": "Select Team",
+    "selectSubtitle": "Choose a team to continue.",
+    "manage": "Manage Teams",
+    "createTeam": "New Team",
+    "teamName": "Team Name",
+    "description": "Description",
+    "deleteConfirm": "Really delete this team? All team data will be permanently deleted.",
+    "lastTeamError": "Cannot delete the last team."
   },
   "sidebar": {
     "enableLightMode": "Enable Light Mode",
@@ -75,6 +87,10 @@
     "teamCapacity": "Team Capacity (current sprint)",
     "noCapacityData": "No capacity data for this sprint.",
     "noActiveSprint": "No active sprint.",
+    "planned": "planned",
+    "velocity": "Velocity",
+    "sprintHistory": "Sprint History",
+    "noCompletedSprints": "No completed sprints yet.",
     "noCurrentAssignments": "No current assignments.",
     "noOpenActionItems": "No open action items.",
     "totalAvailableDays": "Total available days",
@@ -97,6 +113,7 @@
     "activeMember": "Active Member",
     "nameError": "Name must be at least 2 characters.",
     "emailError": "Invalid email address.",
+    "rolesError": "Please select at least one role.",
     "removeMember": "Remove Member",
     "removeConfirm": "Do you really want to remove \"{{name}}\"? All related competency data will also be deleted."
   },
@@ -144,20 +161,40 @@
     "endDateRequired": "End date is required.",
     "endDateAfterStart": "End date must be after the start date.",
     "deleteSprint": "Delete Sprint",
-    "deleteConfirm": "Do you really want to delete \"{{name}}\"?"
+    "deleteConfirm": "Do you really want to delete \"{{name}}\"?",
+    "analysis": "Analysis",
+    "analysisEmpty": "No Data",
+    "analysisEmptySubtitle": "At least 2 completed sprints with data are required for analysis.",
+    "tableSprint": "Sprint",
+    "tableCapacityH": "Capacity (h)",
+    "tableRemainingH": "Remaining (h)",
+    "tableAvgBurndown": "Avg. Burndown",
+    "tableCompletedTimePct": "Compl. Time",
+    "tableCompletedItems": "Compl. Items",
+    "tableVelocity": "Velocity (SP)",
+    "tableGoalMet": "Goal Met"
   },
   "sprintDetail": {
     "notFound": "Sprint not found.",
-    "membersHeader": "Members",
-    "availableDays": "Available Days",
-    "plannedStoryPoints": "Planned Story Points",
-    "velocity": "Velocity (SP)",
-    "noMembers": "No members added yet. Select a member above.",
-    "selectMember": "Select member…",
-    "capacityPlanning": "Capacity Planning",
-    "memberColumn": "Member",
-    "spPerDay": "SP/Day",
-    "total": "Total"
+    "days": "days",
+    "metrics": "Metrics & Evaluation",
+    "goalMet": "Sprint goal achieved?",
+    "goalMet_Ja": "Yes",
+    "goalMet_Teilweise": "Partial",
+    "goalMet_Nein": "No",
+    "plannedPoints": "Planned SP",
+    "velocity": "Velocity (completed SP)",
+    "plannedItems": "Planned Items",
+    "completedItems": "Completed Items",
+    "teamSatisfaction": "Team Satisfaction",
+    "impediments": "Impediments",
+    "impedimentsPlaceholder": "What impediments occurred during the sprint?",
+    "burndown": "Burndown",
+    "capacityHours": "Capacity (h)",
+    "remainingHours": "Remaining (h)",
+    "averageBurndown": "Avg. Burndown",
+    "completedTimePercent": "Completed Time (%)",
+    "memberColumn": "Member"
   },
   "rotation": {
     "title": "Rotation & Responsibilities",
@@ -203,7 +240,16 @@
     "finalize": "Finalize",
     "deleteItem": "Delete Item",
     "deleteItemConfirm": "Do you really want to delete this retro item?",
-    "noOwner": "No Owner"
+    "noOwner": "No Owner",
+    "ticketUrlPlaceholder": "Ticket URL (optional)",
+    "openTicket": "Open ticket",
+    "ticketUrl": "Ticket URL",
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied!",
+    "actionItemDetail": "Action Item",
+    "status": "Status",
+    "owner": "Owner",
+    "dueDate": "Due date"
   },
   "health": {
     "title": "Team Health",
@@ -217,6 +263,10 @@
     "fromRetros": "from Retros",
     "developmentSuggestions": "Development Suggestions",
     "inTotal": "in total",
+    "sprintDelivery": "Sprint Delivery",
+    "goalAchievementRate": "Goal Achievement",
+    "avgVelocity": "Avg. Velocity",
+    "noCompletedSprints": "No completed sprints yet.",
     "busFactor": "Bus Factor & Knowledge Concentration",
     "critical": "critical",
     "noOneLevel3": "No one at level 3+",
@@ -368,7 +418,9 @@
     "statRejections": "Rejections",
     "statTicketsDone": "Tickets Done",
     "statTicketComments": "Ticket Comments",
-    "serverUnreachable": "Server unreachable: "
+    "serverUnreachable": "Server unreachable: ",
+    "noConfigHint": "No Azure DevOps configuration found. Please set up the connection to load data.",
+    "configure": "Configure"
   },
   "admin": {
     "pageTitle": "Administration",
@@ -494,7 +546,8 @@
   "retroItemStatus": {
     "Offen": "Open",
     "InBearbeitung": "In Progress",
-    "Erledigt": "Done"
+    "Erledigt": "Done",
+    "Extern": "External"
   },
   "confirmDialog": {
     "confirm": "Confirm",
