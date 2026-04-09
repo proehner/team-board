@@ -551,6 +551,14 @@
       "affectedSoftware": "Betroffene Software",
       "tags": "Tags",
       "tagsPlaceholder": "z. B. login, auth, password (kommagetrennt)"
+    },
+    "attachments": {
+      "title": "Anhänge",
+      "upload": "Anhang hochladen",
+      "empty": "Noch keine Anhänge vorhanden.",
+      "download": "Herunterladen",
+      "deleteTitle": "Anhang löschen",
+      "deleteConfirm": "Möchtest du \"{{name}}\" wirklich löschen?"
     }
   }
 }

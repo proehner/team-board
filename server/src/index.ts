@@ -17,6 +17,7 @@ import pulseRouter from './routes/pulse'
 import azureRankingRouter from './routes/azureRanking'
 import softwareRouter from './routes/software'
 import knownErrorsRouter from './routes/knownErrors'
+import uploadsRouter from './routes/uploads'
 
 const app = express()
 const PORT: string | number = process.env.PORT ?? 3001
@@ -77,6 +78,9 @@ app.use('/api/pulse',                ...teamGuard,  pulseRouter)
 app.use('/api/azure-ranking',        ...guard,      azureRankingRouter)
 app.use('/api/software',             ...guard,      softwareRouter)
 app.use('/api/known-errors',         ...guard,      knownErrorsRouter)
+// Uploads: file serving is public (images in markdown need no auth header),
+// CRUD routes enforce auth internally via requireAuth middleware.
+app.use('/api/uploads',              uploadsRouter)
 
 // ─── Serve built frontend (production) ───────────────────────────────────────
 const DIST = path.join(__dirname, '..', '..', 'dist')

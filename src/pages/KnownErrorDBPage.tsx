@@ -385,16 +385,15 @@ export default function KnownErrorDBPage() {
           {/* Description */}
           <div>
             <label className={labelCls}>{t('knownErrors.fields.description')}</label>
-            <textarea
+            <MarkdownEditor
               value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              onChange={(v) => setForm((f) => ({ ...f, description: v }))}
               placeholder={t('knownErrors.fields.descriptionPlaceholder')}
-              rows={3}
-              className={`${inputCls} resize-none`}
+              rows={4}
             />
           </div>
 
-          {/* Solution with Markdown editor */}
+          {/* Solution */}
           <div>
             <label className={labelCls}>{t('knownErrors.fields.solution')}</label>
             <MarkdownEditor
@@ -402,6 +401,17 @@ export default function KnownErrorDBPage() {
               onChange={(v) => setForm((f) => ({ ...f, solution: v }))}
               placeholder={t('knownErrors.fields.solutionPlaceholder')}
               rows={6}
+            />
+          </div>
+
+          {/* Workaround */}
+          <div>
+            <label className={labelCls}>{t('knownErrors.fields.workaround')}</label>
+            <MarkdownEditor
+              value={form.workaround}
+              onChange={(v) => setForm((f) => ({ ...f, workaround: v }))}
+              placeholder={t('knownErrors.fields.workaroundPlaceholder')}
+              rows={3}
             />
           </div>
 

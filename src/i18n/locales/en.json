@@ -522,6 +522,14 @@
       "affectedSoftware": "Affected Software",
       "tags": "Tags",
       "tagsPlaceholder": "e.g. login, auth, password (comma-separated)"
+    },
+    "attachments": {
+      "title": "Attachments",
+      "upload": "Upload attachment",
+      "empty": "No attachments yet.",
+      "download": "Download",
+      "deleteTitle": "Delete attachment",
+      "deleteConfirm": "Are you sure you want to delete \"{{name}}\"?"
     }
   },
   "skillLevel": {

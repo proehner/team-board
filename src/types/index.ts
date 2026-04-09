@@ -154,6 +154,16 @@ export interface Software {
   description?: string
 }
 
+export interface KnownErrorAttachment {
+  id: string
+  knownErrorId: string
+  filename: string
+  originalName: string
+  mimeType: string
+  size: number
+  uploadedAt: string
+}
+
 export interface KnownError {
   id: string
   title: string

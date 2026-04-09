@@ -1,16 +1,18 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Bug, Pencil, Trash2, Tag, Monitor, Ticket,
   AlertTriangle, AlertCircle, Info, CheckCircle2, Wrench, Save, X,
+  Paperclip, Upload, Download, File, ImageIcon, Loader2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
-import type { KnownErrorSeverity, KnownErrorStatus } from '@/types'
+import type { KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment } from '@/types'
 import Button from '@/components/ui/Button'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import MarkdownEditor from '@/components/ui/MarkdownEditor'
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer'
+import { attachmentsApi } from '@/api/client'
 import { format } from 'date-fns'
 
 // ─── Severity & Status badges ─────────────────────────────────────────────────
@@ -47,6 +49,181 @@ function StatusBadge({ status }: { status: KnownErrorStatus }) {
 }
 
 const SEVERITY_ORDER: KnownErrorSeverity[] = ['critical', 'high', 'medium', 'low']
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function isImageMime(mimeType: string) {
+  return mimeType.startsWith('image/')
+}
+
+// ─── Attachments Panel ────────────────────────────────────────────────────────
+
+function AttachmentsPanel({ knownErrorId }: { knownErrorId: string }) {
+  const { t } = useTranslation()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [attachments,    setAttachments]    = useState<KnownErrorAttachment[]>([])
+  const [loading,        setLoading]        = useState(true)
+  const [uploading,      setUploading]      = useState(false)
+  const [deletingId,     setDeletingId]     = useState<string | null>(null)
+  const [confirmDelete,  setConfirmDelete]  = useState<KnownErrorAttachment | null>(null)
+
+  const loadAttachments = useCallback(async () => {
+    try {
+      const data = await attachmentsApi.list(knownErrorId)
+      setAttachments(data)
+    } finally {
+      setLoading(false)
+    }
+  }, [knownErrorId])
+
+  useEffect(() => { loadAttachments() }, [loadAttachments])
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (!files.length) return
+    setUploading(true)
+    try {
+      for (const file of files) {
+        await attachmentsApi.upload(knownErrorId, file)
+      }
+      await loadAttachments()
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleDelete(att: KnownErrorAttachment) {
+    setDeletingId(att.id)
+    try {
+      await attachmentsApi.delete(knownErrorId, att.id)
+      setAttachments((prev) => prev.filter((a) => a.id !== att.id))
+    } finally {
+      setDeletingId(null)
+      setConfirmDelete(null)
+    }
+  }
+
+  return (
+    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+          <Paperclip className="w-4 h-4" />
+          {t('knownErrors.attachments.title')}
+          {attachments.length > 0 && (
+            <span className="text-xs font-normal text-slate-400">({attachments.length})</span>
+          )}
+        </h2>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50"
+        >
+          {uploading
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <Upload className="w-3.5 h-3.5" />}
+          {t('knownErrors.attachments.upload')}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={handleFileChange}
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-6 text-slate-400">
+          <Loader2 className="w-5 h-5 animate-spin" />
+        </div>
+      ) : attachments.length === 0 ? (
+        <p className="text-sm text-slate-400 italic text-center py-4">
+          {t('knownErrors.attachments.empty')}
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {attachments.map((att) => {
+            const url = attachmentsApi.fileUrl(att.filename)
+            const isImg = isImageMime(att.mimeType)
+            return (
+              <li
+                key={att.id}
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 group transition-colors"
+              >
+                {/* Icon */}
+                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
+                  {isImg
+                    ? <ImageIcon className="w-4 h-4 text-indigo-500" />
+                    : <File className="w-4 h-4 text-slate-500" />}
+                </div>
+
+                {/* Thumbnail for images */}
+                {isImg && (
+                  <a href={url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                    <img
+                      src={url}
+                      alt={att.originalName}
+                      className="w-10 h-10 rounded object-cover border border-slate-200 dark:border-slate-600"
+                    />
+                  </a>
+                )}
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{att.originalName}</p>
+                  <p className="text-xs text-slate-400">
+                    {formatFileSize(att.size)} · {format(new Date(att.uploadedAt), 'dd.MM.yyyy')}
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <a
+                    href={url}
+                    download={att.originalName}
+                    className="p-1.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+                    title={t('knownErrors.attachments.download')}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(att)}
+                    disabled={deletingId === att.id}
+                    className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50"
+                    title={t('common.delete')}
+                  >
+                    {deletingId === att.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Trash2 className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        title={t('knownErrors.attachments.deleteTitle')}
+        message={t('knownErrors.attachments.deleteConfirm', { name: confirmDelete?.originalName ?? '' })}
+        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        variant="danger"
+      />
+    </div>
+  )
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -140,6 +317,12 @@ export default function KnownErrorDetailPage() {
     setEditSoftwareIds((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
     )
+  }
+
+  /** Upload an image and return just the stored filename (for markdown insertion). */
+  async function handleImageUpload(file: File): Promise<string> {
+    const att = await attachmentsApi.upload(ke!.id, file)
+    return att.filename
   }
 
   const inputCls = 'w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500'
@@ -240,24 +423,24 @@ export default function KnownErrorDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Problem description */}
+          {/* Problem description — Markdown */}
           <Section title={t('knownErrors.fields.description')} icon={<AlertCircle className="w-4 h-4" />}>
             {editing ? (
-              <textarea
+              <MarkdownEditor
                 value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                rows={5}
+                onChange={setEditDescription}
                 placeholder={t('knownErrors.fields.descriptionPlaceholder')}
-                className={`${inputCls} resize-none`}
+                rows={6}
+                onImageUpload={handleImageUpload}
               />
             ) : ke.description ? (
-              <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{ke.description}</p>
+              <MarkdownRenderer content={ke.description} />
             ) : (
               <p className="text-sm text-slate-400 italic">{t('knownErrors.noContent')}</p>
             )}
           </Section>
 
-          {/* Solution — with Markdown */}
+          {/* Solution — Markdown */}
           <Section title={t('knownErrors.fields.solution')} icon={<CheckCircle2 className="w-4 h-4 text-green-500" />}>
             {editing ? (
               <MarkdownEditor
@@ -265,6 +448,7 @@ export default function KnownErrorDetailPage() {
                 onChange={setEditSolution}
                 placeholder={t('knownErrors.fields.solutionPlaceholder')}
                 rows={10}
+                onImageUpload={handleImageUpload}
               />
             ) : ke.solution ? (
               <MarkdownRenderer content={ke.solution} />
@@ -273,7 +457,7 @@ export default function KnownErrorDetailPage() {
             )}
           </Section>
 
-          {/* Workaround — with Markdown */}
+          {/* Workaround — Markdown */}
           {(editing || ke.workaround) && (
             <Section title={t('knownErrors.fields.workaround')} icon={<Wrench className="w-4 h-4 text-amber-500" />}>
               {editing ? (
@@ -282,12 +466,16 @@ export default function KnownErrorDetailPage() {
                   onChange={setEditWorkaround}
                   placeholder={t('knownErrors.fields.workaroundPlaceholder')}
                   rows={5}
+                  onImageUpload={handleImageUpload}
                 />
               ) : ke.workaround ? (
                 <MarkdownRenderer content={ke.workaround} />
               ) : null}
             </Section>
           )}
+
+          {/* Attachments */}
+          <AttachmentsPanel knownErrorId={ke.id} />
         </div>
 
         {/* Sidebar */}
