@@ -64,7 +64,7 @@ function isImageMime(mimeType: string) {
 
 // ─── Attachments Panel ────────────────────────────────────────────────────────
 
-function AttachmentsPanel({ knownErrorId }: { knownErrorId: string }) {
+function AttachmentsPanel({ knownErrorId, refreshKey }: { knownErrorId: string; refreshKey: number }) {
   const { t } = useTranslation()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -83,7 +83,7 @@ function AttachmentsPanel({ knownErrorId }: { knownErrorId: string }) {
     }
   }, [knownErrorId])
 
-  useEffect(() => { loadAttachments() }, [loadAttachments])
+  useEffect(() => { loadAttachments() }, [loadAttachments, refreshKey])
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
@@ -242,6 +242,7 @@ export default function KnownErrorDetailPage() {
   const [editing,       setEditing]       = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving,        setSaving]        = useState(false)
+  const [attachRefresh, setAttachRefresh] = useState(0)
   const [saveError,     setSaveError]     = useState('')
 
   const [editTitle,        setEditTitle]        = useState('')
@@ -322,6 +323,7 @@ export default function KnownErrorDetailPage() {
   /** Upload an image and return just the stored filename (for markdown insertion). */
   async function handleImageUpload(file: File): Promise<string> {
     const att = await attachmentsApi.upload(ke!.id, file)
+    setAttachRefresh((n) => n + 1)
     return att.filename
   }
 
@@ -475,7 +477,7 @@ export default function KnownErrorDetailPage() {
           )}
 
           {/* Attachments */}
-          <AttachmentsPanel knownErrorId={ke.id} />
+          <AttachmentsPanel knownErrorId={ke.id} refreshKey={attachRefresh} />
         </div>
 
         {/* Sidebar */}
