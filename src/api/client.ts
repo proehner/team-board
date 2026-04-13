@@ -6,7 +6,7 @@ import type {
   Retrospective, RetroItemType, RetroItem,
   PulseCheck,
   AppUser, AdminUser,
-  Software, KnownError, KnownErrorSeverity, KnownErrorStatus,
+  Software, KnownError, KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment,
   Team,
 } from '@/types'
 import { getStoredToken, getStoredTeamId } from '@/store/auth'
@@ -200,6 +200,38 @@ export const knownErrorsApi = {
   create: (data: KnownErrorCreateData) => post<KnownError>('/known-errors', data),
   update: (id: string, data: KnownErrorUpdateData) => patch<KnownError>(`/known-errors/${id}`, data),
   delete: (id: string) => del(`/known-errors/${id}`),
+}
+
+// ─── Uploads / Attachments ────────────────────────────────────────────────────
+async function uploadFile(knownErrorId: string, file: File): Promise<KnownErrorAttachment> {
+  const token  = getStoredToken()
+  const teamId = getStoredTeamId()
+  const headers: Record<string, string> = {}
+  if (token)  headers['Authorization'] = `Bearer ${token}`
+  if (teamId) headers['X-Team-ID']     = teamId
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await fetch(`${BASE}/uploads/known-errors/${knownErrorId}/attachments`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`)
+  return data as KnownErrorAttachment
+}
+
+export const attachmentsApi = {
+  list:   (knownErrorId: string) =>
+    get<KnownErrorAttachment[]>(`/uploads/known-errors/${knownErrorId}/attachments`),
+  upload: uploadFile,
+  delete: (knownErrorId: string, attachId: string) =>
+    del(`/uploads/known-errors/${knownErrorId}/attachments/${attachId}`),
+  /** Returns the public URL for a stored file (used as <img src> and download link) */
+  fileUrl: (filename: string) =>
+    `${BASE}/uploads/${filename}`,
 }
 
 // ─── Pulse ────────────────────────────────────────────────────────────────────

@@ -206,6 +206,17 @@ try {
     createdAt    TEXT NOT NULL,
     updatedAt    TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS known_error_attachments (
+    id           TEXT PRIMARY KEY,
+    knownErrorId TEXT NOT NULL,
+    filename     TEXT NOT NULL,
+    originalName TEXT NOT NULL,
+    mimeType     TEXT NOT NULL,
+    size         INTEGER NOT NULL,
+    uploadedAt   TEXT NOT NULL,
+    FOREIGN KEY (knownErrorId) REFERENCES known_errors(id) ON DELETE CASCADE
+  );
 `)
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err)

@@ -1,6 +1,18 @@
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
+
+// react-markdown's defaultUrlTransform blocks non-standard protocols like upload://.
+// We intercept upload:// URIs, resolve them to real API paths, and forward
+// everything else to the default safe transform.
+function urlTransform(url: string): string {
+  if (url.startsWith('upload://')) {
+    const filename = url.slice('upload://'.length)
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+    return `${base}/api/uploads/${filename}`
+  }
+  return defaultUrlTransform(url)
+}
 
 const components: Components = {
   h1: ({ children }) => (
@@ -64,6 +76,14 @@ const components: Components = {
       {children}
     </a>
   ),
+  img: ({ src, alt }) => (
+    <img
+      src={src}
+      alt={alt ?? ''}
+      className="max-w-full rounded-lg my-2 border border-slate-200 dark:border-slate-700"
+      style={{ maxHeight: '480px', objectFit: 'contain' }}
+    />
+  ),
   table: ({ children }) => (
     <div className="overflow-x-auto mb-2">
       <table className="min-w-full text-sm border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">{children}</table>
@@ -89,7 +109,7 @@ export default function MarkdownRenderer({ content, className = '' }: MarkdownRe
   if (!content.trim()) return null
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={urlTransform}>
         {content}
       </ReactMarkdown>
     </div>
