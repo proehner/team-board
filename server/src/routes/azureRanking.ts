@@ -218,7 +218,8 @@ async function getClosedWorkItems(fromTs: number) {
   const dateStr = new Date(fromTs).toISOString().split('T')[0]
   const query =
     `SELECT [System.Id],[System.AssignedTo],[System.ChangedDate] ` +
-    `FROM WorkItems WHERE [System.State] IN ('Closed','Done','Resolved') ` +
+    `FROM WorkItems WHERE [System.TeamProject] = '${config.project}' ` +
+    `AND [System.State] IN ('Closed','Done','Resolved') ` +
     `AND [System.ChangedDate] >= '${dateStr}' ORDER BY [System.ChangedDate] DESC`
   try {
     const wiql = await azPost<{ workItems?: { id: number }[] }>(`${BASE()}/_apis/wit/wiql?api-version=7.0`, { query })
@@ -242,7 +243,8 @@ async function getCreatedWorkItems(fromTs: number) {
   const dateStr = new Date(fromTs).toISOString().split('T')[0]
   const query =
     `SELECT [System.Id],[System.CreatedBy],[System.CreatedDate] ` +
-    `FROM WorkItems WHERE [System.CreatedDate] >= '${dateStr}' ` +
+    `FROM WorkItems WHERE [System.TeamProject] = '${config.project}' ` +
+    `AND [System.CreatedDate] >= '${dateStr}' ` +
     `ORDER BY [System.CreatedDate] DESC`
   try {
     const wiql = await azPost<{ workItems?: { id: number }[] }>(`${BASE()}/_apis/wit/wiql?api-version=7.0`, { query })
@@ -266,7 +268,8 @@ async function getActiveWorkItemIds(fromTs: number) {
   const dateStr = new Date(fromTs).toISOString().split('T')[0]
   const query =
     `SELECT [System.Id] FROM WorkItems ` +
-    `WHERE [System.ChangedDate] >= '${dateStr}' ORDER BY [System.ChangedDate] DESC`
+    `WHERE [System.TeamProject] = '${config.project}' ` +
+    `AND [System.ChangedDate] >= '${dateStr}' ORDER BY [System.ChangedDate] DESC`
   try {
     const wiql = await azPost<{ workItems?: { id: number }[] }>(`${BASE()}/_apis/wit/wiql?api-version=7.0`, { query })
     return (wiql.workItems || []).map((w) => w.id)
