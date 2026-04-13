@@ -5,7 +5,7 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
-import { Plus, Star, Edit2, Trash2, Info } from 'lucide-react'
+import { Plus, Star, Edit2, Trash2, Info, Search } from 'lucide-react'
 import type { Skill, SkillCategory, SkillLevel, TeamMember, MemberSkill } from '@/types'
 
 const CATEGORIES: SkillCategory[] = [
@@ -35,6 +35,7 @@ export default function CompetencyPage() {
 
   const [tab, setTab] = useState<Tab>('matrix')
   const [filterCategory, setFilterCategory] = useState<SkillCategory | 'Alle'>('Alle')
+  const [filterText, setFilterText] = useState('')
   const [showSkillModal, setShowSkillModal] = useState(false)
   const [editSkill, setEditSkill] = useState<Skill | null>(null)
   const [deleteSkillTarget, setDeleteSkillTarget] = useState<Skill | null>(null)
@@ -60,16 +61,25 @@ export default function CompetencyPage() {
     return (ms?.level ?? 0) as SkillLevel
   }
 
-  const filteredSkills =
-    filterCategory === 'Alle'
-      ? skills
-      : skills.filter((s) => s.categories.includes(filterCategory))
+  const filteredSkills = skills
+    .filter((s) => filterCategory === 'Alle' || s.categories.includes(filterCategory))
+    .filter((s) => !filterText.trim() || s.name.toLowerCase().includes(filterText.toLowerCase()))
 
   const groupedSkills = CATEGORIES.reduce((acc, cat) => {
-    const catSkills = filteredSkills.filter((s) => s.categories.includes(cat))
+    const catSkills = filteredSkills
+      .filter((s) => s.categories.includes(cat))
+      .sort((a, b) => a.name.localeCompare(b.name))
     if (catSkills.length > 0) acc[cat] = catSkills
     return acc
   }, {} as Record<string, Skill[]>)
+
+  function getSkillRisk(skillId: string): 'red' | 'orange' | 'yellow' | 'none' {
+    const levels = memberSkills.filter((ms) => ms.skillId === skillId && ms.level > 0)
+    if (levels.length === 0) return 'red'
+    if (levels.length === 1) return 'orange'
+    if (levels.filter((ms) => ms.level === 5).length < 2) return 'yellow'
+    return 'none'
+  }
 
   function openAddSkill() {
     setEditSkill(null)
@@ -133,7 +143,19 @@ export default function CompetencyPage() {
         ))}
       </div>
 
-      {/* Category filter */}
+      {/* Search + Category filter */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            placeholder={t('competencies.filterPlaceholder')}
+            className="pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent w-44"
+          />
+        </div>
+      </div>
       <div className="flex flex-wrap gap-2">
         {(['Alle', ...CATEGORIES] as (SkillCategory | 'Alle')[]).map((cat) => (
           <button
@@ -155,6 +177,7 @@ export default function CompetencyPage() {
           members={members}
           groupedSkills={groupedSkills}
           getLevel={getLevel}
+          getSkillRisk={getSkillRisk}
           activeCell={activeCell}
           setActiveCell={setActiveCell}
           setMemberSkillLevel={setMemberSkillLevel}
@@ -165,6 +188,7 @@ export default function CompetencyPage() {
           filteredSkills={filteredSkills}
           memberSkills={memberSkills}
           members={members}
+          getSkillRisk={getSkillRisk}
           onEdit={openEditSkill}
           onDelete={(sk) => setDeleteSkillTarget(sk)}
         />
@@ -234,17 +258,24 @@ export default function CompetencyPage() {
   )
 }
 
+const RISK_DOT: Record<'red' | 'orange' | 'yellow', string> = {
+  red: 'bg-red-500',
+  orange: 'bg-orange-400',
+  yellow: 'bg-amber-400',
+}
+
 interface MatrixTabProps {
   members: TeamMember[]
   groupedSkills: Record<string, Skill[]>
   getLevel: (memberId: string, skillId: string) => SkillLevel
+  getSkillRisk: (skillId: string) => 'red' | 'orange' | 'yellow' | 'none'
   activeCell: { memberId: string; skillId: string } | null
   setActiveCell: (cell: { memberId: string; skillId: string } | null) => void
   setMemberSkillLevel: (memberId: string, skillId: string, level: SkillLevel) => void
   popoverRef: React.RefObject<HTMLDivElement>
 }
 
-function MatrixTab({ members, groupedSkills, getLevel, activeCell, setActiveCell, setMemberSkillLevel, popoverRef }: MatrixTabProps) {
+function MatrixTab({ members, groupedSkills, getLevel, getSkillRisk, activeCell, setActiveCell, setMemberSkillLevel, popoverRef }: MatrixTabProps) {
   const { t } = useTranslation()
   if (members.length === 0 || Object.keys(groupedSkills).length === 0) {
     return (
@@ -290,10 +321,15 @@ function MatrixTab({ members, groupedSkills, getLevel, activeCell, setActiveCell
                   {category}
                 </td>
               </tr>
-              {catSkills.map((skill) => (
+              {catSkills.map((skill) => {
+                const risk = getSkillRisk(skill.id)
+                return (
                 <tr key={skill.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
                   <td className="px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 font-medium sticky left-0 bg-white dark:bg-slate-900 z-10 w-52">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
+                      {risk !== 'none' && (
+                        <span className={`shrink-0 w-2 h-2 rounded-full ${RISK_DOT[risk]}`} />
+                      )}
                       {skill.description && (
                         <span title={skill.description}>
                           <Info className="w-3.5 h-3.5 text-slate-300" />
@@ -338,7 +374,8 @@ function MatrixTab({ members, groupedSkills, getLevel, activeCell, setActiveCell
                     )
                   })}
                 </tr>
-              ))}
+              )
+              })}
             </React.Fragment>
           ))}
         </tbody>
@@ -361,11 +398,12 @@ interface CatalogTabProps {
   filteredSkills: Skill[]
   memberSkills: MemberSkill[]
   members: TeamMember[]
+  getSkillRisk: (skillId: string) => 'red' | 'orange' | 'yellow' | 'none'
   onEdit: (sk: Skill) => void
   onDelete: (sk: Skill) => void
 }
 
-function CatalogTab({ filteredSkills, memberSkills, members, onEdit, onDelete }: CatalogTabProps) {
+function CatalogTab({ filteredSkills, memberSkills, members, getSkillRisk, onEdit, onDelete }: CatalogTabProps) {
   const { t } = useTranslation()
   if (filteredSkills.length === 0) {
     return (
@@ -379,15 +417,17 @@ function CatalogTab({ filteredSkills, memberSkills, members, onEdit, onDelete }:
 
   return (
     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {filteredSkills.map((sk) => {
+      {[...filteredSkills].sort((a, b) => a.name.localeCompare(b.name)).map((sk) => {
         const levels = memberSkills.filter((ms) => ms.skillId === sk.id && ms.level > 0)
         const expertCount = levels.filter((ms) => ms.level >= 4).length
         const avgLevel = levels.length > 0
           ? Math.round(levels.reduce((s, ms) => s + ms.level, 0) / levels.length * 10) / 10
           : 0
+        const risk = getSkillRisk(sk.id)
+        const riskBorder = risk === 'red' ? 'border-l-4 border-l-red-500' : risk === 'orange' ? 'border-l-4 border-l-orange-400' : risk === 'yellow' ? 'border-l-4 border-l-amber-400' : ''
 
         return (
-          <div key={sk.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4">
+          <div key={sk.id} className={`bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 ${riskBorder}`}>
             <div className="flex items-start justify-between mb-2">
               <div>
                 <p className="font-semibold text-slate-900 dark:text-slate-100">{sk.name}</p>
