@@ -217,6 +217,52 @@ try {
     uploadedAt   TEXT NOT NULL,
     FOREIGN KEY (knownErrorId) REFERENCES known_errors(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS meetings (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    recurrence  TEXT NOT NULL DEFAULT 'weekly',
+    dayOfWeek   INTEGER,
+    meetingTime TEXT,
+    location    TEXT,
+    teamId      TEXT,
+    createdAt   TEXT NOT NULL,
+    updatedAt   TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS meeting_topics (
+    id          TEXT PRIMARY KEY,
+    meetingId   TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'open',
+    sortOrder   INTEGER NOT NULL DEFAULT 0,
+    createdAt   TEXT NOT NULL,
+    updatedAt   TEXT NOT NULL,
+    closedAt    TEXT,
+    FOREIGN KEY (meetingId) REFERENCES meetings(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS topic_comments (
+    id          TEXT PRIMARY KEY,
+    topicId     TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    authorName  TEXT NOT NULL DEFAULT '',
+    createdAt   TEXT NOT NULL,
+    FOREIGN KEY (topicId) REFERENCES meeting_topics(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS topic_attachments (
+    id           TEXT PRIMARY KEY,
+    topicId      TEXT NOT NULL,
+    filename     TEXT NOT NULL,
+    originalName TEXT NOT NULL,
+    mimeType     TEXT NOT NULL,
+    size         INTEGER NOT NULL,
+    uploadedAt   TEXT NOT NULL,
+    FOREIGN KEY (topicId) REFERENCES meeting_topics(id) ON DELETE CASCADE
+  );
 `)
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err)
@@ -317,6 +363,12 @@ if (teamCount === 0) {
   db.prepare('UPDATE pulse_checks SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
   db.prepare('UPDATE responsibility_types SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
   console.info(`Multi-team migration: existing data assigned to default team "${defaultTeamId}"`)
+}
+
+// ─── meeting_topics migration: add assigneeIds ────────────────────────────────
+const meetingTopicCols = db.prepare('PRAGMA table_info(meeting_topics)').all([]) as Array<{ name: string }>
+if (meetingTopicCols.length > 0 && !meetingTopicCols.some((c) => c.name === 'assigneeIds')) {
+  db.exec("ALTER TABLE meeting_topics ADD COLUMN assigneeIds TEXT NOT NULL DEFAULT '[]'")
 }
 
 export default db

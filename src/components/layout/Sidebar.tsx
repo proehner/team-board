@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Star, Zap, RefreshCw, MessageSquare, Shield,
   HeartPulse, Activity, Eye, Trophy, Settings, LogOut, ChevronDown,
-  Sun, Moon, Globe, Bug, X, ChevronRight,
+  Sun, Moon, Globe, Bug, X, ChevronRight, CalendarClock,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -52,6 +52,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
     { to: '/stakeholder',   icon: Eye,             label: t('nav.stakeholder'),      page: 'stakeholder' },
     { to: '/azure-ranking', icon: Trophy,          label: t('nav.azureRankings'),    page: 'azure-ranking' },
     { to: '/known-errors',  icon: Bug,             label: t('nav.knownErrors'),      page: 'known-errors' },
+    { to: '/meetings',      icon: CalendarClock,   label: t('nav.meetings'),          page: 'meetings' },
   ]
 
   function handleLogout() {
@@ -151,9 +152,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
         {/* Admin section (admins only) */}
         {user?.role === 'admin' && (
           <>
-            <div className="pt-3 pb-1 px-3">
-              <p className="text-xs font-medium text-slate-600 uppercase tracking-wider">{t('nav.administration')}</p>
-            </div>
             <NavLink
               to="/admin"
               onClick={onClose}
