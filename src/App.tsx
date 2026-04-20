@@ -17,6 +17,9 @@ import AzureRankingPage from '@/pages/AzureRankingPage'
 import AdminPage from '@/pages/AdminPage'
 import KnownErrorDBPage from '@/pages/KnownErrorDBPage'
 import KnownErrorDetailPage from '@/pages/KnownErrorDetailPage'
+import MeetingsPage from '@/pages/MeetingsPage'
+import MeetingDetailPage from '@/pages/MeetingDetailPage'
+import TopicDetailPage from '@/pages/TopicDetailPage'
 import LoginPage from '@/pages/LoginPage'
 import { useStore } from '@/store'
 import { useAuthStore } from '@/store/auth'
@@ -206,6 +209,9 @@ export default function App() {
         <Route path="admin"             element={<ProtectedRoute page="admin"><AdminPage /></ProtectedRoute>} />
         <Route path="known-errors"      element={<ProtectedRoute page="known-errors"><KnownErrorDBPage /></ProtectedRoute>} />
         <Route path="known-errors/:errorId" element={<ProtectedRoute page="known-errors"><KnownErrorDetailPage /></ProtectedRoute>} />
+        <Route path="meetings"          element={<ProtectedRoute page="meetings"><MeetingsPage /></ProtectedRoute>} />
+        <Route path="meetings/:meetingId" element={<ProtectedRoute page="meetings"><MeetingDetailPage /></ProtectedRoute>} />
+        <Route path="meetings/:meetingId/topics/:topicId" element={<ProtectedRoute page="meetings"><TopicDetailPage /></ProtectedRoute>} />
       </Route>
     </Routes>
   )

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import {
   membersApi, skillsApi, sprintsApi, assignmentsApi, retrosApi, responsibilityTypesApi, pulseApi,
-  softwareApi, knownErrorsApi,
+  softwareApi, knownErrorsApi, meetingsApi,
 } from '@/api/client'
 import type {
   TeamMember, MemberRole,
@@ -11,6 +11,7 @@ import type {
   Retrospective, RetroItem, RetroItemType,
   PulseCheck,
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus,
+  Meeting, MeetingRecurrence,
 } from '@/types'
 
 interface AppState {
@@ -25,6 +26,7 @@ interface AppState {
   pulseChecks: PulseCheck[]
   software: Software[]
   knownErrors: KnownError[]
+  meetings: Meeting[]
 
   // ─── Loading / error ──────────────────────────────────────────────────────
   loading: boolean
@@ -89,6 +91,11 @@ interface AppState {
   addKnownError:    (data: { title: string; ticketNumber?: string; description: string; solution: string; workaround?: string; severity: KnownErrorSeverity; status: KnownErrorStatus; softwareIds: string[]; tags: string[] }) => Promise<string>
   updateKnownError: (id: string, data: Partial<Omit<KnownError, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>
   deleteKnownError: (id: string) => Promise<void>
+
+  // ─── Meetings ─────────────────────────────────────────────────────────────
+  addMeeting:    (data: { title: string; description?: string; recurrence: MeetingRecurrence; dayOfWeek?: number; meetingTime?: string; location?: string }) => Promise<string>
+  updateMeeting: (id: string, data: Partial<Omit<Meeting, 'id' | 'teamId' | 'createdAt' | 'updatedAt'>>) => Promise<void>
+  deleteMeeting: (id: string) => Promise<void>
 }
 
 // Helper: update a single retro's items in the state after an item mutation
@@ -116,6 +123,7 @@ export const useStore = create<AppState>()((set, _get) => ({
   pulseChecks: [],
   software: [],
   knownErrors: [],
+  meetings: [],
   loading: false,
   error: null,
 
@@ -123,7 +131,7 @@ export const useStore = create<AppState>()((set, _get) => ({
   loadAll: async () => {
     set({ loading: true, error: null })
     try {
-      const [members, { skills, memberSkills }, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors] =
+      const [members, { skills, memberSkills }, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings] =
         await Promise.all([
           membersApi.list(),
           skillsApi.list(),
@@ -134,8 +142,9 @@ export const useStore = create<AppState>()((set, _get) => ({
           pulseApi.list(),
           softwareApi.list(),
           knownErrorsApi.list(),
+          meetingsApi.list(),
         ])
-      set({ members, skills, memberSkills, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, loading: false })
+      set({ members, skills, memberSkills, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, loading: false })
     } catch (err) {
       set({ loading: false, error: String(err) })
     }
@@ -385,5 +394,24 @@ export const useStore = create<AppState>()((set, _get) => ({
   deleteKnownError: async (id) => {
     await knownErrorsApi.delete(id)
     set((s) => ({ knownErrors: s.knownErrors.filter((ke) => ke.id !== id) }))
+  },
+
+  // ─── Meetings ─────────────────────────────────────────────────────────────
+  addMeeting: async (data) => {
+    const meeting = await meetingsApi.create(data)
+    set((s) => ({ meetings: [...s.meetings, meeting].sort((a, b) => a.title.localeCompare(b.title)) }))
+    return meeting.id
+  },
+
+  updateMeeting: async (id, data) => {
+    const updated = await meetingsApi.update(id, data)
+    set((s) => ({
+      meetings: s.meetings.map((m) => (m.id === id ? updated : m)).sort((a, b) => a.title.localeCompare(b.title)),
+    }))
+  },
+
+  deleteMeeting: async (id) => {
+    await meetingsApi.delete(id)
+    set((s) => ({ meetings: s.meetings.filter((m) => m.id !== id) }))
   },
 }))

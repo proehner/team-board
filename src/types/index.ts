@@ -179,6 +179,55 @@ export interface KnownError {
   updatedAt: string
 }
 
+// ─── Meetings (Recurring Appointments) ───────────────────────────────────────
+
+export type MeetingRecurrence = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'custom'
+export type MeetingTopicStatus = 'open' | 'closed'
+
+export interface Meeting {
+  id: string
+  title: string
+  description: string
+  recurrence: MeetingRecurrence
+  dayOfWeek?: number
+  meetingTime?: string
+  location?: string
+  teamId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MeetingTopic {
+  id: string
+  meetingId: string
+  title: string
+  description: string
+  status: MeetingTopicStatus
+  sortOrder: number
+  assigneeIds: string[]
+  createdAt: string
+  updatedAt: string
+  closedAt?: string
+}
+
+export interface TopicComment {
+  id: string
+  topicId: string
+  content: string
+  authorName: string
+  createdAt: string
+}
+
+export interface TopicAttachment {
+  id: string
+  topicId: string
+  filename: string
+  originalName: string
+  mimeType: string
+  size: number
+  uploadedAt: string
+}
+
 // ─── Teams ────────────────────────────────────────────────────────────────────
 
 export interface Team {

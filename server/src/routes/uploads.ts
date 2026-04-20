@@ -38,6 +38,16 @@ type AttachmentRow = {
   uploadedAt: string
 }
 
+type TopicAttachmentRow = {
+  id: string
+  topicId: string
+  filename: string
+  originalName: string
+  mimeType: string
+  size: number
+  uploadedAt: string
+}
+
 // ─── Attachment CRUD (auth required) ─────────────────────────────────────────
 // These routes are defined BEFORE the /:filename catch-all to ensure they match first.
 
@@ -90,6 +100,58 @@ router.delete(
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
 
     dbRun('DELETE FROM known_error_attachments WHERE id = ?', [attachId])
+    res.status(204).send()
+  },
+)
+
+// ─── Topic Attachment CRUD ────────────────────────────────────────────────────
+
+// GET /api/uploads/topics/:topicId/attachments
+router.get('/topics/:topicId/attachments', requireAuth as RequestHandler, (req, res) => {
+  res.json(
+    dbAll<TopicAttachmentRow>(
+      'SELECT * FROM topic_attachments WHERE topicId = ? ORDER BY uploadedAt ASC',
+      [req.params.topicId],
+    ),
+  )
+})
+
+// POST /api/uploads/topics/:topicId/attachments
+router.post(
+  '/topics/:topicId/attachments',
+  requireAuth as RequestHandler,
+  upload.single('file'),
+  (req, res) => {
+    const { topicId } = req.params
+    if (!dbGet('SELECT id FROM meeting_topics WHERE id = ?', [topicId])) {
+      return res.status(404).json({ error: 'Topic not found.' })
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' })
+    const id  = crypto.randomUUID()
+    const now = new Date().toISOString()
+    dbRun(
+      `INSERT INTO topic_attachments (id, topicId, filename, originalName, mimeType, size, uploadedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, topicId, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size, now],
+    )
+    res.status(201).json(dbGet<TopicAttachmentRow>('SELECT * FROM topic_attachments WHERE id = ?', [id]))
+  },
+)
+
+// DELETE /api/uploads/topics/:topicId/attachments/:attachId
+router.delete(
+  '/topics/:topicId/attachments/:attachId',
+  requireAuth as RequestHandler,
+  (req, res) => {
+    const { topicId, attachId } = req.params
+    const row = dbGet<TopicAttachmentRow>(
+      'SELECT * FROM topic_attachments WHERE id = ? AND topicId = ?',
+      [attachId, topicId],
+    )
+    if (!row) return res.status(404).json({ error: 'Attachment not found.' })
+    const filePath = path.join(UPLOADS_DIR, row.filename)
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    dbRun('DELETE FROM topic_attachments WHERE id = ?', [attachId])
     res.status(204).send()
   },
 )

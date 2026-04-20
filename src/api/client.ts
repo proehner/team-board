@@ -8,6 +8,7 @@ import type {
   AppUser, AdminUser,
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment,
   Team,
+  Meeting, MeetingRecurrence, MeetingTopic, TopicComment, TopicAttachment,
 } from '@/types'
 import { getStoredToken, getStoredTeamId } from '@/store/auth'
 
@@ -232,6 +233,70 @@ export const attachmentsApi = {
   /** Returns the public URL for a stored file (used as <img src> and download link) */
   fileUrl: (filename: string) =>
     `${BASE}/uploads/${filename}`,
+}
+
+// ─── Meetings ─────────────────────────────────────────────────────────────────
+type MeetingCreateData = {
+  title: string
+  description?: string
+  recurrence: MeetingRecurrence
+  dayOfWeek?: number
+  meetingTime?: string
+  location?: string
+}
+type MeetingUpdateData = Partial<MeetingCreateData>
+
+type TopicCreateData = { title: string; description?: string; assigneeIds?: string[] }
+type TopicUpdateData = Partial<TopicCreateData> & { status?: 'open' | 'closed'; sortOrder?: number }
+
+export const meetingsApi = {
+  list:   () => get<Meeting[]>('/meetings'),
+  get:    (id: string) => get<Meeting>(`/meetings/${id}`),
+  create: (data: MeetingCreateData) => post<Meeting>('/meetings', data),
+  update: (id: string, data: MeetingUpdateData) => patch<Meeting>(`/meetings/${id}`, data),
+  delete: (id: string) => del(`/meetings/${id}`),
+
+  listTopics:   (meetingId: string, archived?: boolean) =>
+    get<MeetingTopic[]>(`/meetings/${meetingId}/topics${archived ? '?archived=true' : ''}`),
+  getTopic:     (meetingId: string, topicId: string) =>
+    get<MeetingTopic>(`/meetings/${meetingId}/topics/${topicId}`),
+  createTopic:  (meetingId: string, data: TopicCreateData) =>
+    post<MeetingTopic>(`/meetings/${meetingId}/topics`, data),
+  updateTopic:  (meetingId: string, topicId: string, data: TopicUpdateData) =>
+    patch<MeetingTopic>(`/meetings/${meetingId}/topics/${topicId}`, data),
+  deleteTopic:  (meetingId: string, topicId: string) =>
+    del(`/meetings/${meetingId}/topics/${topicId}`),
+
+  listComments:  (meetingId: string, topicId: string) =>
+    get<TopicComment[]>(`/meetings/${meetingId}/topics/${topicId}/comments`),
+  createComment: (meetingId: string, topicId: string, content: string, authorName?: string) =>
+    post<TopicComment>(`/meetings/${meetingId}/topics/${topicId}/comments`, { content, authorName }),
+  deleteComment: (meetingId: string, topicId: string, commentId: string) =>
+    del(`/meetings/${meetingId}/topics/${topicId}/comments/${commentId}`),
+}
+
+// ─── Topic Attachments ────────────────────────────────────────────────────────
+async function uploadTopicFile(topicId: string, file: File): Promise<TopicAttachment> {
+  const token  = getStoredToken()
+  const teamId = getStoredTeamId()
+  const headers: Record<string, string> = {}
+  if (token)  headers['Authorization'] = `Bearer ${token}`
+  if (teamId) headers['X-Team-ID']     = teamId
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${BASE}/uploads/topics/${topicId}/attachments`, {
+    method: 'POST', headers, body: formData,
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`)
+  return data as TopicAttachment
+}
+
+export const topicAttachmentsApi = {
+  list:    (topicId: string) => get<TopicAttachment[]>(`/uploads/topics/${topicId}/attachments`),
+  upload:  uploadTopicFile,
+  delete:  (topicId: string, attachId: string) => del(`/uploads/topics/${topicId}/attachments/${attachId}`),
+  fileUrl: (filename: string) => `${BASE}/uploads/${filename}`,
 }
 
 // ─── Pulse ────────────────────────────────────────────────────────────────────
