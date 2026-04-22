@@ -16,10 +16,13 @@ import { getStoredToken, getStoredTeamId } from '@/store/auth'
 
 export type { Team }
 
-// import.meta.env.BASE_URL is set by Vite from the 'base' config option.
-// Root deployment ('/'):        BASE_URL = '/'  → API at '/api'
-// Subdirectory ('/board/'):     BASE_URL = '/board/' → API at '/board/api'
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api'
+// VITE_API_URL: explicit backend URL, e.g. for GitHub Pages where the frontend
+// is static but the backend runs elsewhere (https://my-server.com).
+// If not set, the API is assumed to be served by the same host under /api
+// (IIS via iisnode, or local Vite proxy → localhost:3001).
+const BASE = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace(/\/$/, '') + '/api'
+  : import.meta.env.BASE_URL.replace(/\/$/, '') + '/api'
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token  = getStoredToken()

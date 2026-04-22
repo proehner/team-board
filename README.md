@@ -9,11 +9,10 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 1. [Features](#1-features)
 2. [Technology Stack](#2-technology-stack)
 3. [Local Development](#3-local-development)
-4. [GitHub Pages Deployment](#4-github-pages-deployment)
-5. [Environment Variables](#5-environment-variables)
-6. [Hosting the Backend Separately](#6-hosting-the-backend-separately)
-7. [User Login & Roles](#7-user-login--roles)
-8. [Project Structure](#8-project-structure)
+4. [Production Build & IIS Deployment](#4-production-build--iis-deployment)
+5. [User Login & Roles](#5-user-login--roles)
+6. [Environment Variables](#6-environment-variables)
+7. [Project Structure](#7-project-structure)
 
 ---
 
@@ -31,7 +30,7 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 | **Pulse Check** | Anonymous satisfaction surveys within the team |
 | **Stakeholder** | Sprint progress and goal achievement for external communication |
 | **Azure Rankings** | Gamified developer ranking based on Azure DevOps metrics |
-| **Dark / Light Mode** | Toggleable via the sidebar button, setting is persisted |
+| **Dark / Light Mode** | Toggleable via the sidebar button, persisted across sessions |
 
 ---
 
@@ -41,11 +40,11 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 
 - React 18 + TypeScript
 - Vite (build tool)
-- Tailwind CSS (including dark mode via `class` strategy)
+- Tailwind CSS (dark mode via `class` strategy)
 - Zustand (state management)
 - React Router v6
 - Lucide React (icons)
-- i18next + react-i18next (English / German UI, auto-detection)
+- i18next + react-i18next (English / German, auto-detection)
 
 ### Backend (`server/`)
 
@@ -60,145 +59,75 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 
 ### Prerequisites
 
-- Node.js ≥ 18
+- Node.js ≥ 18 (tested with v20 LTS and v24)
 - npm ≥ 9
 
 ### Installation
 
 ```bash
-# Frontend dependencies
 npm install
-
-# Backend dependencies
 cd server && npm install && cd ..
 ```
 
-### Starting the Server
+### Starting
 
 ```bash
-# Terminal 1 – Backend (starts on http://localhost:3001)
-cd server
+# Terminal 1 – Backend (http://localhost:3001)
+cd server && npm run dev
+
+# Terminal 2 – Frontend (http://localhost:5173)
 npm run dev
 ```
 
-```bash
-# Terminal 2 – Frontend (starts on http://localhost:5173)
-npm run dev
-```
+On the first backend start, sample data is seeded automatically.  
+All `/api` requests are proxied by Vite to `localhost:3001`.
 
-On the first backend start, demo data is seeded automatically (5 members, skills, sprint, retrospective).
-
-**Default login:** `admin` / `admin` (please change after first login)
+**Default login:** `admin` / `admin` (change after first login)
 
 ---
 
-## 4. GitHub Pages Deployment
+## 4. Production Build & IIS Deployment
 
-The frontend can be hosted as a static site on **GitHub Pages**. The backend must run separately (see [Section 6](#6-hosting-the-backend-separately)).
+### Build
 
-### One-time Setup (5 Steps)
-
-**Step 1 – Create a repository on GitHub**
-
-Create a repository (name e.g. `team-lead`, can be public or private).
-
-**Step 2 – Add the backend URL as a repository variable**
-
-So the frontend running in the browser knows where the backend is:
-
-`Settings → Secrets and variables → Actions → Variables → New repository variable`
-
-| Name | Value |
-|---|---|
-| `VITE_API_URL` | `https://your-server.example.com` (without trailing `/`) |
-
-> If you don't have the backend yet, the value can be left empty – the app will still build, but API calls will fail.
-
-**Step 3 – Enable GitHub Pages**
-
-`Settings → Pages → Source: GitHub Actions`
-
-**Step 4 – Push code**
+One command builds the frontend, compiles the server, and assembles a self-contained artifact:
 
 ```bash
-git remote add origin https://github.com/YOUR-USER/team-lead.git
-git push -u origin main
+npm run build:deploy
 ```
 
-The workflow `.github/workflows/deploy.yml` starts automatically, builds the frontend and publishes it.
+This creates a `release/` folder that can be copied directly to the IIS deployment directory:
 
-**Step 5 – Open the app**
-
-After approximately 1–2 minutes the app is available at:
-
-```
-https://YOUR-USER.github.io/team-lead/
+```powershell
+xcopy /E /Y /I release\* C:\inetpub\wwwroot\board\
 ```
 
-### Automatic Deployments
+### IIS Setup (summary)
 
-Every push to `main` or `master` automatically triggers a new build and deploy. You can see the status under `Actions` in the repository.
+| Step | What to do |
+| --- | --- |
+| Prerequisites | Install [iisnode](https://github.com/Azure/iisnode/releases) and [URL Rewrite Module](https://www.iis.net/downloads/microsoft/url-rewrite) |
+| IIS Application | Configure the target folder as an **IIS Application** (not just a virtual directory) |
+| Permissions | Grant write access on `server\data\` to the IIS app pool user |
+| `web.config` | Adjust `DB_PATH` to the absolute path of the database file |
+
+The `web.config` is included in the `release/` output and pre-configured for iisnode. Only `DB_PATH` needs to be set to the actual absolute path on the target server.
+
+For the complete step-by-step guide including redeployment, PM2 alternative, and troubleshooting, see [OPERATIONS.md](OPERATIONS.md).
+
+### Custom IIS alias
+
+The default URL alias is `/board`. To deploy under a different path:
+
+```bash
+npm run build:deploy -- --base /myapp
+```
+
+Also update `APP_BASE_PATH` in `web.config` to match.
 
 ---
 
-## 5. Environment Variables
-
-Copy `.env.example` to `.env.local` for local overrides (not committed):
-
-```bash
-cp .env.example .env.local
-```
-
-| Variable | Where set | Description |
-|---|---|---|
-| `VITE_API_URL` | GitHub repository variable or `.env.local` | Backend URL, e.g. `https://my-server.com`. Leave empty for local development. |
-| `VITE_BASE_PATH` | Set automatically by CI | Base path of the frontend (`/team-lead/`). Only needed manually if the repo name differs from the path. |
-
-**For the backend** (`server/.env`, not committed):
-
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3001` | TCP port of the Express server |
-| `DB_PATH` | `server/data/teamlead.db` | Path to the SQLite database file |
-| `JWT_SECRET` | (randomly generated on start) | Secret for JWT token signing – must be set in production |
-
----
-
-## 6. Hosting the Backend Separately
-
-GitHub Pages only hosts static files. The backend (Express + SQLite) must run on its own server. Recommended options:
-
-### Option A – VPS / own server (recommended)
-
-```bash
-# On the server: clone and build
-git clone https://github.com/YOUR-USER/team-lead.git
-cd team-lead
-npm install
-cd server && npm install
-cd .. && npm run server:build
-
-# Start as a service with PM2
-npm install -g pm2
-pm2 start server/dist/index.js --name team-lead
-pm2 save && pm2 startup
-```
-
-Then set up a reverse proxy (nginx/Caddy) to make port 3001 accessible via a public URL.
-
-### Option B – Windows Server with IIS
-
-See [OPERATIONS.md – Section 4](OPERATIONS.md#4-deployment-on-iis-windows) for the full IIS guide with iisnode.
-
-### Option C – Render / Railway / Fly.io (Cloud)
-
-These platforms can host the Node.js server directly from the `server/` directory. Set environment variables (`PORT`, `DB_PATH`, `JWT_SECRET`) in the respective platform settings.
-
-> **CORS:** For the frontend hosted on GitHub Pages to be able to access the backend, the GitHub Pages domain must be added to the CORS configuration in `server/src/index.ts`.
-
----
-
-## 7. User Login & Roles
+## 5. User Login & Roles
 
 The application uses JWT-based authentication.
 
@@ -214,19 +143,38 @@ Username: admin
 Password: admin
 ```
 
-The password should be changed immediately after the first login under `Administration → User Management`.
+Change the password immediately after the first login under **Administration → User Management**.
 
 Additional users can be created at `/admin` and configured with restricted page access.
 
 ---
 
-## 8. Project Structure
+## 6. Environment Variables
+
+**Frontend** (set at build time via `.env.local` or CI variables):
+
+| Variable | Description |
+| --- | --- |
+| `VITE_BASE_PATH` | Base path of the app (e.g. `/board/`). Set automatically by `build:deploy`. |
+
+**Backend** (`server/.env`, not committed):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PORT` | `3001` | TCP port (not used under iisnode) |
+| `DB_PATH` | `server/data/teamlead.db` | Path to the SQLite database file |
+| `JWT_SECRET` | random on start | **Must be set explicitly in production** |
+| `CORS_ORIGIN` | `http://localhost:5173` | Allowed frontend origin |
+| `APP_BASE_PATH` | (empty) | IIS sub-path prefix, e.g. `/board` |
+
+Copy `.env.example` to `server/.env` as a starting point.
+
+---
+
+## 7. Project Structure
 
 ```txt
-team-lead/
-├── .github/
-│   └── workflows/
-│       └── deploy.yml        # GitHub Actions: build & deploy to GitHub Pages
+team-board/
 ├── src/                      # React frontend (TypeScript)
 │   ├── api/                  # API client (fetch wrapper)
 │   ├── components/
@@ -242,9 +190,12 @@ team-lead/
 │   │   ├── db.ts             # SQLite initialisation
 │   │   └── routes/           # REST API endpoints
 │   └── data/
-│       └── teamlead.db       # SQLite database file (created automatically)
+│       └── teamlead.db       # SQLite database (created automatically)
+├── scripts/
+│   └── build-deploy.mjs      # Production build + assembly script
 ├── .env.example              # Template for environment variables
-├── OPERATIONS.md                # Detailed operations guide
+├── web.config                # IIS configuration (iisnode + URL Rewrite)
+├── OPERATIONS.md             # Full operations guide (build, deploy, DB, troubleshooting)
 ├── vite.config.ts
 └── package.json
 ```

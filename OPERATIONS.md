@@ -1,34 +1,31 @@
 # Team Board – Operations Guide
 
-## Table of Contents
+## Quick Reference
 
-1. [Project Structure](#1-project-structure)
-2. [Local Development](#2-local-development)
-3. [Creating a Production Build](#3-creating-a-production-build)
-4. [Deployment on IIS (Windows)](#4-deployment-on-iis-windows)
-5. [Configuration](#5-configuration)
-6. [Database](#6-database)
-7. [Troubleshooting](#7-troubleshooting)
+| Task | Command |
+| --- | --- |
+| Install dependencies | `npm install && cd server && npm install && cd ..` |
+| Local development | see [Section 2](#2-local-development) |
+| **Production build** | **`npm run build:deploy`** |
+| Custom IIS alias | `npm run build:deploy -- --base /myapp` |
 
 ---
 
 ## 1. Project Structure
 
 ```txt
-team-lead/
+team-board/
 ├── src/                  Frontend (React + TypeScript + Vite)
 ├── server/
 │   ├── src/              Backend (Express + SQLite via node-sqlite3-wasm)
 │   │   ├── index.ts      Server entry point
-│   │   ├── db.ts         Database initialisation and query helpers
-│   │   ├── seed.ts       Initial test data (first start only)
+│   │   ├── db.ts         Database initialisation
 │   │   └── routes/       REST API endpoints
-│   ├── data/
-│   │   └── teamlead.db   SQLite database file (created automatically)
-│   ├── dist/             Compiled server (after npm run build)
-│   └── package.json
-├── dist/                 Compiled frontend (after npm run build)
+│   └── data/             SQLite database file (created automatically on first run)
+├── scripts/
+│   └── build-deploy.mjs  Production build + assembly script
 ├── vite.config.ts
+├── web.config            IIS configuration (ready to use)
 └── package.json
 ```
 
@@ -44,222 +41,276 @@ team-lead/
 - Node.js ≥ 18 (tested with v20 LTS and v24)
 - npm ≥ 9
 
-### One-time Installation
+### Installation
 
 ```bash
-# In the root directory (frontend dependencies)
 npm install
-
-# In the server directory
-cd server
-npm install
-cd ..
+cd server && npm install && cd ..
 ```
 
-### Starting the Server
+### Starting
 
 ```bash
-cd server
+# Terminal 1 – Backend (http://localhost:3001)
+cd server && npm run dev
+
+# Terminal 2 – Frontend (http://localhost:5173)
 npm run dev
 ```
 
-The server starts on **<http://localhost:3001>**.  
-On the first start, sample data (5 members, 10 skills, 1 sprint, retrospective) is seeded automatically.
-
-### Starting the Frontend Development Server (separate terminal)
-
-```bash
-# In the root directory
-npm run dev
-```
-
-The frontend is available at **<http://localhost:5173>**.  
-All `/api` requests are automatically proxied by Vite to the server on port 3001.
-
-### Environment Variables (optional)
-
-| Variable  | Default                   | Description                        |
-|-----------|---------------------------|------------------------------------|
-| `PORT`    | `3001`                    | Port of the Express server         |
-| `DB_PATH` | `server/data/teamlead.db` | Custom path to the database file   |
-
-Example with a custom port:
-
-```bash
-PORT=8080 npm run dev   # inside the server/ directory
-```
+On the first backend start, sample data is seeded automatically.  
+Default login: `admin` / `admin`
 
 ---
 
-## 3. Creating a Production Build
+## 3. Production Build
+
+A single command builds the frontend, compiles the server, and assembles a
+complete, self-contained deployment artifact:
 
 ```bash
-# 1. Build the frontend (generates dist/)
-npm run build
-
-# 2. Build the server (generates server/dist/)
-npm run server:build
+npm run build:deploy
 ```
 
-In production mode, the Express server serves the built frontend from the `dist/` folder. **No separate frontend server** is needed.
+The script runs three steps automatically:
 
-### Starting the Production Server
+1. **Frontend** – TypeScript check + Vite build (output: `dist/`)
+2. **Server** – TypeScript compilation (output: `server/dist/`)
+3. **Assembly** – everything is collected into `release/`
+
+### Output
+
+The command always produces **two artifacts** in parallel:
+
+```txt
+release/                 ← complete artifact (first deployment / fresh install)
+├── dist/                ← compiled frontend (HTML, JS, CSS, assets)
+├── server/
+│   ├── dist/            ← compiled server (Node.js)
+│   ├── node_modules/    ← server runtime dependencies
+│   └── data/            ← database directory (empty, auto-populated on first run)
+└── web.config           ← IIS configuration (only DB_PATH needs adjustment)
+
+update/                  ← compiled outputs only (updating an existing IIS install)
+├── dist/                ← compiled frontend
+├── server/
+│   └── dist/            ← compiled server (no node_modules, no data!)
+└── web.config
+```
+
+Use `release/` for the **first deployment**. Use `update/` for all subsequent updates
+— it is much smaller because it excludes `server/node_modules/` and the database.
+
+### Custom IIS alias
+
+The default base path is `/board`. To deploy under a different URL alias:
 
 ```bash
-npm run server:start
-# or directly:
-node server/dist/index.js
+npm run build:deploy -- --base /myapp
 ```
 
-The application is then available at **<http://localhost:3001>**.
+Also update `APP_BASE_PATH` in `web.config` to match.
 
 ---
 
-## 4. Deployment on IIS (Windows)
+## 4. IIS Deployment
 
 ### IIS Prerequisites
 
 - Windows Server with IIS installed
-- **iisnode** installed: <https://github.com/Azure/iisnode/releases>
-- **URL Rewrite Module** installed: <https://www.iis.net/downloads/microsoft/url-rewrite>
-- Node.js installed on the server and available in the PATH of the IIS application pool user
+- [iisnode](https://github.com/Azure/iisnode/releases) installed
+- [URL Rewrite Module](https://www.iis.net/downloads/microsoft/url-rewrite) installed
+- Node.js installed on the server and available in PATH for the IIS app pool user
 
 ### Architecture
 
-iisnode acts as an IIS handler that forwards HTTP requests directly to a Node.js process via a named pipe — no separate TCP port needed. The `web.config` at the application root controls routing:
-
 ```txt
 Browser → IIS → URL Rewrite
-                  ├── /assets/*   → dist/assets/*  (static, IIS serves directly)
-                  ├── /api/*      → iisnode → Node.js/Express
-                  └── /*          → iisnode → Node.js → index.html (SPA)
+                  ├── /assets/*  → dist/assets/*  (static, served directly by IIS)
+                  ├── /api/*     → iisnode → Node.js / Express
+                  └── /*         → iisnode → Node.js → index.html (SPA fallback)
 ```
-
-> **Critical:** The deployment directory **must be configured as an IIS Application**, not just a virtual directory. Without this, iisnode is never invoked. See Step 3.
 
 ---
 
-### Step 1 – Create a Build
-
-The frontend must be built with the correct subpath so that asset URLs and API calls include the `/board/` prefix.
+### Step 1 – Build
 
 ```bash
-# Install dependencies (first time or after changes)
-npm install
-cd server && npm install && cd ..
-
-# Build frontend for IIS subdirectory deployment
-npm run build:iis
-
-# Build server
-npm run server:build
+npm run build:deploy
 ```
 
-`npm run build:iis` sets `VITE_BASE_PATH=/board/` automatically. To deploy under a different alias, adjust the `build:iis` script in `package.json` accordingly.
+### Step 2 – Copy to the server
 
-### Step 2 – Transfer Files to the Server
-
-Copy the following to `C:\inetpub\wwwroot\board\` (or your target directory):
-
-```txt
-board/
-├── dist/                    ← frontend build output (from npm run build:iis)
-├── server/
-│   ├── dist/                ← compiled server (from npm run server:build)
-│   ├── data/                ← database directory (must be writable by IIS app pool)
-│   └── node_modules/        ← server dependencies
-├── server/.env              ← server environment file (JWT_SECRET etc.)
-└── web.config               ← copy from repo root, adjust DB_PATH
+```powershell
+xcopy /E /Y /I release\* C:\inetpub\wwwroot\board\
 ```
-
-The `web.config` is included in the repository root — copy it to the deployment directory and adjust the `DB_PATH` value.
 
 ### Step 3 – Configure as IIS Application (mandatory)
 
-> This step is **required**. iisnode only works within an IIS Application context. A plain virtual directory is not sufficient.
+> iisnode only works inside an IIS **Application**. A plain virtual directory is not sufficient.
 
 1. Open **IIS Manager** (`inetmgr`)
-2. Expand the tree: **Sites → Default Web Site**
-3. If the `board` folder already exists as a virtual directory: right-click → **Convert to Application**  
-   If it does not exist yet: right-click on **Default Web Site** → **Add Application...**
-   - **Alias:** `board`
-   - **Physical path:** `C:\inetpub\wwwroot\board`
-4. In the Application Pool settings:
+2. Expand **Sites → Default Web Site**
+3. If the `board` folder exists as a virtual directory: right-click → **Convert to Application**  
+   If it does not exist: right-click **Default Web Site** → **Add Application...**
+   - Alias: `board`
+   - Physical path: `C:\inetpub\wwwroot\board`
+4. Application Pool settings:
    - `.NET CLR Version:` **No Managed Code**
-   - **Pipeline mode:** Integrated
-5. Click **OK**
+   - Pipeline mode: **Integrated**
 
-### Step 4 – Set Permissions
+### Step 4 – Grant write access
 
-The IIS application pool user (e.g. `IIS AppPool\board` or `DefaultAppPool`) needs:
-
-- **Read** access on the entire `board/` directory
-- **Write** access on `board/server/data/` (SQLite database file)
+The IIS app pool user needs write access on `server\data\`:
 
 ```powershell
-# Example (adjust user name as needed):
+# Adjust user name as needed (e.g. "IIS AppPool\board" or "DefaultAppPool")
 icacls "C:\inetpub\wwwroot\board\server\data" /grant "IIS AppPool\board:(OI)(CI)M"
 ```
 
-### Step 5 – Configure `web.config`
+### Step 5 – Adjust `web.config`
 
-The `web.config` from the repository root is already correct. After copying, only adjust the `DB_PATH`:
+Set the absolute path to the SQLite database file:
 
 ```xml
 <appSettings>
   <add key="DB_PATH" value="C:\inetpub\wwwroot\board\server\data\teamlead.db" />
+  <add key="APP_BASE_PATH" value="/board" />
 </appSettings>
 ```
 
-> Do **not** set `PORT` — iisnode ignores it and communicates via a named pipe instead.
+> Do **not** set `PORT` – iisnode communicates via named pipe, not TCP.
 
 ### Step 6 – Verify
 
-After restarting the IIS site, the application is available at:
+Restart the IIS site. The app is available at:
 
 ```txt
 http://<servername>/board/
 ```
 
-Check that iisnode is working — a log directory should appear after the first request:
-
-```txt
-C:\inetpub\wwwroot\board\iisnode-logs\
-```
-
-If this directory does not appear, iisnode is not being invoked. Most common cause: `board` is not configured as an IIS Application (see Step 3).
+After the first request an `iisnode-logs/` directory appears in the deployment folder.
+If it does not appear, the folder is not configured as an IIS Application (see Step 3).
 
 ---
 
-### Redeployment (after code changes)
+## 5. Redeployment
 
 ```bash
-# Rebuild
-npm run build:iis
-npm run server:build
+# Rebuild (creates both release/ and update/ in one step)
+npm run build:deploy
+```
 
-# Copy to IIS (adjust path as needed)
-xcopy /E /Y dist\ C:\inetpub\wwwroot\board\dist\
-xcopy /E /Y server\dist\ C:\inetpub\wwwroot\board\server\dist\
+```powershell
+# Copy update/ to the server (no node_modules, no database)
+xcopy /E /Y update\dist\        C:\inetpub\wwwroot\board\dist\
+xcopy /E /Y update\server\dist\ C:\inetpub\wwwroot\board\server\dist\
 
-# Restart the IIS application (recycles the Node.js process)
+# Recycle the app pool (triggers a Node.js process restart)
 iisreset /noforce
 ```
 
+> `server\node_modules\` only needs to be re-copied when server dependencies change.
+> In that case copy from `release\server\node_modules\` instead.
+
 ---
 
-### Alternative: PM2 as a Windows Service (without iisnode)
+## 6. Configuration
 
-If iisnode is not available, PM2 can manage the Node.js process as a Windows service with IIS acting as a reverse proxy.
+### Environment Variables
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PORT` | `3001` | TCP port of the Express server (not used under iisnode) |
+| `DB_PATH` | `server/data/teamlead.db` | Absolute or relative path to the SQLite file |
+| `JWT_SECRET` | random on start | Secret for JWT signing – **must be set explicitly in production** |
+| `CORS_ORIGIN` | `http://localhost:5173` | Allowed frontend origin |
+| `APP_BASE_PATH` | (empty) | IIS sub-path prefix, e.g. `/board` |
+
+Set via `web.config` `<appSettings>` (IIS) or a `server/.env` file (PM2 / standalone).
+
+---
+
+## 7. Database
+
+The SQLite database is a single file at `server/data/teamlead.db`.
+
+### Backup
+
+```powershell
+copy server\data\teamlead.db server\data\teamlead_backup_%date%.db
+```
+
+### Reset (delete all data)
+
+Stop the server, delete `server\data\teamlead.db`, restart – seed data is inserted automatically.
+
+### Inspect the schema
+
+```bash
+sqlite3 server/data/teamlead.db .schema
+```
+
+### Tables
+
+| Table | Description |
+| --- | --- |
+| `teams` | Teams (multi-team support) |
+| `members` | Team members |
+| `skills` | Skill catalogue (global) |
+| `member_skills` | Competency matrix (member × skill) |
+| `sprints` | Sprints with metadata |
+| `sprint_capacity` | Capacity per member per sprint |
+| `assignments` | Rotation assignments |
+| `retrospectives` | Retrospectives |
+| `retro_items` | Individual items of a retrospective |
+
+---
+
+## 8. Troubleshooting
+
+### Server not reachable
+
+```bash
+curl http://localhost:3001/api/health
+```
+
+If that fails: server not running, port conflict, or firewall blocking the port.
+
+### iisnode errors (HTTP 500)
+
+- Check `iisnode-logs/` in the deployment directory
+- Is Node.js available in PATH for the app pool user?
+- Does `server\data\` have write permissions?
+
+### Database locked
+
+```powershell
+taskkill /F /IM node.exe
+rmdir /S /Q server\data\teamlead.db.lock
+```
+
+### TypeScript errors
+
+```bash
+npx tsc --noEmit            # frontend
+cd server && npx tsc --noEmit   # server
+```
+
+---
+
+## 9. Alternative: PM2 without iisnode
+
+If iisnode is not available, use PM2 to manage the Node.js process and configure IIS as a reverse proxy (requires the ARR module).
 
 ```bash
 npm install -g pm2 pm2-windows-startup
-pm2 start server/dist/index.js --name "team-board"
+pm2 start release\server\dist\index.js --name "team-board"
 pm2 save
 pm2-startup install
 ```
 
-`web.config` for the reverse proxy (requires the ARR module):
+`web.config` for the reverse proxy:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -275,116 +326,4 @@ pm2-startup install
     </rewrite>
   </system.webServer>
 </configuration>
-```
-
----
-
-## 5. Configuration
-
-### Environment Variables
-
-| Variable  | Default                   | Description                                       |
-|-----------|---------------------------|---------------------------------------------------|
-| `PORT`    | `3001`                    | TCP port of the Express server                    |
-| `DB_PATH` | `server/data/teamlead.db` | Absolute or relative path to the SQLite file      |
-
-Variables can be set via:
-
-- Shell: `PORT=8080 node server/dist/index.js`
-- `web.config` (IIS, see above)
-- `.env` file (if dotenv is included – not configured by default)
-
-### CORS
-
-In development mode CORS is open for all origins. For production environments the configuration in `server/src/index.ts` can be restricted:
-
-```typescript
-app.use(cors({
-  origin: 'https://my-domain.com',
-  credentials: true,
-}))
-```
-
----
-
-## 6. Database
-
-The SQLite database is stored as a **single file** at `server/data/teamlead.db`.
-
-### Backup
-
-```bash
-# Simple backup by copying
-copy server\data\teamlead.db server\data\teamlead_backup_%date%.db
-```
-
-### Reset (delete all data)
-
-```bash
-# Stop the server, then:
-del server\data\teamlead.db
-# Restart the server → seed data is re-inserted automatically
-```
-
-### Inspect the Schema
-
-```bash
-# With the sqlite3 CLI (if installed):
-sqlite3 server/data/teamlead.db .schema
-
-# Or with the Node.js REPL:
-node -e "const {Database}=require('node-sqlite3-wasm'); const db=new Database('server/data/teamlead.db'); console.log(db.all(\"SELECT name FROM sqlite_master WHERE type='table'\"))"
-```
-
-### Tables
-
-| Table              | Description                                 |
-|--------------------|---------------------------------------------|
-| `members`          | Team members                                |
-| `skills`           | Skill catalogue                             |
-| `member_skills`    | Competency matrix (member × skill)          |
-| `sprints`          | Sprints with metadata                       |
-| `sprint_capacity`  | Capacity per member per sprint              |
-| `assignments`      | Rotation assignments                        |
-| `retrospectives`   | Retrospectives                              |
-| `retro_items`      | Individual items of a retrospective         |
-
----
-
-## 7. Troubleshooting
-
-### "Server unreachable" in the frontend
-
-1. Check whether the server is running: `curl http://localhost:3001/api/health`
-2. Port conflict: try a different port with `PORT=3002 npm run dev`
-3. Firewall: open the port in the Windows Firewall
-
-### iisnode errors (HTTP 500)
-
-- Check iisnode logs: `server/iisnode/` (if loggingEnabled=true)
-- Is Node.js available in the PATH of the IIS application pool user?
-- Check permissions on `server/data/` (write access required)
-
-### Database errors
-
-- Check that `server/data/` exists and is writable
-- For `SQLite3Error: database is locked`: remove the lock directory and the old process:
-
-  ```bash
-  # Stop all Node processes
-  taskkill /F /IM node.exe
-  # Remove the stale lock directory (created on hard process termination)
-  rmdir /S /Q server\data\teamlead.db.lock
-  # Restart the server
-  cd server && npm run dev
-  ```
-
-### TypeScript compilation errors
-
-```bash
-# Frontend
-npx tsc --noEmit
-
-# Server
-cd server && npx tsc --noEmit
 ```
