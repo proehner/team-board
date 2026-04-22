@@ -303,7 +303,7 @@ export const useStore = create<AppState>()((set, _get) => ({
   archiveOldAssignments: async (before) => {
     const { archived } = await assignmentsApi.archiveOld(before)
     if (archived > 0) {
-      // Lokalen State aktualisieren: archivierte Einträge mit isArchived=true markieren
+      // Update local state: mark archived entries with isArchived=true
       const updated = await assignmentsApi.list()
       set({ assignments: updated })
     }

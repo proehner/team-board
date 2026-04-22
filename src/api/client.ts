@@ -169,7 +169,7 @@ export const authApi = {
     request<{ ok: boolean }>('POST', '/auth/change-password', { currentPassword, newPassword }),
 }
 
-// ─── Admin – Benutzerverwaltung ───────────────────────────────────────────────
+// ─── Admin – User Management ──────────────────────────────────────────────────
 export const adminApi = {
   listUsers:  () => request<AdminUser[]>('GET', '/admin/users'),
   createUser: (data: { username: string; password: string; displayName: string; role: 'admin' | 'user'; forbiddenPages: string[] }) =>

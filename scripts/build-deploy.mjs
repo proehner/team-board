@@ -70,7 +70,7 @@ console.log(`
 
   Base path : ${basePath}
 
-  First deployment – copy everything:
+  First deployment - copy everything:
     xcopy /E /Y /I release\\* C:\\inetpub\\wwwroot\\board\\
 
   Update existing installation:

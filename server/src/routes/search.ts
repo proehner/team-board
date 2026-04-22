@@ -41,7 +41,7 @@ router.get('/', (req, res) => {
     }
   }
 
-  // ── Skills / Kompetenzen (global) ─────────────────────────────────────────
+  // ── Skills (global) ─────────────────────────────────────────────────────────
   const skillRows = dbAll<{ id: string; name: string; category: string; description: string }>(
     `SELECT id, name, category, description FROM skills`,
   )
