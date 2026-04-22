@@ -2,19 +2,26 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Users, Bug, CalendarClock, Map, Zap, Package, MessageSquare,
+  Star, Activity, Globe, Monitor, RefreshCw,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { searchApi, type SearchHit } from '@/api/client'
 
 const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
-  member:         Users,
-  knownError:     Bug,
-  meeting:        CalendarClock,
-  topic:          MessageSquare,
-  roadmapFeature: Map,
-  roadmapTicket:  Map,
-  sprint:         Zap,
-  software:       Package,
+  member:          Users,
+  knownError:      Bug,
+  meeting:         CalendarClock,
+  topic:           MessageSquare,
+  roadmapFeature:  Map,
+  roadmapTicket:   Map,
+  roadmapEndpoint: Globe,
+  roadmapScreen:   Monitor,
+  sprint:          Zap,
+  skill:           Star,
+  retro:           RefreshCw,
+  retroItem:       RefreshCw,
+  pulseCheck:      Activity,
+  software:        Package,
 }
 
 function Highlight({ text, query }: { text: string; query: string }) {

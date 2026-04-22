@@ -759,7 +759,13 @@
       "topic": "Topic",
       "roadmapFeature": "Feature",
       "roadmapTicket": "Ticket",
+      "roadmapEndpoint": "Endpoint",
+      "roadmapScreen": "Screen",
       "sprint": "Sprint",
+      "skill": "Skill",
+      "retro": "Retro",
+      "retroItem": "Retro Item",
+      "pulseCheck": "Pulse Check",
       "software": "Software"
     }
   }
