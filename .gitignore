@@ -8,6 +8,8 @@
 # Build
 /dist
 /server/dist
+/release
+/update
 
 # Dependencies
 /node_modules
