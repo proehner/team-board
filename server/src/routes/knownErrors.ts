@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { dbGet, dbAll, dbRun } from '../db'
+import { findMentionedMembers, sendMentionNotifications } from '../email'
 import crypto from 'crypto'
 
 const router = Router()
@@ -96,6 +97,50 @@ router.patch('/:id', (req, res) => {
 router.delete('/:id', (req, res) => {
   const r = dbRun('DELETE FROM known_errors WHERE id = ?', [req.params.id])
   if (r.changes === 0) return res.status(404).json({ error: 'Known error not found.' })
+  res.status(204).send()
+})
+
+// ─── Comments ─────────────────────────────────────────────────────────────────
+
+// GET /api/known-errors/:id/comments
+router.get('/:id/comments', (req, res) => {
+  if (!dbGet('SELECT id FROM known_errors WHERE id = ?', [req.params.id])) {
+    return res.status(404).json({ error: 'Known error not found.' })
+  }
+  res.json(dbAll<Row>('SELECT * FROM known_error_comments WHERE knownErrorId = ? ORDER BY createdAt ASC', [req.params.id]))
+})
+
+// POST /api/known-errors/:id/comments
+router.post('/:id/comments', (req, res) => {
+  const ke = dbGet<{ id: string; title: string }>('SELECT id, title FROM known_errors WHERE id = ?', [req.params.id])
+  if (!ke) return res.status(404).json({ error: 'Known error not found.' })
+  const { content, authorName = '' } = req.body
+  if (!content?.trim()) return res.status(400).json({ error: 'content is required.' })
+  const id  = uid()
+  const now = new Date().toISOString()
+  dbRun(
+    'INSERT INTO known_error_comments (id, knownErrorId, content, authorName, createdAt) VALUES (?, ?, ?, ?, ?)',
+    [id, ke.id, content.trim(), authorName, now],
+  )
+  const saved = dbGet<Row>('SELECT * FROM known_error_comments WHERE id = ?', [id])!
+  // Send mention notifications asynchronously (fire-and-forget)
+  sendMentionNotifications({
+    mentionedMembers: findMentionedMembers(content.trim()),
+    authorName,
+    content: content.trim(),
+    contextTitle: ke.title,
+    contextType: 'knownError',
+  })
+  res.status(201).json(saved)
+})
+
+// DELETE /api/known-errors/:id/comments/:commentId
+router.delete('/:id/comments/:commentId', (req, res) => {
+  if (!dbGet('SELECT id FROM known_errors WHERE id = ?', [req.params.id])) {
+    return res.status(404).json({ error: 'Known error not found.' })
+  }
+  const r = dbRun('DELETE FROM known_error_comments WHERE id = ? AND knownErrorId = ?', [req.params.commentId, req.params.id])
+  if (r.changes === 0) return res.status(404).json({ error: 'Comment not found.' })
   res.status(204).send()
 })
 

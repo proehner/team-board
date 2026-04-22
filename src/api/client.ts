@@ -6,7 +6,7 @@ import type {
   Retrospective, RetroItemType, RetroItem,
   PulseCheck,
   AppUser, AdminUser,
-  Software, KnownError, KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment,
+  Software, KnownError, KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment, KnownErrorComment,
   Team,
   Meeting, MeetingRecurrence, MeetingTopic, TopicComment, TopicAttachment,
   RoadmapFeature, RoadmapTicket, RoadmapStatus, RoadmapPriority, RoadmapTicketType, RoadmapTicketArea,
@@ -59,7 +59,8 @@ export const teamsApi = {
 
 // ─── Members ──────────────────────────────────────────────────────────────────
 export const membersApi = {
-  list:   () => get<TeamMember[]>('/members'),
+  list:    () => get<TeamMember[]>('/members'),
+  listAll: () => get<TeamMember[]>('/members/all'),
   create: (data: { name: string; email: string; roles: MemberRole[]; isActive?: boolean }) =>
     post<TeamMember>('/members', data),
   update: (id: string, data: Partial<TeamMember>) =>
@@ -168,7 +169,7 @@ export const authApi = {
     request<{ ok: boolean }>('POST', '/auth/change-password', { currentPassword, newPassword }),
 }
 
-// ─── Admin – Benutzerverwaltung ───────────────────────────────────────────────
+// ─── Admin – User Management ──────────────────────────────────────────────────
 export const adminApi = {
   listUsers:  () => request<AdminUser[]>('GET', '/admin/users'),
   createUser: (data: { username: string; password: string; displayName: string; role: 'admin' | 'user'; forbiddenPages: string[] }) =>
@@ -206,6 +207,15 @@ export const knownErrorsApi = {
   create: (data: KnownErrorCreateData) => post<KnownError>('/known-errors', data),
   update: (id: string, data: KnownErrorUpdateData) => patch<KnownError>(`/known-errors/${id}`, data),
   delete: (id: string) => del(`/known-errors/${id}`),
+}
+
+export const knownErrorCommentsApi = {
+  list:   (knownErrorId: string) =>
+    get<KnownErrorComment[]>(`/known-errors/${knownErrorId}/comments`),
+  create: (knownErrorId: string, content: string, authorName?: string) =>
+    post<KnownErrorComment>(`/known-errors/${knownErrorId}/comments`, { content, authorName }),
+  delete: (knownErrorId: string, commentId: string) =>
+    del(`/known-errors/${knownErrorId}/comments/${commentId}`),
 }
 
 // ─── Uploads / Attachments ────────────────────────────────────────────────────
@@ -248,6 +258,7 @@ type MeetingCreateData = {
   dayOfWeek?: number
   meetingTime?: string
   location?: string
+  isGlobal?: boolean
 }
 type MeetingUpdateData = Partial<MeetingCreateData>
 
@@ -394,6 +405,20 @@ export const roadmapApi = {
     patch<RoadmapScreen>(`/roadmap/features/${featureId}/screens/${screenId}`, data),
   deleteScreen:  (featureId: string, screenId: string) =>
     del(`/roadmap/features/${featureId}/screens/${screenId}`),
+}
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+export interface SearchHit {
+  type: string
+  id: string
+  title: string
+  subtitle?: string
+  url: string
+  score: number
+}
+
+export const searchApi = {
+  search: (q: string) => get<SearchHit[]>(`/search?q=${encodeURIComponent(q)}`),
 }
 
 // ─── Pulse ────────────────────────────────────────────────────────────────────

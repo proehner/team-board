@@ -18,6 +18,7 @@ export interface TeamMember {
   avatarColor: string
   joinedAt: string
   isActive: boolean
+  teamId?: string
 }
 
 // ─── Competency Matrix ────────────────────────────────────────────────────────
@@ -179,6 +180,14 @@ export interface KnownError {
   updatedAt: string
 }
 
+export interface KnownErrorComment {
+  id: string
+  knownErrorId: string
+  content: string
+  authorName: string
+  createdAt: string
+}
+
 // ─── Meetings (Recurring Appointments) ───────────────────────────────────────
 
 export type MeetingRecurrence = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'custom'
@@ -193,6 +202,7 @@ export interface Meeting {
   meetingTime?: string
   location?: string
   teamId?: string
+  isGlobal: boolean
   createdAt: string
   updatedAt: string
 }

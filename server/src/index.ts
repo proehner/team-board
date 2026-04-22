@@ -20,6 +20,7 @@ import knownErrorsRouter from './routes/knownErrors'
 import meetingsRouter from './routes/meetings'
 import roadmapRouter from './routes/roadmap'
 import uploadsRouter from './routes/uploads'
+import searchRouter from './routes/search'
 
 const app = express()
 const PORT: string | number = process.env.PORT ?? 3001
@@ -82,6 +83,7 @@ app.use('/api/software',             ...guard,      softwareRouter)
 app.use('/api/known-errors',         ...guard,      knownErrorsRouter)
 app.use('/api/meetings',             ...teamGuard,  meetingsRouter)
 app.use('/api/roadmap',              ...guard,      roadmapRouter)
+app.use('/api/search',               ...guard,      searchRouter)
 // Uploads: file serving is public (images in markdown need no auth header),
 // CRUD routes enforce auth internally via requireAuth middleware.
 app.use('/api/uploads',              uploadsRouter)

@@ -611,11 +611,14 @@
     "descriptionPlaceholder": "Topic description…",
     "discussion": "Discussion",
     "noComments": "No comments yet.",
-    "commentPlaceholder": "Write a comment… (Enter to send)",
+    "commentPlaceholder": "Write a comment… @ to mention someone (Enter to send)",
     "anonymous": "Anonymous",
     "assignees": "Assignees",
     "noAssignees": "No assignees set.",
     "noMembers": "No active members available.",
+    "global": "Cross-team",
+    "globalLabel": "Cross-team meeting",
+    "globalHint": "All teams see this meeting; assignees can be selected from all teams.",
     "deleteCommentTitle": "Delete Comment",
     "deleteCommentConfirm": "Are you sure you want to delete this comment?",
     "attachments": {
@@ -703,6 +706,14 @@
       "download": "Download",
       "deleteTitle": "Delete attachment",
       "deleteConfirm": "Are you sure you want to delete \"{{name}}\"?"
+    },
+    "comments": {
+      "title": "Comments",
+      "empty": "No comments yet.",
+      "placeholder": "Write a comment… @ to mention someone (Enter to send)",
+      "anonymous": "Anonymous",
+      "deleteTitle": "Delete comment",
+      "deleteConfirm": "Are you sure you want to delete this comment?"
     }
   },
   "skillLevel": {
@@ -733,5 +744,29 @@
   "confirmDialog": {
     "confirm": "Confirm",
     "cancel": "Cancel"
+  },
+  "search": {
+    "placeholder": "Search…",
+    "hint": "Type at least 2 characters",
+    "noResults": "No results found.",
+    "navigate": "Navigate",
+    "open": "Open",
+    "close": "Close",
+    "type": {
+      "member": "Member",
+      "knownError": "Known Error",
+      "meeting": "Meeting",
+      "topic": "Topic",
+      "roadmapFeature": "Feature",
+      "roadmapTicket": "Ticket",
+      "roadmapEndpoint": "Endpoint",
+      "roadmapScreen": "Screen",
+      "sprint": "Sprint",
+      "skill": "Skill",
+      "retro": "Retro",
+      "retroItem": "Retro Item",
+      "pulseCheck": "Pulse Check",
+      "software": "Software"
+    }
   }
 }

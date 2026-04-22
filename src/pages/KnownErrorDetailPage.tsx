@@ -3,16 +3,18 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Bug, Pencil, Trash2, Tag, Monitor, Ticket,
   AlertTriangle, AlertCircle, Info, CheckCircle2, Wrench, Save, X,
-  Paperclip, Upload, Download, File, ImageIcon, Loader2,
+  Paperclip, Upload, Download, File, ImageIcon, Loader2, MessageSquare, Send,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
-import type { KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment } from '@/types'
+import type { KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment, KnownErrorComment } from '@/types'
 import Button from '@/components/ui/Button'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import MarkdownEditor from '@/components/ui/MarkdownEditor'
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer'
-import { attachmentsApi } from '@/api/client'
+import { attachmentsApi, knownErrorCommentsApi } from '@/api/client'
+import { useAuthStore } from '@/store/auth'
+import MentionInput, { renderWithMentions } from '@/components/ui/MentionInput'
 import { format } from 'date-fns'
 
 // ─── Severity & Status badges ─────────────────────────────────────────────────
@@ -217,6 +219,127 @@ function AttachmentsPanel({ knownErrorId, refreshKey }: { knownErrorId: string; 
         isOpen={!!confirmDelete}
         title={t('knownErrors.attachments.deleteTitle')}
         message={t('knownErrors.attachments.deleteConfirm', { name: confirmDelete?.originalName ?? '' })}
+        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        variant="danger"
+      />
+    </div>
+  )
+}
+
+// ─── Comments Panel ───────────────────────────────────────────────────────────
+
+function CommentsPanel({ knownErrorId }: { knownErrorId: string }) {
+  const { t }      = useTranslation()
+  const members    = useStore((s) => s.members)
+  const allMembers = useStore((s) => s.allMembers)
+  const user       = useAuthStore((s) => s.user)
+
+  const [comments,      setComments]      = useState<KnownErrorComment[]>([])
+  const [loading,       setLoading]       = useState(true)
+  const [newComment,    setNewComment]    = useState('')
+  const [sending,       setSending]       = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<KnownErrorComment | null>(null)
+
+  const load = useCallback(async () => {
+    try { setComments(await knownErrorCommentsApi.list(knownErrorId)) }
+    finally { setLoading(false) }
+  }, [knownErrorId])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleSend() {
+    if (!newComment.trim()) return
+    setSending(true)
+    try {
+      const c = await knownErrorCommentsApi.create(knownErrorId, newComment.trim(), user?.displayName ?? '')
+      setComments((prev) => [...prev, c])
+      setNewComment('')
+    } finally { setSending(false) }
+  }
+
+  async function handleDelete(c: KnownErrorComment) {
+    await knownErrorCommentsApi.delete(knownErrorId, c.id)
+    setComments((prev) => prev.filter((x) => x.id !== c.id))
+    setConfirmDelete(null)
+  }
+
+  return (
+    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 space-y-4">
+      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+        <MessageSquare className="w-4 h-4" />
+        {t('knownErrors.comments.title')}
+        <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+          {comments.length}
+        </span>
+      </h2>
+
+      {loading ? (
+        <div className="flex justify-center py-4 text-slate-400">
+          <Loader2 className="w-5 h-5 animate-spin" />
+        </div>
+      ) : comments.length === 0 ? (
+        <p className="text-sm text-slate-400 italic text-center py-2">{t('knownErrors.comments.empty')}</p>
+      ) : (
+        <div className="space-y-3">
+          {comments.map((c) => (
+            <div key={c.id} className="group flex gap-3">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold text-white"
+                style={{ backgroundColor: members.find((m) => m.name === c.authorName)?.avatarColor ?? '#6366f1' }}
+              >
+                {(c.authorName || '?').charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{c.authorName || t('knownErrors.comments.anonymous')}</span>
+                  <span className="text-xs text-slate-400">{format(new Date(c.createdAt), 'dd.MM.yyyy HH:mm')}</span>
+                </div>
+                <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5">{renderWithMentions(c.content, allMembers)}</p>
+              </div>
+              <button
+                onClick={() => setConfirmDelete(c)}
+                className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 self-start mt-1 p-1 text-slate-400 hover:text-red-600 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* New comment input */}
+      <div className="flex gap-2 pt-1">
+        <div
+          className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold text-white"
+          style={{ backgroundColor: members.find((m) => m.name === user?.displayName)?.avatarColor ?? '#6366f1' }}
+        >
+          {(user?.displayName || '?').charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 flex gap-2">
+          <MentionInput
+            value={newComment}
+            onChange={setNewComment}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+            members={allMembers}
+            rows={2}
+            placeholder={t('knownErrors.comments.placeholder')}
+            className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+          />
+          <button
+            onClick={handleSend}
+            disabled={!newComment.trim() || sending}
+            className="self-end px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        title={t('knownErrors.comments.deleteTitle')}
+        message={t('knownErrors.comments.deleteConfirm')}
         onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
         onClose={() => setConfirmDelete(null)}
         variant="danger"
@@ -478,6 +601,9 @@ export default function KnownErrorDetailPage() {
 
           {/* Attachments */}
           <AttachmentsPanel knownErrorId={ke.id} refreshKey={attachRefresh} />
+
+          {/* Comments */}
+          <CommentsPanel knownErrorId={ke.id} />
         </div>
 
         {/* Sidebar */}
