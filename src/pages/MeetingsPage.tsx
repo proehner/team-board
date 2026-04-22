@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { CalendarClock, Plus, Search, Pencil, Trash2, RefreshCw, ChevronRight } from 'lucide-react'
+import { CalendarClock, Plus, Search, Pencil, Trash2, RefreshCw, ChevronRight, Globe } from 'lucide-react'
 import { useStore } from '@/store'
 import type { Meeting, MeetingRecurrence } from '@/types'
 
@@ -33,11 +33,12 @@ interface FormState {
   dayOfWeek: string
   meetingTime: string
   location: string
+  isGlobal: boolean
 }
 
 const EMPTY_FORM: FormState = {
   title: '', description: '', recurrence: 'weekly',
-  dayOfWeek: '', meetingTime: '', location: '',
+  dayOfWeek: '', meetingTime: '', location: '', isGlobal: false,
 }
 
 export default function MeetingsPage() {
@@ -80,6 +81,7 @@ export default function MeetingsPage() {
       dayOfWeek:   m.dayOfWeek != null ? String(m.dayOfWeek) : '',
       meetingTime: m.meetingTime ?? '',
       location:    m.location ?? '',
+      isGlobal:    m.isGlobal,
     })
     setShowForm(true)
   }
@@ -95,6 +97,7 @@ export default function MeetingsPage() {
         dayOfWeek:   form.dayOfWeek !== '' ? Number(form.dayOfWeek) : undefined,
         meetingTime: form.meetingTime || undefined,
         location:    form.location.trim() || undefined,
+        isGlobal:    form.isGlobal,
       }
       if (editId) {
         await updateMeeting(editId, payload)
@@ -174,6 +177,12 @@ export default function MeetingsPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{m.title}</span>
                   <RecurrenceBadge recurrence={m.recurrence} />
+                  {m.isGlobal && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                      <Globe className="w-3 h-3" />
+                      {t('meetings.global')}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5">
                   {m.description && (
@@ -285,6 +294,26 @@ export default function MeetingsPage() {
                   />
                 </div>
               </div>
+
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={form.isGlobal}
+                    onChange={(e) => setForm((f) => ({ ...f, isGlobal: e.target.checked }))}
+                  />
+                  <div className="w-9 h-5 rounded-full bg-slate-200 dark:bg-slate-700 peer-checked:bg-emerald-500 transition-colors" />
+                  <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-emerald-500" />
+                    {t('meetings.globalLabel')}
+                  </span>
+                  <p className="text-xs text-slate-400">{t('meetings.globalHint')}</p>
+                </div>
+              </label>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">

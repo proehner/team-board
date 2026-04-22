@@ -535,11 +535,14 @@
     "descriptionPlaceholder": "Beschreibung des Themas…",
     "discussion": "Diskussion",
     "noComments": "Noch keine Kommentare.",
-    "commentPlaceholder": "Kommentar schreiben… (Enter zum Senden)",
+    "commentPlaceholder": "Kommentar schreiben… @ für Erwähnungen (Enter zum Senden)",
     "anonymous": "Anonym",
     "assignees": "Zuständige",
     "noAssignees": "Keine Zuständigen hinterlegt.",
     "noMembers": "Keine aktiven Mitglieder vorhanden.",
+    "global": "Teamübergreifend",
+    "globalLabel": "Teamübergreifender Termin",
+    "globalHint": "Alle Teams sehen diesen Termin, Zuständige aus allen Teams wählbar.",
     "deleteCommentTitle": "Kommentar löschen",
     "deleteCommentConfirm": "Kommentar wirklich löschen?",
     "attachments": {
@@ -732,6 +735,32 @@
       "download": "Herunterladen",
       "deleteTitle": "Anhang löschen",
       "deleteConfirm": "Möchtest du \"{{name}}\" wirklich löschen?"
+    },
+    "comments": {
+      "title": "Kommentare",
+      "empty": "Noch keine Kommentare vorhanden.",
+      "placeholder": "Kommentar schreiben… @ für Erwähnungen (Enter zum Senden)",
+      "anonymous": "Anonym",
+      "deleteTitle": "Kommentar löschen",
+      "deleteConfirm": "Kommentar wirklich löschen?"
+    }
+  },
+  "search": {
+    "placeholder": "Suchen…",
+    "hint": "Mindestens 2 Zeichen eingeben",
+    "noResults": "Keine Ergebnisse gefunden.",
+    "navigate": "Navigieren",
+    "open": "Öffnen",
+    "close": "Schließen",
+    "type": {
+      "member": "Mitglied",
+      "knownError": "Known Error",
+      "meeting": "Termin",
+      "topic": "Thema",
+      "roadmapFeature": "Feature",
+      "roadmapTicket": "Ticket",
+      "sprint": "Sprint",
+      "software": "Software"
     }
   }
 }

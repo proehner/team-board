@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Menu, Shield } from 'lucide-react'
 import Sidebar from './Sidebar'
+import GlobalSearch from '@/components/GlobalSearch'
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [searchOpen,  setSearchOpen]  = useState(false)
   const location = useLocation()
 
   // Close sidebar on route change (mobile)
@@ -12,13 +14,21 @@ export default function Layout() {
     setSidebarOpen(false)
   }, [location.pathname])
 
-  // Close sidebar on Escape
+  // Close sidebar on Escape; open search on Ctrl+K / Cmd+K
   useEffect(() => {
-    if (!sidebarOpen) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setSidebarOpen(false) }
+    function handler(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        if (searchOpen) { setSearchOpen(false); return }
+        setSidebarOpen(false)
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchOpen((o) => !o)
+      }
+    }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [sidebarOpen])
+  }, [sidebarOpen, searchOpen])
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -39,8 +49,10 @@ export default function Layout() {
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
+        <Sidebar onClose={() => setSidebarOpen(false)} onOpenSearch={() => setSearchOpen(true)} />
       </div>
+
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       {/* ── Main area ───────────────────────────────────────────────────────── */}
       <main className="flex flex-col flex-1 min-w-0 overflow-hidden bg-slate-50 dark:bg-slate-950">

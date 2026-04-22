@@ -29,6 +29,11 @@ function toMember(row: Row) {
   return { ...rest, roles, isActive: isActive === 1 || isActive === true }
 }
 
+// GET /api/members/all – all active members across all teams (teamId ignored)
+router.get('/all', (_req, res) => {
+  res.json(dbAll('SELECT * FROM members WHERE isActive = 1 ORDER BY teamId, name').map(toMember))
+})
+
 // GET /api/members
 router.get('/', (req, res) => {
   const { teamId } = req

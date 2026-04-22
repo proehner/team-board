@@ -290,6 +290,15 @@ try {
     FOREIGN KEY (knownErrorId) REFERENCES known_errors(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS known_error_comments (
+    id           TEXT PRIMARY KEY,
+    knownErrorId TEXT NOT NULL,
+    content      TEXT NOT NULL,
+    authorName   TEXT NOT NULL DEFAULT '',
+    createdAt    TEXT NOT NULL,
+    FOREIGN KEY (knownErrorId) REFERENCES known_errors(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS meetings (
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL,
@@ -418,6 +427,18 @@ if (!rtColsCheck.some((c) => c.name === 'teamId')) {
     DROP TABLE responsibility_types;
     ALTER TABLE responsibility_types_new RENAME TO responsibility_types;
   `)
+}
+
+// ─── meetings: add isGlobal column ───────────────────────────────────────────
+const meetingCols = db.prepare('PRAGMA table_info(meetings)').all([]) as Array<{ name: string }>
+if (!meetingCols.some((c) => c.name === 'isGlobal')) {
+  db.exec('ALTER TABLE meetings ADD COLUMN isGlobal INTEGER NOT NULL DEFAULT 0')
+}
+
+// ─── meeting_topics: add assigneeIds column (may be missing on older DBs) ────
+const topicCols = db.prepare('PRAGMA table_info(meeting_topics)').all([]) as Array<{ name: string }>
+if (!topicCols.some((c) => c.name === 'assigneeIds')) {
+  db.exec("ALTER TABLE meeting_topics ADD COLUMN assigneeIds TEXT NOT NULL DEFAULT '[]'")
 }
 
 // ─── Assign existing data to the default team if no team exists yet ──────────

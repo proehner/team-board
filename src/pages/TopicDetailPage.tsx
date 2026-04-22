@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/auth'
 import MarkdownEditor from '@/components/ui/MarkdownEditor'
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import MentionInput, { renderWithMentions } from '@/components/ui/MentionInput'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -153,7 +154,9 @@ export default function TopicDetailPage() {
   const navigate      = useNavigate()
   const meetings      = useStore((s) => s.meetings)
   const members       = useStore((s) => s.members)
+  const allMembers    = useStore((s) => s.allMembers)
   const user          = useAuthStore((s) => s.user)
+  const teams         = useAuthStore((s) => s.teams)
 
   const meeting = meetings.find((m) => m.id === meetingId)
 
@@ -254,8 +257,10 @@ export default function TopicDetailPage() {
   }
 
   const isClosed  = topic.status === 'closed'
-  const activeMembers = members.filter((m) => m.isActive)
-  const assignees = members.filter((m) => topic.assigneeIds.includes(m.id))
+  const pool      = meeting.isGlobal ? allMembers : members.filter((m) => m.isActive)
+  const assignees = [...members, ...allMembers].filter(
+    (m, i, arr) => topic.assigneeIds.includes(m.id) && arr.findIndex((x) => x.id === m.id) === i,
+  )
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
@@ -399,31 +404,91 @@ export default function TopicDetailPage() {
 
         {editingAssignees ? (
           <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              {activeMembers.map((m) => {
-                const selected = assigneeDraft.includes(m.id)
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => toggleAssignee(m.id)}
-                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                      selected
-                        ? 'bg-violet-600 text-white border-violet-600'
-                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-violet-400'
-                    }`}
-                  >
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${selected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'}`}>
-                      {m.name.charAt(0).toUpperCase()}
-                    </span>
-                    {m.name}
-                  </button>
+            {meeting.isGlobal ? (
+              // Group by team when global meeting
+              teams.length > 0
+                ? teams.map((team) => {
+                    const teamMembers = pool.filter((m) => m.teamId === team.id)
+                    if (teamMembers.length === 0) return null
+                    return (
+                      <div key={team.id}>
+                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">{team.name}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {teamMembers.map((m) => {
+                            const selected = assigneeDraft.includes(m.id)
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => toggleAssignee(m.id)}
+                                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                                  selected
+                                    ? 'bg-violet-600 text-white border-violet-600'
+                                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-violet-400'
+                                }`}
+                              >
+                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${selected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'}`}>
+                                  {m.name.charAt(0).toUpperCase()}
+                                </span>
+                                {m.name}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })
+                : (
+                  <div className="flex flex-wrap gap-2">
+                    {pool.map((m) => {
+                      const selected = assigneeDraft.includes(m.id)
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => toggleAssignee(m.id)}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                            selected
+                              ? 'bg-violet-600 text-white border-violet-600'
+                              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-violet-400'
+                          }`}
+                        >
+                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${selected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'}`}>
+                            {m.name.charAt(0).toUpperCase()}
+                          </span>
+                          {m.name}
+                        </button>
+                      )
+                    })}
+                  </div>
                 )
-              })}
-              {activeMembers.length === 0 && (
-                <p className="text-xs text-slate-400">{t('meetings.noMembers')}</p>
-              )}
-            </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {pool.map((m) => {
+                  const selected = assigneeDraft.includes(m.id)
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => toggleAssignee(m.id)}
+                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        selected
+                          ? 'bg-violet-600 text-white border-violet-600'
+                          : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-violet-400'
+                      }`}
+                    >
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${selected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'}`}>
+                        {m.name.charAt(0).toUpperCase()}
+                      </span>
+                      {m.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {pool.length === 0 && (
+              <p className="text-xs text-slate-400">{t('meetings.noMembers')}</p>
+            )}
             <div className="flex gap-2">
               <button onClick={handleSaveAssignees} className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors">
                 {t('common.save')}
@@ -482,7 +547,7 @@ export default function TopicDetailPage() {
                     <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{c.authorName || t('meetings.anonymous')}</span>
                     <span className="text-xs text-slate-400">{new Date(c.createdAt).toLocaleString()}</span>
                   </div>
-                  <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5 whitespace-pre-wrap">{c.content}</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5">{renderWithMentions(c.content, allMembers)}</p>
                 </div>
                 <button
                   onClick={() => setConfirmDeleteComment(c)}
@@ -504,13 +569,14 @@ export default function TopicDetailPage() {
             {(user?.displayName || '?').charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 flex gap-2">
-            <textarea
+            <MentionInput
               value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
+              onChange={setNewComment}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment() } }}
+              members={allMembers}
               rows={2}
               placeholder={t('meetings.commentPlaceholder')}
-              className="flex-1 px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
             />
             <button
               onClick={handleSendComment}

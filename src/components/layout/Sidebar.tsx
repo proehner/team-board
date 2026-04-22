@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Star, Zap, RefreshCw, MessageSquare, Shield,
   HeartPulse, Activity, Eye, Trophy, Settings, LogOut, ChevronDown,
-  Sun, Moon, Globe, Bug, X, ChevronRight, CalendarClock, Map,
+  Sun, Moon, Bug, X, ChevronRight, CalendarClock, Map, Search,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -13,9 +13,10 @@ import i18n from '@/i18n'
 
 interface SidebarProps {
   onClose?: () => void
+  onOpenSearch?: () => void
 }
 
-export default function Sidebar({ onClose }: SidebarProps) {
+export default function Sidebar({ onClose, onOpenSearch }: SidebarProps) {
   const { t } = useTranslation()
   const user          = useAuthStore((s) => s.user)
   const logout        = useAuthStore((s) => s.logout)
@@ -145,6 +146,18 @@ export default function Sidebar({ onClose }: SidebarProps) {
           )}
         </div>
       )}
+
+      {/* ── Search trigger ─────────────────────────────────────────────────── */}
+      <div className="px-3 py-2 border-b border-slate-800">
+        <button
+          onClick={onOpenSearch}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-800/60 hover:bg-slate-800 transition-colors text-left"
+        >
+          <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <span className="flex-1 text-xs text-slate-400">Suchen…</span>
+          <kbd className="text-[10px] text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded font-mono">⌃K</kbd>
+        </button>
+      </div>
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-3 overflow-y-auto scrollbar-thin">

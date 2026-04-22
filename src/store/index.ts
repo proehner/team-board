@@ -19,6 +19,7 @@ import type {
 interface AppState {
   // ─── Data ─────────────────────────────────────────────────────────────────
   members: TeamMember[]
+  allMembers: TeamMember[]
   skills: Skill[]
   memberSkills: MemberSkill[]
   sprints: Sprint[]
@@ -95,7 +96,7 @@ interface AppState {
   deleteKnownError: (id: string) => Promise<void>
 
   // ─── Meetings ─────────────────────────────────────────────────────────────
-  addMeeting:    (data: { title: string; description?: string; recurrence: MeetingRecurrence; dayOfWeek?: number; meetingTime?: string; location?: string }) => Promise<string>
+  addMeeting:    (data: { title: string; description?: string; recurrence: MeetingRecurrence; dayOfWeek?: number; meetingTime?: string; location?: string; isGlobal?: boolean }) => Promise<string>
   updateMeeting: (id: string, data: Partial<Omit<Meeting, 'id' | 'teamId' | 'createdAt' | 'updatedAt'>>) => Promise<void>
   deleteMeeting: (id: string) => Promise<void>
 
@@ -139,6 +140,7 @@ function patchRetroItem(
 
 export const useStore = create<AppState>()((set, _get) => ({
   members: [],
+  allMembers: [],
   skills: [],
   memberSkills: [],
   sprints: [],
@@ -161,9 +163,10 @@ export const useStore = create<AppState>()((set, _get) => ({
   loadAll: async () => {
     set({ loading: true, error: null })
     try {
-      const [members, { skills, memberSkills }, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures] =
+      const [members, allMembers, { skills, memberSkills }, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures] =
         await Promise.all([
           membersApi.list(),
+          membersApi.listAll(),
           skillsApi.list(),
           sprintsApi.list(),
           assignmentsApi.list(),
@@ -175,7 +178,7 @@ export const useStore = create<AppState>()((set, _get) => ({
           meetingsApi.list(),
           roadmapApi.listFeatures(),
         ])
-      set({ members, skills, memberSkills, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures, loading: false })
+      set({ members, allMembers, skills, memberSkills, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures, loading: false })
     } catch (err) {
       set({ loading: false, error: String(err) })
     }
