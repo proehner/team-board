@@ -207,6 +207,78 @@ try {
     updatedAt    TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS roadmap_features (
+    id                 TEXT PRIMARY KEY,
+    title              TEXT NOT NULL,
+    description        TEXT NOT NULL DEFAULT '',
+    status             TEXT NOT NULL DEFAULT 'idea',
+    priority           TEXT NOT NULL DEFAULT 'medium',
+    targetVersion      TEXT,
+    targetYear         INTEGER,
+    targetQuarter      INTEGER,
+    category           TEXT,
+    tags               TEXT NOT NULL DEFAULT '[]',
+    goals              TEXT NOT NULL DEFAULT '',
+    acceptanceCriteria TEXT NOT NULL DEFAULT '',
+    uiNotes            TEXT NOT NULL DEFAULT '',
+    backendNotes       TEXT NOT NULL DEFAULT '',
+    technicalNotes     TEXT NOT NULL DEFAULT '',
+    risks              TEXT NOT NULL DEFAULT '',
+    createdAt          TEXT NOT NULL,
+    updatedAt          TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS roadmap_tickets (
+    id                 TEXT PRIMARY KEY,
+    featureId          TEXT NOT NULL,
+    title              TEXT NOT NULL,
+    description        TEXT NOT NULL DEFAULT '',
+    acceptanceCriteria TEXT NOT NULL DEFAULT '',
+    type               TEXT NOT NULL DEFAULT 'task',
+    area               TEXT NOT NULL DEFAULT 'other',
+    storyPoints        INTEGER,
+    priority           TEXT NOT NULL DEFAULT 'medium',
+    assignedTeam       TEXT,
+    tags               TEXT NOT NULL DEFAULT '[]',
+    sortOrder          INTEGER NOT NULL DEFAULT 0,
+    createdAt          TEXT NOT NULL,
+    updatedAt          TEXT NOT NULL,
+    FOREIGN KEY (featureId) REFERENCES roadmap_features(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS roadmap_endpoints (
+    id           TEXT PRIMARY KEY,
+    featureId    TEXT NOT NULL,
+    method       TEXT NOT NULL DEFAULT 'GET',
+    path         TEXT NOT NULL DEFAULT '',
+    title        TEXT NOT NULL DEFAULT '',
+    description  TEXT NOT NULL DEFAULT '',
+    requestBody  TEXT NOT NULL DEFAULT '',
+    responseBody TEXT NOT NULL DEFAULT '',
+    authRequired INTEGER NOT NULL DEFAULT 1,
+    complexity   TEXT NOT NULL DEFAULT 'm',
+    notes        TEXT NOT NULL DEFAULT '',
+    sortOrder    INTEGER NOT NULL DEFAULT 0,
+    createdAt    TEXT NOT NULL,
+    updatedAt    TEXT NOT NULL,
+    FOREIGN KEY (featureId) REFERENCES roadmap_features(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS roadmap_screens (
+    id             TEXT PRIMARY KEY,
+    featureId      TEXT NOT NULL,
+    title          TEXT NOT NULL DEFAULT '',
+    route          TEXT NOT NULL DEFAULT '',
+    description    TEXT NOT NULL DEFAULT '',
+    components     TEXT NOT NULL DEFAULT '[]',
+    endpointIds    TEXT NOT NULL DEFAULT '[]',
+    wireframeNotes TEXT NOT NULL DEFAULT '',
+    sortOrder      INTEGER NOT NULL DEFAULT 0,
+    createdAt      TEXT NOT NULL,
+    updatedAt      TEXT NOT NULL,
+    FOREIGN KEY (featureId) REFERENCES roadmap_features(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS known_error_attachments (
     id           TEXT PRIMARY KEY,
     knownErrorId TEXT NOT NULL,

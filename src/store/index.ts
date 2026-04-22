@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import {
   membersApi, skillsApi, sprintsApi, assignmentsApi, retrosApi, responsibilityTypesApi, pulseApi,
-  softwareApi, knownErrorsApi, meetingsApi,
+  softwareApi, knownErrorsApi, meetingsApi, roadmapApi,
 } from '@/api/client'
 import type {
   TeamMember, MemberRole,
@@ -12,6 +12,8 @@ import type {
   PulseCheck,
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus,
   Meeting, MeetingRecurrence,
+  RoadmapFeature, RoadmapTicket, RoadmapStatus, RoadmapPriority, RoadmapTicketType, RoadmapTicketArea,
+  RoadmapEndpoint, RoadmapScreen, HttpMethod, EndpointComplexity,
 } from '@/types'
 
 interface AppState {
@@ -96,6 +98,29 @@ interface AppState {
   addMeeting:    (data: { title: string; description?: string; recurrence: MeetingRecurrence; dayOfWeek?: number; meetingTime?: string; location?: string }) => Promise<string>
   updateMeeting: (id: string, data: Partial<Omit<Meeting, 'id' | 'teamId' | 'createdAt' | 'updatedAt'>>) => Promise<void>
   deleteMeeting: (id: string) => Promise<void>
+
+  // ─── Roadmap ──────────────────────────────────────────────────────────────
+  roadmapFeatures:    RoadmapFeature[]
+  roadmapTickets:     Record<string, RoadmapTicket[]>  // keyed by featureId
+  allRoadmapTickets:  RoadmapTicket[] | null            // null = not yet loaded
+  roadmapEndpoints:   Record<string, RoadmapEndpoint[]> // keyed by featureId
+  roadmapScreens:     Record<string, RoadmapScreen[]>   // keyed by featureId
+  loadAllRoadmapTickets: () => Promise<void>
+  addRoadmapFeature:    (data: { title: string; description?: string; status?: RoadmapStatus; priority?: RoadmapPriority; targetVersion?: string; targetYear?: number; targetQuarter?: number; category?: string; tags?: string[]; goals?: string; acceptanceCriteria?: string; uiNotes?: string; backendNotes?: string; technicalNotes?: string; risks?: string }) => Promise<string>
+  updateRoadmapFeature: (id: string, data: Partial<Omit<RoadmapFeature, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>
+  deleteRoadmapFeature: (id: string) => Promise<void>
+  loadRoadmapTickets:   (featureId: string) => Promise<void>
+  addRoadmapTicket:     (featureId: string, data: { title: string; description?: string; acceptanceCriteria?: string; type?: RoadmapTicketType; area?: RoadmapTicketArea; storyPoints?: number; priority?: RoadmapPriority; assignedTeam?: string; tags?: string[]; sortOrder?: number }) => Promise<string>
+  updateRoadmapTicket:  (featureId: string, ticketId: string, data: Partial<Omit<RoadmapTicket, 'id' | 'featureId' | 'createdAt' | 'updatedAt'>>) => Promise<void>
+  deleteRoadmapTicket:  (featureId: string, ticketId: string) => Promise<void>
+  loadRoadmapEndpoints:   (featureId: string) => Promise<void>
+  addRoadmapEndpoint:     (featureId: string, data: { method?: HttpMethod; path?: string; title?: string; description?: string; requestBody?: string; responseBody?: string; authRequired?: boolean; complexity?: EndpointComplexity; notes?: string; sortOrder?: number }) => Promise<string>
+  updateRoadmapEndpoint:  (featureId: string, endpointId: string, data: Partial<Omit<RoadmapEndpoint, 'id' | 'featureId' | 'createdAt' | 'updatedAt'>>) => Promise<void>
+  deleteRoadmapEndpoint:  (featureId: string, endpointId: string) => Promise<void>
+  loadRoadmapScreens:     (featureId: string) => Promise<void>
+  addRoadmapScreen:       (featureId: string, data: { title?: string; route?: string; description?: string; components?: string[]; endpointIds?: string[]; wireframeNotes?: string; sortOrder?: number }) => Promise<string>
+  updateRoadmapScreen:    (featureId: string, screenId: string, data: Partial<Omit<RoadmapScreen, 'id' | 'featureId' | 'createdAt' | 'updatedAt'>>) => Promise<void>
+  deleteRoadmapScreen:    (featureId: string, screenId: string) => Promise<void>
 }
 
 // Helper: update a single retro's items in the state after an item mutation
@@ -124,6 +149,11 @@ export const useStore = create<AppState>()((set, _get) => ({
   software: [],
   knownErrors: [],
   meetings: [],
+  roadmapFeatures: [],
+  roadmapTickets: {},
+  allRoadmapTickets: null,
+  roadmapEndpoints: {},
+  roadmapScreens: {},
   loading: false,
   error: null,
 
@@ -131,7 +161,7 @@ export const useStore = create<AppState>()((set, _get) => ({
   loadAll: async () => {
     set({ loading: true, error: null })
     try {
-      const [members, { skills, memberSkills }, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings] =
+      const [members, { skills, memberSkills }, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures] =
         await Promise.all([
           membersApi.list(),
           skillsApi.list(),
@@ -143,8 +173,9 @@ export const useStore = create<AppState>()((set, _get) => ({
           softwareApi.list(),
           knownErrorsApi.list(),
           meetingsApi.list(),
+          roadmapApi.listFeatures(),
         ])
-      set({ members, skills, memberSkills, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, loading: false })
+      set({ members, skills, memberSkills, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures, loading: false })
     } catch (err) {
       set({ loading: false, error: String(err) })
     }
@@ -413,5 +444,153 @@ export const useStore = create<AppState>()((set, _get) => ({
   deleteMeeting: async (id) => {
     await meetingsApi.delete(id)
     set((s) => ({ meetings: s.meetings.filter((m) => m.id !== id) }))
+  },
+
+  // ─── Roadmap ──────────────────────────────────────────────────────────────
+  loadAllRoadmapTickets: async () => {
+    const tickets = await roadmapApi.listAllTickets()
+    // Populate per-feature cache and the flat list
+    const byFeature: Record<string, RoadmapTicket[]> = {}
+    for (const t of tickets) {
+      if (!byFeature[t.featureId]) byFeature[t.featureId] = []
+      byFeature[t.featureId].push(t)
+    }
+    set((s) => ({ allRoadmapTickets: tickets, roadmapTickets: { ...byFeature, ...s.roadmapTickets } }))
+  },
+
+  addRoadmapFeature: async (data) => {
+    const feature = await roadmapApi.createFeature(data)
+    set((s) => ({ roadmapFeatures: [feature, ...s.roadmapFeatures] }))
+    return feature.id
+  },
+
+  updateRoadmapFeature: async (id, data) => {
+    const updated = await roadmapApi.updateFeature(id, data)
+    set((s) => ({ roadmapFeatures: s.roadmapFeatures.map((f) => (f.id === id ? updated : f)) }))
+  },
+
+  deleteRoadmapFeature: async (id) => {
+    await roadmapApi.deleteFeature(id)
+    set((s) => {
+      const { [id]: _, ...rest } = s.roadmapTickets
+      return { roadmapFeatures: s.roadmapFeatures.filter((f) => f.id !== id), roadmapTickets: rest }
+    })
+  },
+
+  loadRoadmapTickets: async (featureId) => {
+    const tickets = await roadmapApi.listTickets(featureId)
+    set((s) => ({ roadmapTickets: { ...s.roadmapTickets, [featureId]: tickets } }))
+  },
+
+  addRoadmapTicket: async (featureId, data) => {
+    const ticket = await roadmapApi.createTicket(featureId, data)
+    set((s) => ({
+      allRoadmapTickets: s.allRoadmapTickets ? [...s.allRoadmapTickets, ticket] : null,
+      roadmapTickets: {
+        ...s.roadmapTickets,
+        [featureId]: [...(s.roadmapTickets[featureId] ?? []), ticket],
+      },
+    }))
+    return ticket.id
+  },
+
+  updateRoadmapTicket: async (featureId, ticketId, data) => {
+    const updated = await roadmapApi.updateTicket(featureId, ticketId, data)
+    set((s) => ({
+      allRoadmapTickets: s.allRoadmapTickets
+        ? s.allRoadmapTickets.map((t) => (t.id === ticketId ? updated : t))
+        : null,
+      roadmapTickets: {
+        ...s.roadmapTickets,
+        [featureId]: (s.roadmapTickets[featureId] ?? []).map((t) => (t.id === ticketId ? updated : t)),
+      },
+    }))
+  },
+
+  deleteRoadmapTicket: async (featureId, ticketId) => {
+    await roadmapApi.deleteTicket(featureId, ticketId)
+    set((s) => ({
+      allRoadmapTickets: s.allRoadmapTickets
+        ? s.allRoadmapTickets.filter((t) => t.id !== ticketId)
+        : null,
+      roadmapTickets: {
+        ...s.roadmapTickets,
+        [featureId]: (s.roadmapTickets[featureId] ?? []).filter((t) => t.id !== ticketId),
+      },
+    }))
+  },
+
+  // ─── Endpoints ──────────────────────────────────────────────────────────────
+  loadRoadmapEndpoints: async (featureId) => {
+    const endpoints = await roadmapApi.listEndpoints(featureId)
+    set((s) => ({ roadmapEndpoints: { ...s.roadmapEndpoints, [featureId]: endpoints } }))
+  },
+
+  addRoadmapEndpoint: async (featureId, data) => {
+    const endpoint = await roadmapApi.createEndpoint(featureId, data)
+    set((s) => ({
+      roadmapEndpoints: {
+        ...s.roadmapEndpoints,
+        [featureId]: [...(s.roadmapEndpoints[featureId] ?? []), endpoint],
+      },
+    }))
+    return endpoint.id
+  },
+
+  updateRoadmapEndpoint: async (featureId, endpointId, data) => {
+    const updated = await roadmapApi.updateEndpoint(featureId, endpointId, data)
+    set((s) => ({
+      roadmapEndpoints: {
+        ...s.roadmapEndpoints,
+        [featureId]: (s.roadmapEndpoints[featureId] ?? []).map((e) => (e.id === endpointId ? updated : e)),
+      },
+    }))
+  },
+
+  deleteRoadmapEndpoint: async (featureId, endpointId) => {
+    await roadmapApi.deleteEndpoint(featureId, endpointId)
+    set((s) => ({
+      roadmapEndpoints: {
+        ...s.roadmapEndpoints,
+        [featureId]: (s.roadmapEndpoints[featureId] ?? []).filter((e) => e.id !== endpointId),
+      },
+    }))
+  },
+
+  // ─── Screens ────────────────────────────────────────────────────────────────
+  loadRoadmapScreens: async (featureId) => {
+    const screens = await roadmapApi.listScreens(featureId)
+    set((s) => ({ roadmapScreens: { ...s.roadmapScreens, [featureId]: screens } }))
+  },
+
+  addRoadmapScreen: async (featureId, data) => {
+    const screen = await roadmapApi.createScreen(featureId, data)
+    set((s) => ({
+      roadmapScreens: {
+        ...s.roadmapScreens,
+        [featureId]: [...(s.roadmapScreens[featureId] ?? []), screen],
+      },
+    }))
+    return screen.id
+  },
+
+  updateRoadmapScreen: async (featureId, screenId, data) => {
+    const updated = await roadmapApi.updateScreen(featureId, screenId, data)
+    set((s) => ({
+      roadmapScreens: {
+        ...s.roadmapScreens,
+        [featureId]: (s.roadmapScreens[featureId] ?? []).map((sc) => (sc.id === screenId ? updated : sc)),
+      },
+    }))
+  },
+
+  deleteRoadmapScreen: async (featureId, screenId) => {
+    await roadmapApi.deleteScreen(featureId, screenId)
+    set((s) => ({
+      roadmapScreens: {
+        ...s.roadmapScreens,
+        [featureId]: (s.roadmapScreens[featureId] ?? []).filter((sc) => sc.id !== screenId),
+      },
+    }))
   },
 }))

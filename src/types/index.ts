@@ -228,6 +228,87 @@ export interface TopicAttachment {
   uploadedAt: string
 }
 
+// ─── Roadmap ──────────────────────────────────────────────────────────────────
+
+export type RoadmapStatus   = 'idea' | 'planned' | 'in-progress' | 'done' | 'cancelled'
+export type RoadmapPriority = 'low' | 'medium' | 'high' | 'critical'
+export type RoadmapQuarter  = 1 | 2 | 3 | 4
+
+export interface RoadmapFeature {
+  id: string
+  title: string
+  description: string
+  status: RoadmapStatus
+  priority: RoadmapPriority
+  targetVersion?: string
+  targetYear?: number
+  targetQuarter?: RoadmapQuarter
+  category?: string
+  tags: string[]
+  goals: string
+  acceptanceCriteria: string
+  uiNotes: string
+  backendNotes: string
+  technicalNotes: string
+  risks: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type RoadmapTicketType = 'epic' | 'user-story' | 'task' | 'bug'
+export type RoadmapTicketArea = 'frontend' | 'backend' | 'devops' | 'design' | 'database' | 'other'
+
+export interface RoadmapTicket {
+  id: string
+  featureId: string
+  title: string
+  description: string
+  acceptanceCriteria: string
+  type: RoadmapTicketType
+  area: RoadmapTicketArea
+  storyPoints?: number
+  priority: RoadmapPriority
+  assignedTeam?: string
+  tags: string[]
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+export type EndpointComplexity = 'xs' | 's' | 'm' | 'l' | 'xl'
+
+export interface RoadmapEndpoint {
+  id: string
+  featureId: string
+  method: HttpMethod
+  path: string
+  title: string
+  description: string
+  requestBody: string
+  responseBody: string
+  authRequired: boolean
+  complexity: EndpointComplexity
+  notes: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RoadmapScreen {
+  id: string
+  featureId: string
+  title: string
+  route: string
+  description: string
+  components: string[]
+  endpointIds: string[]
+  wireframeNotes: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
 // ─── Teams ────────────────────────────────────────────────────────────────────
 
 export interface Team {

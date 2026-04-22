@@ -9,6 +9,8 @@ import type {
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment,
   Team,
   Meeting, MeetingRecurrence, MeetingTopic, TopicComment, TopicAttachment,
+  RoadmapFeature, RoadmapTicket, RoadmapStatus, RoadmapPriority, RoadmapTicketType, RoadmapTicketArea,
+  RoadmapEndpoint, RoadmapScreen, HttpMethod, EndpointComplexity,
 } from '@/types'
 import { getStoredToken, getStoredTeamId } from '@/store/auth'
 
@@ -297,6 +299,98 @@ export const topicAttachmentsApi = {
   upload:  uploadTopicFile,
   delete:  (topicId: string, attachId: string) => del(`/uploads/topics/${topicId}/attachments/${attachId}`),
   fileUrl: (filename: string) => `${BASE}/uploads/${filename}`,
+}
+
+// ─── Roadmap ──────────────────────────────────────────────────────────────────
+type RoadmapFeatureCreateData = {
+  title: string
+  description?: string
+  status?: RoadmapStatus
+  priority?: RoadmapPriority
+  targetVersion?: string
+  targetYear?: number
+  targetQuarter?: number
+  category?: string
+  tags?: string[]
+  goals?: string
+  acceptanceCriteria?: string
+  uiNotes?: string
+  backendNotes?: string
+  technicalNotes?: string
+  risks?: string
+}
+type RoadmapFeatureUpdateData = Partial<RoadmapFeatureCreateData>
+
+type RoadmapTicketCreateData = {
+  title: string
+  description?: string
+  acceptanceCriteria?: string
+  type?: RoadmapTicketType
+  area?: RoadmapTicketArea
+  storyPoints?: number
+  priority?: RoadmapPriority
+  assignedTeam?: string
+  tags?: string[]
+  sortOrder?: number
+}
+type RoadmapTicketUpdateData = Partial<RoadmapTicketCreateData>
+
+type RoadmapEndpointCreateData = {
+  method?: HttpMethod
+  path?: string
+  title?: string
+  description?: string
+  requestBody?: string
+  responseBody?: string
+  authRequired?: boolean
+  complexity?: EndpointComplexity
+  notes?: string
+  sortOrder?: number
+}
+type RoadmapEndpointUpdateData = Partial<RoadmapEndpointCreateData>
+
+type RoadmapScreenCreateData = {
+  title?: string
+  route?: string
+  description?: string
+  components?: string[]
+  endpointIds?: string[]
+  wireframeNotes?: string
+  sortOrder?: number
+}
+type RoadmapScreenUpdateData = Partial<RoadmapScreenCreateData>
+
+export const roadmapApi = {
+  listAllTickets: () => get<RoadmapTicket[]>('/roadmap/tickets'),
+  listFeatures:   () => get<RoadmapFeature[]>('/roadmap/features'),
+  getFeature:     (id: string) => get<RoadmapFeature>(`/roadmap/features/${id}`),
+  createFeature:  (data: RoadmapFeatureCreateData) => post<RoadmapFeature>('/roadmap/features', data),
+  updateFeature:  (id: string, data: RoadmapFeatureUpdateData) => patch<RoadmapFeature>(`/roadmap/features/${id}`, data),
+  deleteFeature:  (id: string) => del(`/roadmap/features/${id}`),
+
+  listTickets:   (featureId: string) => get<RoadmapTicket[]>(`/roadmap/features/${featureId}/tickets`),
+  createTicket:  (featureId: string, data: RoadmapTicketCreateData) =>
+    post<RoadmapTicket>(`/roadmap/features/${featureId}/tickets`, data),
+  updateTicket:  (featureId: string, ticketId: string, data: RoadmapTicketUpdateData) =>
+    patch<RoadmapTicket>(`/roadmap/features/${featureId}/tickets/${ticketId}`, data),
+  deleteTicket:  (featureId: string, ticketId: string) =>
+    del(`/roadmap/features/${featureId}/tickets/${ticketId}`),
+
+  listEndpoints:   (featureId: string) => get<RoadmapEndpoint[]>(`/roadmap/features/${featureId}/endpoints`),
+  createEndpoint:  (featureId: string, data: RoadmapEndpointCreateData) =>
+    post<RoadmapEndpoint>(`/roadmap/features/${featureId}/endpoints`, data),
+  updateEndpoint:  (featureId: string, endpointId: string, data: RoadmapEndpointUpdateData) =>
+    patch<RoadmapEndpoint>(`/roadmap/features/${featureId}/endpoints/${endpointId}`, data),
+  deleteEndpoint:  (featureId: string, endpointId: string) =>
+    del(`/roadmap/features/${featureId}/endpoints/${endpointId}`),
+
+  listScreens:   (featureId: string) => get<RoadmapScreen[]>(`/roadmap/features/${featureId}/screens`),
+  createScreen:  (featureId: string, data: RoadmapScreenCreateData) =>
+    post<RoadmapScreen>(`/roadmap/features/${featureId}/screens`, data),
+  updateScreen:  (featureId: string, screenId: string, data: RoadmapScreenUpdateData) =>
+    patch<RoadmapScreen>(`/roadmap/features/${featureId}/screens/${screenId}`, data),
+  deleteScreen:  (featureId: string, screenId: string) =>
+    del(`/roadmap/features/${featureId}/screens/${screenId}`),
 }
 
 // ─── Pulse ────────────────────────────────────────────────────────────────────

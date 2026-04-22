@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Star, Zap, RefreshCw, MessageSquare, Shield,
   HeartPulse, Activity, Eye, Trophy, Settings, LogOut, ChevronDown,
-  Sun, Moon, Globe, Bug, X, ChevronRight, CalendarClock,
+  Sun, Moon, Globe, Bug, X, ChevronRight, CalendarClock, Map,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -40,19 +40,32 @@ export default function Sidebar({ onClose }: SidebarProps) {
     onClose?.()
   }
 
-  const navItems = [
-    { to: '/dashboard',     icon: LayoutDashboard, label: t('nav.dashboard'),       page: 'dashboard' },
-    { to: '/team',          icon: Users,           label: t('nav.team'),             page: 'team' },
-    { to: '/kompetenzen',   icon: Star,            label: t('nav.competencies'),     page: 'kompetenzen' },
-    { to: '/sprints',       icon: Zap,             label: t('nav.sprints'),          page: 'sprints' },
-    { to: '/rotation',      icon: RefreshCw,       label: t('nav.rotation'),         page: 'rotation' },
-    { to: '/retro',         icon: MessageSquare,   label: t('nav.retrospectives'),   page: 'retro' },
-    { to: '/health',        icon: HeartPulse,      label: t('nav.teamHealth'),       page: 'health' },
-    { to: '/pulse',         icon: Activity,        label: t('nav.pulseCheck'),       page: 'pulse' },
-    { to: '/stakeholder',   icon: Eye,             label: t('nav.stakeholder'),      page: 'stakeholder' },
-    { to: '/azure-ranking', icon: Trophy,          label: t('nav.azureRankings'),    page: 'azure-ranking' },
-    { to: '/known-errors',  icon: Bug,             label: t('nav.knownErrors'),      page: 'known-errors' },
-    { to: '/meetings',      icon: CalendarClock,   label: t('nav.meetings'),          page: 'meetings' },
+  const navGroups = [
+    {
+      items: [
+        { to: '/dashboard',     icon: LayoutDashboard, label: t('nav.dashboard'),     page: 'dashboard' },
+        { to: '/team',          icon: Users,           label: t('nav.team'),           page: 'team' },
+        { to: '/kompetenzen',   icon: Star,            label: t('nav.competencies'),   page: 'kompetenzen' },
+      ],
+    },
+    {
+      items: [
+        { to: '/sprints',       icon: Zap,             label: t('nav.sprints'),        page: 'sprints' },
+        { to: '/rotation',      icon: RefreshCw,       label: t('nav.rotation'),       page: 'rotation' },
+        { to: '/retro',         icon: MessageSquare,   label: t('nav.retrospectives'), page: 'retro' },
+        { to: '/health',        icon: HeartPulse,      label: t('nav.teamHealth'),     page: 'health' },
+        { to: '/pulse',         icon: Activity,        label: t('nav.pulseCheck'),     page: 'pulse' },
+        { to: '/stakeholder',   icon: Eye,             label: t('nav.stakeholder'),    page: 'stakeholder' },
+      ],
+    },
+    {
+      items: [
+        { to: '/azure-ranking', icon: Trophy,          label: t('nav.azureRankings'), page: 'azure-ranking' },
+        { to: '/known-errors',  icon: Bug,             label: t('nav.knownErrors'),   page: 'known-errors' },
+        { to: '/meetings',      icon: CalendarClock,   label: t('nav.meetings'),       page: 'meetings' },
+        { to: '/roadmap',       icon: Map,             label: t('nav.roadmap'),        page: 'roadmap' },
+      ],
+    },
   ]
 
   function handleLogout() {
@@ -60,10 +73,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
     navigate('/login', { replace: true })
   }
 
-  const visibleItems = navItems.filter((item) => isAllowed(item.page))
-
   const navLinkCls = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
       isActive
         ? 'bg-indigo-600 text-white'
         : 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -136,61 +147,37 @@ export default function Sidebar({ onClose }: SidebarProps) {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto scrollbar-thin">
-        {visibleItems.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            onClick={onClose}
-            className={navLinkCls}
-          >
-            <Icon className="w-4 h-4 shrink-0" />
-            {label}
-          </NavLink>
-        ))}
+      <nav className="flex-1 px-3 py-3 overflow-y-auto scrollbar-thin">
+        {navGroups.map((group, gi) => {
+          const visible = group.items.filter((item) => isAllowed(item.page))
+          if (visible.length === 0) return null
+          return (
+            <div key={gi} className={gi > 0 ? 'mt-1 pt-1 border-t border-slate-800' : ''}>
+              {visible.map(({ to, icon: Icon, label }) => (
+                <NavLink key={to} to={to} onClick={onClose} className={navLinkCls}>
+                  <Icon className="w-4 h-4 shrink-0" />
+                  {label}
+                </NavLink>
+              ))}
+            </div>
+          )
+        })}
 
-        {/* Admin section (admins only) */}
+        {/* Admin section */}
         {user?.role === 'admin' && (
-          <>
-            <NavLink
-              to="/admin"
-              onClick={onClose}
-              className={navLinkCls}
-            >
+          <div className="mt-1 pt-1 border-t border-slate-800">
+            <NavLink to="/admin" onClick={onClose} className={navLinkCls}>
               <Settings className="w-4 h-4 shrink-0" />
               {t('nav.userManagement')}
             </NavLink>
-          </>
+          </div>
         )}
       </nav>
 
-      {/* User + Theme + Logout */}
-      <div className="px-3 py-3 border-t border-slate-800 space-y-1">
-        {/* Theme toggle */}
-        <button
-          onClick={toggle}
-          title={isDark ? t('sidebar.enableLightMode') : t('sidebar.enableDarkMode')}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-        >
-          {isDark
-            ? <Sun className="w-4 h-4 shrink-0" />
-            : <Moon className="w-4 h-4 shrink-0" />
-          }
-          {isDark ? t('sidebar.lightMode') : t('sidebar.darkMode')}
-        </button>
-
-        {/* Language switch */}
-        <button
-          onClick={() => i18n.changeLanguage(i18n.language === 'de' ? 'en' : 'de')}
-          title={t('sidebar.switchLanguage')}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-        >
-          <Globe className="w-4 h-4 shrink-0" />
-          {i18n.language === 'de' ? 'EN' : 'DE'}
-        </button>
-
+      {/* User + controls */}
+      <div className="px-3 py-3 border-t border-slate-800">
         {user && (
-          <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg">
+          <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
             <div className="w-7 h-7 rounded-full bg-indigo-500 flex items-center justify-center text-white text-xs font-semibold shrink-0">
               {user.displayName.charAt(0).toUpperCase()}
             </div>
@@ -200,6 +187,21 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 {user.role === 'admin' ? t('sidebar.administrator') : t('sidebar.user')}
               </p>
             </div>
+            {/* Theme + Language as icon buttons */}
+            <button
+              onClick={toggle}
+              title={isDark ? t('sidebar.enableLightMode') : t('sidebar.enableDarkMode')}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+            >
+              {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={() => i18n.changeLanguage(i18n.language === 'de' ? 'en' : 'de')}
+              title={t('sidebar.switchLanguage')}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs font-medium"
+            >
+              {i18n.language === 'de' ? 'EN' : 'DE'}
+            </button>
           </div>
         )}
         <button
