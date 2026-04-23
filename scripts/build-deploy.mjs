@@ -18,8 +18,11 @@ const ROOT   = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const RELEASE = join(ROOT, 'release')
 const UPDATE  = join(ROOT, 'update')
 
-const baseIdx  = process.argv.indexOf('--base')
-const basePath = baseIdx !== -1 ? process.argv[baseIdx + 1] : '/board'
+const baseIdx = process.argv.indexOf('--base')
+let basePath  = baseIdx !== -1 ? process.argv[baseIdx + 1] : '/board'
+// Git Bash (MSYS) converts /foo to C:/Program Files/Git/foo before Node sees it.
+// Passing just "foo" (no leading slash) avoids this – re-add the slash here.
+if (!basePath.startsWith('/')) basePath = '/' + basePath
 const viteBase = basePath.endsWith('/') ? basePath : basePath + '/'
 
 function run(cmd, cwd = ROOT) {

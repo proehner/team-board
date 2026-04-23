@@ -7,7 +7,7 @@
 | Install dependencies | `npm install && cd server && npm install && cd ..` |
 | Local development | see [Section 2](#2-local-development) |
 | **Production build** | **`npm run build:deploy`** |
-| Custom IIS alias | `npm run build:deploy -- --base /myapp` |
+| Custom IIS alias | `npm run build:deploy -- --base myapp` |
 
 ---
 
@@ -106,8 +106,13 @@ Use `release/` for the **first deployment**. Use `update/` for all subsequent up
 The default base path is `/board`. To deploy under a different URL alias:
 
 ```bash
-npm run build:deploy -- --base /myapp
+# Works in every shell (Git Bash, PowerShell, cmd)
+npm run build:deploy -- --base myapp
 ```
+
+> **Git Bash note:** Do not use a leading `/` (e.g. `/myapp`) in Git Bash – MSYS converts
+> it to `C:/Program Files/Git/myapp` before Node.js receives it. The script adds the `/`
+> automatically, so just pass the name without the slash.
 
 Also update `APP_BASE_PATH` in `web.config` to match.
 
