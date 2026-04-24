@@ -19,9 +19,13 @@ function toSkill(row: Row) {
 }
 
 // GET /api/skills
-router.get('/', (_req, res) => {
-  const skills = dbAll('SELECT * FROM skills ORDER BY name').map(toSkill)
-  const memberSkills = dbAll('SELECT * FROM member_skills')
+router.get('/', (req, res) => {
+  const { teamId } = req
+  const skills = dbAll('SELECT * FROM skills WHERE teamId = ? ORDER BY name', [teamId]).map(toSkill)
+  const memberSkills = dbAll(
+    'SELECT ms.* FROM member_skills ms JOIN members m ON ms.memberId = m.id WHERE m.teamId = ?',
+    [teamId],
+  )
   res.json({ skills, memberSkills })
 })
 
@@ -32,15 +36,15 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'name and categories are required.' })
   }
   const id = uid()
-  dbRun('INSERT INTO skills (id, name, category, description) VALUES (?, ?, ?, ?)',
-    [id, name, JSON.stringify(categories), description ?? null])
+  dbRun('INSERT INTO skills (id, name, category, description, teamId) VALUES (?, ?, ?, ?, ?)',
+    [id, name, JSON.stringify(categories), description ?? null, req.teamId ?? null])
   res.status(201).json(toSkill(dbGet<Row>('SELECT * FROM skills WHERE id = ?', [id])!))
 })
 
 // PATCH /api/skills/:id
 router.patch('/:id', (req, res) => {
   const { id } = req.params
-  if (!dbGet('SELECT id FROM skills WHERE id = ?', [id])) {
+  if (!dbGet('SELECT id FROM skills WHERE id = ? AND teamId = ?', [id, req.teamId])) {
     return res.status(404).json({ error: 'Skill not found.' })
   }
   const updates: string[] = []
@@ -59,7 +63,7 @@ router.patch('/:id', (req, res) => {
 
 // DELETE /api/skills/:id
 router.delete('/:id', (req, res) => {
-  const r = dbRun('DELETE FROM skills WHERE id = ?', [req.params.id])
+  const r = dbRun('DELETE FROM skills WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])
   if (r.changes === 0) return res.status(404).json({ error: 'Skill not found.' })
   res.status(204).send()
 })

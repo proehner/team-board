@@ -73,7 +73,8 @@ try {
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
     category    TEXT NOT NULL,
-    description TEXT
+    description TEXT,
+    teamId      TEXT
   );
 
   CREATE TABLE IF NOT EXISTS member_skills (
@@ -409,6 +410,9 @@ if (!assignCols2.some((c) => c.name === 'teamId')) db.exec('ALTER TABLE assignme
 if (!retroCols.some((c) => c.name === 'teamId'))   db.exec('ALTER TABLE retrospectives ADD COLUMN teamId TEXT')
 if (!pulseCols.some((c) => c.name === 'teamId'))   db.exec('ALTER TABLE pulse_checks ADD COLUMN teamId TEXT')
 
+const skillCols = db.prepare('PRAGMA table_info(skills)').all([]) as Array<{ name: string }>
+if (!skillCols.some((c) => c.name === 'teamId'))   db.exec('ALTER TABLE skills ADD COLUMN teamId TEXT')
+
 // ─── responsibility_types: migrate to UNIQUE(name, teamId) ───────────────────
 // The old schema had UNIQUE(name) which prevents multiple teams having the same
 // type name. We recreate the table without the global UNIQUE(name) constraint.
@@ -455,8 +459,17 @@ if (teamCount === 0) {
   db.prepare('UPDATE retrospectives SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
   db.prepare('UPDATE pulse_checks SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
   db.prepare('UPDATE responsibility_types SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
+  db.prepare('UPDATE skills SET teamId = ? WHERE teamId IS NULL').run([defaultTeamId])
   console.info(`Multi-team migration: existing data assigned to default team "${defaultTeamId}"`)
 }
+
+// ─── Skills team migration: assign orphaned skills to the first team ─────────
+// Handles databases that already had teams when the skills.teamId column was added.
+db.exec(`
+  UPDATE skills
+  SET teamId = (SELECT id FROM teams ORDER BY createdAt ASC LIMIT 1)
+  WHERE teamId IS NULL AND EXISTS (SELECT 1 FROM teams)
+`)
 
 // ─── meeting_topics migration: add assigneeIds ────────────────────────────────
 const meetingTopicCols = db.prepare('PRAGMA table_info(meeting_topics)').all([]) as Array<{ name: string }>
