@@ -72,7 +72,7 @@ const teamGuard  = [requireAuth, requirePageAccess, requireTeam]
 app.use('/api/admin',                requireAuth,   adminRouter)   // page lock not relevant here
 app.use('/api/teams',                requireAuth,   teamsRouter)   // team list is global, CRUD requires admin
 app.use('/api/members',              ...teamGuard,  membersRouter)
-app.use('/api/skills',               ...guard,      skillsRouter)
+app.use('/api/skills',               ...teamGuard,  skillsRouter)
 app.use('/api/sprints',              ...teamGuard,  sprintsRouter)
 app.use('/api/assignments',          ...teamGuard,  assignmentsRouter)
 app.use('/api/retrospectives',       ...teamGuard,  retrospectivesRouter)
