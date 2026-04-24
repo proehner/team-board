@@ -142,7 +142,8 @@
     "filterPlaceholder": "Fähigkeit…",
     "membersRated": "{{rated}}/{{total}} Mitglieder",
     "avgLevel": "Ø {{level}}",
-    "experts": "Experten"
+    "experts": "Experten",
+    "totalRow": "Gesamt · Ø {{avg}}"
   },
   "sprints": {
     "title": "Sprints",
@@ -292,7 +293,9 @@
     "growthPotential": "Wachstumspotenzial",
     "openRetroActions": "Offene Retro-Maßnahmen",
     "open": "offen",
-    "allActionsDone": "Alle Maßnahmen erledigt."
+    "allActionsDone": "Alle Maßnahmen erledigt.",
+    "skillCapacity": "Kompetenz-Kapazität",
+    "skillCapacityNote": "Strich = Teamdurchschnitt (Ø {{avg}} Pkt.) · {{count}} Skills"
   },
   "pulse": {
     "title": "Pulse Check",
