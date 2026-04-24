@@ -142,7 +142,8 @@
     "filterPlaceholder": "Skill…",
     "membersRated": "{{rated}}/{{total}} members",
     "avgLevel": "Ø {{level}}",
-    "experts": "Experts"
+    "experts": "Experts",
+    "totalRow": "Total · Ø {{avg}}"
   },
   "sprints": {
     "title": "Sprints",
@@ -292,7 +293,9 @@
     "growthPotential": "Growth Potential",
     "openRetroActions": "Open Retro Actions",
     "open": "open",
-    "allActionsDone": "All actions completed."
+    "allActionsDone": "All actions completed.",
+    "skillCapacity": "Skill Capacity",
+    "skillCapacityNote": "Line = team average (Ø {{avg}} pts) · {{count}} skills"
   },
   "pulse": {
     "title": "Pulse Check",

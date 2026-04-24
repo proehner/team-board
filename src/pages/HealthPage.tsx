@@ -90,6 +90,26 @@ export default function HealthPage() {
     )
   }
 
+  const memberTotalsRaw = activeMembers.map((member) => ({
+    member,
+    total: skills.reduce((sum, sk) => sum + (ms.find((x) => x.memberId === member.id && x.skillId === sk.id)?.level ?? 0), 0),
+  }))
+  const teamAvgCapacity = activeMembers.length > 0
+    ? memberTotalsRaw.reduce((s, m) => s + m.total, 0) / activeMembers.length
+    : 0
+  const teamMaxCapacity = Math.max(...memberTotalsRaw.map((m) => m.total), 1)
+  const avgMarkerPct = teamMaxCapacity > 0 ? (teamAvgCapacity / teamMaxCapacity) * 100 : 0
+
+  const memberCapacities = memberTotalsRaw
+    .map(({ member, total }) => {
+      const deviation = total - teamAvgCapacity
+      const relDev = teamAvgCapacity > 0 ? deviation / teamAvgCapacity : 0
+      const pct = (total / teamMaxCapacity) * 100
+      const status = relDev >= -0.1 ? 'ok' : relDev >= -0.3 ? 'warning' : 'critical'
+      return { member, total, deviation, pct, status }
+    })
+    .sort((a, b) => b.total - a.total)
+
   const devSuggestions = activeMembers.map((member) => {
     const suggestions = skills.map((sk) => {
       const myLevel = ms.find((x) => x.memberId === member.id && x.skillId === sk.id)?.level ?? 0
@@ -324,6 +344,46 @@ export default function HealthPage() {
                 </div>
               ))}
             </div>}
+      </Section>
+
+      {/* Skill Capacity */}
+      <Section id="capacity" title={t('health.skillCapacity')} expanded={expandedSection === 'capacity'} onToggle={() => toggleSection('capacity')}>
+        {skills.length === 0 || activeMembers.length === 0 ? (
+          <p className="text-sm text-slate-400 pt-2">{t('health.noSuggestions')}</p>
+        ) : (
+          <div className="space-y-3 pt-2">
+            {memberCapacities.map(({ member, total, deviation, pct, status }) => {
+              const barColor = status === 'ok' ? 'bg-green-400' : status === 'warning' ? 'bg-amber-400' : 'bg-red-400'
+              const devColor = status === 'ok' ? 'text-green-600 dark:text-green-400' : status === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-red-500 dark:text-red-400'
+              const devLabel = deviation >= 0
+                ? `+${Math.round(deviation)} Pkt. über Ø`
+                : `${Math.round(deviation)} Pkt. unter Ø`
+              return (
+                <div key={member.id} className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 w-36 shrink-0">
+                    <Avatar name={member.name} color={member.avatarColor} size="xs" />
+                    <span className="text-sm text-slate-700 dark:text-slate-300 truncate">{member.name.split(' ')[0]}</span>
+                  </div>
+                  <div className="flex-1 relative h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className={`absolute inset-y-0 left-0 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                    {activeMembers.length > 1 && (
+                      <div className="absolute inset-y-0 w-px bg-slate-400 dark:bg-slate-500" style={{ left: `${avgMarkerPct}%` }} />
+                    )}
+                  </div>
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 w-14 text-right shrink-0">
+                    {total} Pkt.
+                  </span>
+                  <span className={`text-xs shrink-0 w-32 text-right ${devColor}`}>
+                    {devLabel}
+                  </span>
+                </div>
+              )
+            })}
+            <p className="text-xs text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800">
+              {t('health.skillCapacityNote', { avg: Math.round(teamAvgCapacity), count: skills.length })}
+            </p>
+          </div>
+        )}
       </Section>
 
       {/* Open Action Items */}

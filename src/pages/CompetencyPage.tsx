@@ -275,6 +275,57 @@ interface MatrixTabProps {
   popoverRef: React.RefObject<HTMLDivElement>
 }
 
+interface MemberTotalsFooterProps {
+  members: TeamMember[]
+  groupedSkills: Record<string, Skill[]>
+  getLevel: (memberId: string, skillId: string) => SkillLevel
+}
+
+function MemberTotalsFooter({ members, groupedSkills, getLevel }: MemberTotalsFooterProps) {
+  const { t } = useTranslation()
+  const allSkills = Object.values(groupedSkills).flat()
+  if (allSkills.length === 0 || members.length === 0) return null
+
+  const totals = members.map((m) => allSkills.reduce((sum, sk) => sum + getLevel(m.id, sk.id), 0))
+  const teamAvg = totals.reduce((s, v) => s + v, 0) / members.length
+  const teamMax = Math.max(...totals, 1)
+  const avgMarkerPct = (teamAvg / teamMax) * 100
+
+  return (
+    <tfoot>
+      <tr className="border-t-2 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800">
+        <td className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 w-52">
+          {t('competencies.totalRow', { avg: Math.round(teamAvg) })}
+        </td>
+        {members.map((m, i) => {
+          const total = totals[i]
+          const deviation = total - teamAvg
+          const relDev = teamAvg > 0 ? deviation / teamAvg : 0
+          const pct = (total / teamMax) * 100
+          const status = relDev >= -0.1 ? 'ok' : relDev >= -0.3 ? 'warning' : 'critical'
+          const barColor = status === 'ok' ? 'bg-green-400' : status === 'warning' ? 'bg-amber-400' : 'bg-red-400'
+          const textColor = status === 'ok' ? 'text-green-600 dark:text-green-400' : status === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-red-500 dark:text-red-400'
+          const deviationLabel = deviation >= 0 ? `+${Math.round(deviation)}` : `${Math.round(deviation)}`
+          return (
+            <td key={m.id} className="px-2 py-3 text-center min-w-[90px]">
+              <div className="flex flex-col items-center gap-1" title={`${total} Pkt. · ${deviationLabel} vs. Ø`}>
+                <span className={`text-sm font-bold ${textColor}`}>{total}</span>
+                <div className="relative w-14 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                  <div className={`absolute inset-y-0 left-0 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                  {members.length > 1 && (
+                    <div className="absolute inset-y-0 w-px bg-white/80 dark:bg-slate-900/80" style={{ left: `${avgMarkerPct}%` }} />
+                  )}
+                </div>
+                <span className={`text-xs font-medium ${textColor}`}>{deviationLabel}</span>
+              </div>
+            </td>
+          )
+        })}
+      </tr>
+    </tfoot>
+  )
+}
+
 function MatrixTab({ members, groupedSkills, getLevel, getSkillRisk, activeCell, setActiveCell, setMemberSkillLevel, popoverRef }: MatrixTabProps) {
   const { t } = useTranslation()
   if (members.length === 0 || Object.keys(groupedSkills).length === 0) {
@@ -379,6 +430,7 @@ function MatrixTab({ members, groupedSkills, getLevel, getSkillRisk, activeCell,
             </React.Fragment>
           ))}
         </tbody>
+        <MemberTotalsFooter members={members} groupedSkills={groupedSkills} getLevel={getLevel} />
       </table>
       <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
         {([0, 1, 2, 3, 4, 5] as SkillLevel[]).map((l) => (
