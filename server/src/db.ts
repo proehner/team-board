@@ -73,8 +73,25 @@ try {
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
     category    TEXT NOT NULL,
+    categoryId  TEXT,
     description TEXT,
     teamId      TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS skill_areas (
+    id        TEXT PRIMARY KEY,
+    name      TEXT NOT NULL,
+    teamId    TEXT NOT NULL,
+    sortOrder INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS skill_area_categories (
+    id        TEXT PRIMARY KEY,
+    name      TEXT NOT NULL,
+    areaId    TEXT NOT NULL,
+    teamId    TEXT NOT NULL,
+    sortOrder INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (areaId) REFERENCES skill_areas(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS member_skills (
@@ -345,6 +362,39 @@ try {
     uploadedAt   TEXT NOT NULL,
     FOREIGN KEY (topicId) REFERENCES meeting_topics(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS tickets (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'todo',
+    priority    TEXT NOT NULL DEFAULT 'medium',
+    assigneeIds TEXT NOT NULL DEFAULT '[]',
+    teamId      TEXT,
+    isGlobal    INTEGER NOT NULL DEFAULT 0,
+    createdAt   TEXT NOT NULL,
+    updatedAt   TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS topic_ticket_links (
+    topicId  TEXT NOT NULL,
+    ticketId TEXT NOT NULL,
+    PRIMARY KEY (topicId, ticketId),
+    FOREIGN KEY (topicId)  REFERENCES meeting_topics(id) ON DELETE CASCADE,
+    FOREIGN KEY (ticketId) REFERENCES tickets(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS dashboard_tiles (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    url         TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    color       TEXT NOT NULL DEFAULT 'indigo',
+    is_global   INTEGER NOT NULL DEFAULT 0,
+    user_id     TEXT NOT NULL,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+  );
 `)
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err)
@@ -475,6 +525,99 @@ db.exec(`
 const meetingTopicCols = db.prepare('PRAGMA table_info(meeting_topics)').all([]) as Array<{ name: string }>
 if (meetingTopicCols.length > 0 && !meetingTopicCols.some((c) => c.name === 'assigneeIds')) {
   db.exec("ALTER TABLE meeting_topics ADD COLUMN assigneeIds TEXT NOT NULL DEFAULT '[]'")
+}
+
+// ─── meeting_topics: migrate status values (open→todo, closed→done) ──────────
+// Only run when the old 'open' status value still exists in the table.
+const hasOldOpenStatus = (db.prepare("SELECT COUNT(*) as n FROM meeting_topics WHERE status = 'open'").get([]) as { n: number }).n
+if (hasOldOpenStatus > 0) {
+  db.exec("UPDATE meeting_topics SET status = 'todo' WHERE status = 'open'")
+}
+const hasOldClosedStatus = (db.prepare("SELECT COUNT(*) as n FROM meeting_topics WHERE status = 'closed'").get([]) as { n: number }).n
+if (hasOldClosedStatus > 0) {
+  db.exec("UPDATE meeting_topics SET status = 'done' WHERE status = 'closed'")
+}
+
+// ─── tickets: add isGlobal column if missing ─────────────────────────────────
+const ticketCols = db.prepare('PRAGMA table_info(tickets)').all([]) as Array<{ name: string }>
+if (ticketCols.length > 0 && !ticketCols.some((c) => c.name === 'isGlobal')) {
+  db.exec('ALTER TABLE tickets ADD COLUMN isGlobal INTEGER NOT NULL DEFAULT 0')
+}
+
+// ─── skill_areas / skill_area_categories: add tables if missing ──────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS skill_areas (
+    id        TEXT PRIMARY KEY,
+    name      TEXT NOT NULL,
+    teamId    TEXT NOT NULL,
+    sortOrder INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS skill_area_categories (
+    id        TEXT PRIMARY KEY,
+    name      TEXT NOT NULL,
+    areaId    TEXT NOT NULL,
+    teamId    TEXT NOT NULL,
+    sortOrder INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (areaId) REFERENCES skill_areas(id) ON DELETE CASCADE
+  );
+`)
+
+// ─── skills: add categoryId column if missing ─────────────────────────────────
+const skillColsNew = db.prepare('PRAGMA table_info(skills)').all([]) as Array<{ name: string }>
+if (!skillColsNew.some((c) => c.name === 'categoryId')) {
+  db.exec('ALTER TABLE skills ADD COLUMN categoryId TEXT')
+}
+
+// ─── Migrate old category strings → skill_areas + skill_area_categories ───────
+// Only runs when there are skills with a legacy category but no skill_areas yet.
+{
+  const areaCount = (db.prepare('SELECT COUNT(*) as n FROM skill_areas').get([]) as { n: number }).n
+  const skillCount = (db.prepare('SELECT COUNT(*) as n FROM skills').get([]) as { n: number }).n
+  if (areaCount === 0 && skillCount > 0) {
+    // Collect distinct (teamId, categoryName) pairs from existing skills
+    const legacySkills = db.prepare('SELECT id, category, teamId FROM skills WHERE category IS NOT NULL').all([]) as Array<{ id: string; category: string; teamId: string }>
+    const areaMap = new Map<string, string>() // key: "teamId|catName" → areaId
+    const catMap  = new Map<string, string>() // key: "teamId|catName" → categoryId
+
+    for (const sk of legacySkills) {
+      let cats: string[]
+      try { cats = JSON.parse(sk.category) } catch { cats = [sk.category] }
+      for (const catName of cats) {
+        const key = `${sk.teamId}|${catName}`
+        if (!areaMap.has(key)) {
+          const areaId = crypto.randomUUID()
+          const catId  = crypto.randomUUID()
+          db.prepare('INSERT INTO skill_areas (id, name, teamId, sortOrder) VALUES (?, ?, ?, ?)').run([areaId, catName, sk.teamId, 0])
+          db.prepare('INSERT INTO skill_area_categories (id, name, areaId, teamId, sortOrder) VALUES (?, ?, ?, ?, ?)').run([catId, 'Allgemein', areaId, sk.teamId, 0])
+          areaMap.set(key, areaId)
+          catMap.set(key, catId)
+        }
+      }
+    }
+
+    // Assign each skill's categoryId to its first legacy category
+    for (const sk of legacySkills) {
+      if (sk.category) {
+        let cats: string[]
+        try { cats = JSON.parse(sk.category) } catch { cats = [sk.category] }
+        const firstKey = `${sk.teamId}|${cats[0]}`
+        const catId = catMap.get(firstKey)
+        if (catId) {
+          db.prepare('UPDATE skills SET categoryId = ? WHERE id = ?').run([catId, sk.id])
+        }
+      }
+    }
+    console.info('skill_areas migration: created areas from legacy category strings')
+  }
+}
+
+// ─── Users member_id migration ────────────────────────────────────────────────
+{
+  const cols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[]
+  if (!cols.some((c) => c.name === 'member_id')) {
+    db.prepare('ALTER TABLE users ADD COLUMN member_id TEXT').run([])
+    console.info('users migration: added member_id column')
+  }
 }
 
 export default db

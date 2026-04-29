@@ -20,6 +20,7 @@ import KnownErrorDetailPage from '@/pages/KnownErrorDetailPage'
 import MeetingsPage from '@/pages/MeetingsPage'
 import MeetingDetailPage from '@/pages/MeetingDetailPage'
 import TopicDetailPage from '@/pages/TopicDetailPage'
+import TicketsPage from '@/pages/TicketsPage'
 import RoadmapPage from '@/pages/RoadmapPage'
 import RoadmapFeatureDetailPage from '@/pages/RoadmapFeatureDetailPage'
 import LoginPage from '@/pages/LoginPage'
@@ -214,6 +215,7 @@ export default function App() {
         <Route path="meetings"          element={<ProtectedRoute page="meetings"><MeetingsPage /></ProtectedRoute>} />
         <Route path="meetings/:meetingId" element={<ProtectedRoute page="meetings"><MeetingDetailPage /></ProtectedRoute>} />
         <Route path="meetings/:meetingId/topics/:topicId" element={<ProtectedRoute page="meetings"><TopicDetailPage /></ProtectedRoute>} />
+        <Route path="tickets"               element={<ProtectedRoute page="tickets"><TicketsPage /></ProtectedRoute>} />
         <Route path="roadmap"               element={<ProtectedRoute page="roadmap"><RoadmapPage /></ProtectedRoute>} />
         <Route path="roadmap/:featureId"    element={<ProtectedRoute page="roadmap"><RoadmapFeatureDetailPage /></ProtectedRoute>} />
       </Route>

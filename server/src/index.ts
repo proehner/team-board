@@ -9,6 +9,7 @@ import adminRouter from './routes/admin'
 import teamsRouter from './routes/teams'
 import membersRouter from './routes/members'
 import skillsRouter from './routes/skills'
+import skillAreasRouter from './routes/skill-areas'
 import sprintsRouter from './routes/sprints'
 import assignmentsRouter from './routes/assignments'
 import retrospectivesRouter from './routes/retrospectives'
@@ -18,6 +19,8 @@ import azureRankingRouter from './routes/azureRanking'
 import softwareRouter from './routes/software'
 import knownErrorsRouter from './routes/knownErrors'
 import meetingsRouter from './routes/meetings'
+import ticketsRouter from './routes/tickets'
+import dashboardRouter from './routes/dashboardTiles'
 import roadmapRouter from './routes/roadmap'
 import uploadsRouter from './routes/uploads'
 import searchRouter from './routes/search'
@@ -73,6 +76,7 @@ app.use('/api/admin',                requireAuth,   adminRouter)   // page lock 
 app.use('/api/teams',                requireAuth,   teamsRouter)   // team list is global, CRUD requires admin
 app.use('/api/members',              ...teamGuard,  membersRouter)
 app.use('/api/skills',               ...teamGuard,  skillsRouter)
+app.use('/api/skill-areas',          ...teamGuard,  skillAreasRouter)
 app.use('/api/sprints',              ...teamGuard,  sprintsRouter)
 app.use('/api/assignments',          ...teamGuard,  assignmentsRouter)
 app.use('/api/retrospectives',       ...teamGuard,  retrospectivesRouter)
@@ -82,6 +86,8 @@ app.use('/api/azure-ranking',        ...guard,      azureRankingRouter)
 app.use('/api/software',             ...guard,      softwareRouter)
 app.use('/api/known-errors',         ...guard,      knownErrorsRouter)
 app.use('/api/meetings',             ...teamGuard,  meetingsRouter)
+app.use('/api/tickets',              ...teamGuard,  ticketsRouter)
+app.use('/api/dashboard',            ...guard,      dashboardRouter)
 app.use('/api/roadmap',              ...guard,      roadmapRouter)
 app.use('/api/search',               ...guard,      searchRouter)
 // Uploads: file serving is public (images in markdown need no auth header),

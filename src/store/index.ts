@@ -1,11 +1,11 @@
 import { create } from 'zustand'
 import {
-  membersApi, skillsApi, sprintsApi, assignmentsApi, retrosApi, responsibilityTypesApi, pulseApi,
+  membersApi, skillsApi, skillAreasApi, sprintsApi, assignmentsApi, retrosApi, responsibilityTypesApi, pulseApi,
   softwareApi, knownErrorsApi, meetingsApi, roadmapApi,
 } from '@/api/client'
 import type {
   TeamMember, MemberRole,
-  Skill, MemberSkill, SkillLevel,
+  Skill, MemberSkill, SkillLevel, SkillArea, SkillAreaCategory,
   Sprint, SprintStatus,
   ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig,
   Retrospective, RetroItem, RetroItemType,
@@ -22,6 +22,7 @@ interface AppState {
   allMembers: TeamMember[]
   skills: Skill[]
   memberSkills: MemberSkill[]
+  skillAreas: SkillArea[]
   sprints: Sprint[]
   assignments: ResponsibilityAssignment[]
   retrospectives: Retrospective[]
@@ -48,6 +49,14 @@ interface AppState {
   updateSkill:        (id: string, data: Partial<Skill>) => Promise<void>
   deleteSkill:        (id: string) => Promise<void>
   setMemberSkillLevel:(memberId: string, skillId: string, level: SkillLevel, notes?: string) => Promise<void>
+
+  // ─── Skill Areas ──────────────────────────────────────────────────────────
+  addSkillArea:           (name: string) => Promise<SkillArea>
+  updateSkillArea:        (id: string, name: string) => Promise<void>
+  deleteSkillArea:        (id: string) => Promise<void>
+  addSkillAreaCategory:   (areaId: string, name: string) => Promise<SkillAreaCategory>
+  updateSkillAreaCategory:(areaId: string, catId: string, name: string) => Promise<void>
+  deleteSkillAreaCategory:(areaId: string, catId: string) => Promise<void>
 
   // ─── Sprints ──────────────────────────────────────────────────────────────
   addSprint:           (data: { name: string; goal: string; startDate: string; endDate: string; notes?: string }) => Promise<string>
@@ -143,6 +152,7 @@ export const useStore = create<AppState>()((set, _get) => ({
   allMembers: [],
   skills: [],
   memberSkills: [],
+  skillAreas: [],
   sprints: [],
   assignments: [],
   retrospectives: [],
@@ -163,11 +173,12 @@ export const useStore = create<AppState>()((set, _get) => ({
   loadAll: async () => {
     set({ loading: true, error: null })
     try {
-      const [members, allMembers, { skills, memberSkills }, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures] =
+      const [members, allMembers, { skills, memberSkills }, skillAreas, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures] =
         await Promise.all([
           membersApi.list(),
           membersApi.listAll(),
           skillsApi.list(),
+          skillAreasApi.list(),
           sprintsApi.list(),
           assignmentsApi.list(),
           retrosApi.list(),
@@ -178,7 +189,7 @@ export const useStore = create<AppState>()((set, _get) => ({
           meetingsApi.list(),
           roadmapApi.listFeatures(),
         ])
-      set({ members, allMembers, skills, memberSkills, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures, loading: false })
+      set({ members, allMembers, skills, memberSkills, skillAreas, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures, loading: false })
     } catch (err) {
       set({ loading: false, error: String(err) })
     }
@@ -236,6 +247,60 @@ export const useStore = create<AppState>()((set, _get) => ({
           : [...s.memberSkills, ms],
       }
     })
+  },
+
+  // ─── Skill Areas ──────────────────────────────────────────────────────────
+  addSkillArea: async (name) => {
+    const area = await skillAreasApi.create(name)
+    set((s) => ({ skillAreas: [...s.skillAreas, area] }))
+    return area
+  },
+
+  updateSkillArea: async (id, name) => {
+    const updated = await skillAreasApi.update(id, name)
+    set((s) => ({ skillAreas: s.skillAreas.map((a) => (a.id === id ? updated : a)) }))
+  },
+
+  deleteSkillArea: async (id) => {
+    await skillAreasApi.delete(id)
+    set((s) => ({
+      skillAreas: s.skillAreas.filter((a) => a.id !== id),
+      skills: s.skills.map((sk) => {
+        const catIds = s.skillAreas.find((a) => a.id === id)?.categories.map((c) => c.id) ?? []
+        return catIds.includes(sk.categoryId ?? '') ? { ...sk, categoryId: null } : sk
+      }),
+    }))
+  },
+
+  addSkillAreaCategory: async (areaId, name) => {
+    const cat = await skillAreasApi.addCategory(areaId, name)
+    set((s) => ({
+      skillAreas: s.skillAreas.map((a) =>
+        a.id === areaId ? { ...a, categories: [...a.categories, cat] } : a,
+      ),
+    }))
+    return cat
+  },
+
+  updateSkillAreaCategory: async (areaId, catId, name) => {
+    const updated = await skillAreasApi.updateCategory(areaId, catId, name)
+    set((s) => ({
+      skillAreas: s.skillAreas.map((a) =>
+        a.id === areaId
+          ? { ...a, categories: a.categories.map((c) => (c.id === catId ? updated : c)) }
+          : a,
+      ),
+    }))
+  },
+
+  deleteSkillAreaCategory: async (areaId, catId) => {
+    await skillAreasApi.deleteCategory(areaId, catId)
+    set((s) => ({
+      skillAreas: s.skillAreas.map((a) =>
+        a.id === areaId ? { ...a, categories: a.categories.filter((c) => c.id !== catId) } : a,
+      ),
+      skills: s.skills.map((sk) => (sk.categoryId === catId ? { ...sk, categoryId: null } : sk)),
+    }))
   },
 
   // ─── Sprints ──────────────────────────────────────────────────────────────

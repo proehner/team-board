@@ -8,14 +8,8 @@ const uid = () => crypto.randomUUID()
 type Row = Record<string, unknown>
 
 function toSkill(row: Row) {
-  const { category, ...rest } = row
-  let categories: string[]
-  try {
-    categories = JSON.parse(category as string)
-  } catch {
-    categories = [category as string]
-  }
-  return { ...rest, categories }
+  const { category: _legacy, ...rest } = row
+  return rest
 }
 
 // GET /api/skills
@@ -31,13 +25,13 @@ router.get('/', (req, res) => {
 
 // POST /api/skills
 router.post('/', (req, res) => {
-  const { name, categories, description } = req.body
-  if (!name || !Array.isArray(categories) || categories.length === 0) {
-    return res.status(400).json({ error: 'name and categories are required.' })
-  }
+  const { name, categoryId, description } = req.body
+  if (!name?.trim()) return res.status(400).json({ error: 'name is required.' })
   const id = uid()
-  dbRun('INSERT INTO skills (id, name, category, description, teamId) VALUES (?, ?, ?, ?, ?)',
-    [id, name, JSON.stringify(categories), description ?? null, req.teamId ?? null])
+  dbRun(
+    'INSERT INTO skills (id, name, category, categoryId, description, teamId) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, name.trim(), '[]', categoryId ?? null, description ?? null, req.teamId ?? null],
+  )
   res.status(201).json(toSkill(dbGet<Row>('SELECT * FROM skills WHERE id = ?', [id])!))
 })
 
@@ -52,8 +46,8 @@ router.patch('/:id', (req, res) => {
   for (const f of ['name', 'description']) {
     if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f] ?? null) }
   }
-  if (req.body.categories !== undefined) {
-    updates.push('category = ?'); values.push(JSON.stringify(req.body.categories))
+  if (req.body.categoryId !== undefined) {
+    updates.push('categoryId = ?'); values.push(req.body.categoryId ?? null)
   }
   if (updates.length === 0) return res.status(400).json({ error: 'No fields provided.' })
   values.push(id)

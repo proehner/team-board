@@ -15,6 +15,7 @@ interface UserFormState {
   role: 'admin' | 'user'
   forbiddenPages: string[]
   isActive: boolean
+  memberId: string
 }
 
 const emptyForm = (): UserFormState => ({
@@ -24,6 +25,7 @@ const emptyForm = (): UserFormState => ({
   role: 'user',
   forbiddenPages: [],
   isActive: true,
+  memberId: '',
 })
 
 interface SoftwareFormState {
@@ -68,6 +70,7 @@ export default function AdminPage() {
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
 
   // ─── Software ───────────────────────────────────────────────────────────────
+  const allMembers       = useStore((s) => s.allMembers)
   const software         = useStore((s) => s.software)
   const addSoftware      = useStore((s) => s.addSoftware)
   const updateSoftware   = useStore((s) => s.updateSoftware)
@@ -157,6 +160,7 @@ export default function AdminPage() {
       role:           u.role,
       forbiddenPages: [...u.forbiddenPages],
       isActive:       u.isActive,
+      memberId:       u.memberId ?? '',
     })
     setFormError('')
     setModalOpen(true)
@@ -185,6 +189,7 @@ export default function AdminPage() {
           forbiddenPages: form.role === 'admin' ? [] : form.forbiddenPages,
           isActive:       form.isActive,
           password:       form.password || undefined,
+          memberId:       form.memberId || null,
         })
         setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
       } else {
@@ -194,6 +199,7 @@ export default function AdminPage() {
           displayName:    form.displayName.trim(),
           role:           form.role,
           forbiddenPages: form.role === 'admin' ? [] : form.forbiddenPages,
+          memberId:       form.memberId || null,
         })
         setUsers((prev) => [...prev, created])
       }
@@ -363,6 +369,10 @@ export default function AdminPage() {
                       <div>
                         <p className="font-medium text-slate-800 dark:text-slate-200">{u.displayName}</p>
                         <p className="text-xs text-slate-400 dark:text-slate-500">@{u.username}</p>
+                        {u.memberId && (() => {
+                          const m = allMembers.find((x) => x.id === u.memberId)
+                          return m ? <p className="text-xs text-indigo-500 dark:text-indigo-400">↳ {m.name}</p> : null
+                        })()}
                       </div>
                       {u.id === currentUser?.id && (
                         <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-1.5 py-0.5 ml-1">{t('admin.me')}</span>
@@ -633,6 +643,20 @@ export default function AdminPage() {
             >
               <option value="user">{t('sidebar.user')}</option>
               <option value="admin">{t('sidebar.administrator')}</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.linkedMember')}</label>
+            <select
+              value={form.memberId}
+              onChange={(e) => setForm((p) => ({ ...p, memberId: e.target.value }))}
+              className="form-input w-full"
+            >
+              <option value="">{t('admin.noLinkedMember')}</option>
+              {allMembers.filter((m) => m.isActive).map((m) => (
+                <option key={m.id} value={m.id}>{m.name}{m.teamId ? '' : ''}</option>
+              ))}
             </select>
           </div>
 
