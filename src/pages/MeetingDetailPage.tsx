@@ -2,14 +2,22 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  CalendarClock, ArrowLeft, Plus, CheckCircle2, Circle, Archive,
+  CalendarClock, ArrowLeft, Plus, Archive,
   ChevronRight, Trash2, RefreshCw, MapPin, Clock,
+  ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { meetingsApi } from '@/api/client'
-import type { MeetingTopic, TeamMember } from '@/types'
+import type { MeetingTopic, MeetingTopicStatus, TeamMember } from '@/types'
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+
+const STATUS_CONFIG: Record<MeetingTopicStatus, { label: string; className: string }> = {
+  todo:        { label: 'meetings.status.todo',        className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
+  in_progress: { label: 'meetings.status.in_progress', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+  deferred:    { label: 'meetings.status.deferred',    className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  done:        { label: 'meetings.status.done',        className: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
+}
 
 export default function MeetingDetailPage() {
   const { t }           = useTranslation()
@@ -17,16 +25,15 @@ export default function MeetingDetailPage() {
   const navigate        = useNavigate()
   const meetings        = useStore((s) => s.meetings)
   const members         = useStore((s) => s.members)
-  const updateMeeting   = useStore((s) => s.updateMeeting)
 
   const meeting = meetings.find((m) => m.id === meetingId)
 
-  const [topics, setTopics]           = useState<MeetingTopic[]>([])
+  const [topics, setTopics]             = useState<MeetingTopic[]>([])
   const [showArchived, setShowArchived] = useState(false)
   const [loadingTopics, setLoadingTopics] = useState(true)
-  const [newTitle, setNewTitle]       = useState('')
-  const [adding, setAdding]           = useState(false)
-  const [showAddForm, setShowAddForm] = useState(false)
+  const [newTitle, setNewTitle]         = useState('')
+  const [adding, setAdding]             = useState(false)
+  const [showAddForm, setShowAddForm]   = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<MeetingTopic | null>(null)
 
   const loadTopics = useCallback(async () => {
@@ -47,7 +54,7 @@ export default function MeetingDetailPage() {
     setAdding(true)
     try {
       const topic = await meetingsApi.createTopic(meetingId, { title: newTitle.trim() })
-      setTopics((prev) => [topic, ...prev])
+      setTopics((prev) => [...prev, topic])
       setNewTitle('')
       setShowAddForm(false)
     } finally {
@@ -55,14 +62,32 @@ export default function MeetingDetailPage() {
     }
   }
 
-  async function handleToggleStatus(topic: MeetingTopic, e: React.MouseEvent) {
-    e.stopPropagation()
+  async function handleStatusChange(topic: MeetingTopic, newStatus: MeetingTopicStatus) {
     if (!meetingId) return
-    const newStatus = topic.status === 'open' ? 'closed' : 'open'
     const updated = await meetingsApi.updateTopic(meetingId, topic.id, { status: newStatus })
-    setTopics((prev) => prev.map((tp) => (tp.id === topic.id ? updated : tp)).filter((tp) =>
-      showArchived ? true : tp.status === 'open',
-    ))
+    setTopics((prev) => {
+      const next = prev.map((tp) => (tp.id === topic.id ? updated : tp))
+      return showArchived ? next : next.filter((tp) => tp.status !== 'done')
+    })
+  }
+
+  async function handleMove(topic: MeetingTopic, direction: 'up' | 'down') {
+    if (!meetingId) return
+    const active = topics.filter((tp) => tp.status !== 'done')
+    const idx    = active.findIndex((tp) => tp.id === topic.id)
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (swapIdx < 0 || swapIdx >= active.length) return
+
+    const swapTopic = active[swapIdx]
+    const [updA, updB] = await Promise.all([
+      meetingsApi.updateTopic(meetingId, topic.id,     { sortOrder: swapTopic.sortOrder }),
+      meetingsApi.updateTopic(meetingId, swapTopic.id, { sortOrder: topic.sortOrder }),
+    ])
+    setTopics((prev) => prev.map((tp) => {
+      if (tp.id === updA.id) return updA
+      if (tp.id === updB.id) return updB
+      return tp
+    }))
   }
 
   async function handleDeleteTopic() {
@@ -80,8 +105,8 @@ export default function MeetingDetailPage() {
     )
   }
 
-  const openTopics   = topics.filter((tp) => tp.status === 'open')
-  const closedTopics = topics.filter((tp) => tp.status === 'closed')
+  const activeTopics = topics.filter((tp) => tp.status !== 'done')
+  const doneTopics   = topics.filter((tp) => tp.status === 'done')
 
   function formatSchedule() {
     const parts: string[] = []
@@ -102,34 +127,32 @@ export default function MeetingDetailPage() {
           {t('meetings.title')}
         </button>
 
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-violet-500 flex items-center justify-center shrink-0 mt-0.5">
-              <CalendarClock className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">{meeting.title}</h1>
-              {meeting.description && (
-                <p className="text-sm text-slate-500 mt-0.5">{meeting.description}</p>
-              )}
-              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-violet-500 flex items-center justify-center shrink-0 mt-0.5">
+            <CalendarClock className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">{meeting.title}</h1>
+            {meeting.description && (
+              <p className="text-sm text-slate-500 mt-0.5">{meeting.description}</p>
+            )}
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+              <span className="flex items-center gap-1.5 text-xs text-slate-400">
+                <RefreshCw className="w-3.5 h-3.5" />
+                {t(`meetings.recurrence.${meeting.recurrence}`)}
+              </span>
+              {formatSchedule() && (
                 <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  {t(`meetings.recurrence.${meeting.recurrence}`)}
+                  <Clock className="w-3.5 h-3.5" />
+                  {formatSchedule()}
                 </span>
-                {formatSchedule() && (
-                  <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                    <Clock className="w-3.5 h-3.5" />
-                    {formatSchedule()}
-                  </span>
-                )}
-                {meeting.location && (
-                  <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                    <MapPin className="w-3.5 h-3.5" />
-                    {meeting.location}
-                  </span>
-                )}
-              </div>
+              )}
+              {meeting.location && (
+                <span className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <MapPin className="w-3.5 h-3.5" />
+                  {meeting.location}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -140,7 +163,7 @@ export default function MeetingDetailPage() {
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('meetings.agenda')}</h2>
           <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-            {openTopics.length} {t('meetings.openTopics')}
+            {activeTopics.length} {t('meetings.openTopics')}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -154,9 +177,9 @@ export default function MeetingDetailPage() {
           >
             <Archive className="w-3.5 h-3.5" />
             {t('meetings.showArchived')}
-            {closedTopics.length > 0 && !showArchived && (
+            {doneTopics.length > 0 && !showArchived && (
               <span className="bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-full px-1.5 py-0 text-xs">
-                {closedTopics.length}
+                {doneTopics.length}
               </span>
             )}
           </button>
@@ -207,22 +230,25 @@ export default function MeetingDetailPage() {
         </div>
       ) : (
         <div className="space-y-1.5">
-          {/* Open topics */}
-          {openTopics.map((topic) => (
+          {/* Active topics */}
+          {activeTopics.map((topic, idx) => (
             <TopicRow
               key={topic.id}
               topic={topic}
               meetingId={meeting.id}
               members={members}
-              onToggle={handleToggleStatus}
+              isFirst={idx === 0}
+              isLast={idx === activeTopics.length - 1}
+              onStatusChange={handleStatusChange}
+              onMove={handleMove}
               onDelete={() => setDeleteTarget(topic)}
               onNavigate={() => navigate(`/meetings/${meeting.id}/topics/${topic.id}`)}
               t={t}
             />
           ))}
 
-          {/* Archived section */}
-          {showArchived && closedTopics.length > 0 && (
+          {/* Done / archived section */}
+          {showArchived && doneTopics.length > 0 && (
             <>
               <div className="flex items-center gap-2 py-2">
                 <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
@@ -231,13 +257,16 @@ export default function MeetingDetailPage() {
                 </span>
                 <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
               </div>
-              {closedTopics.map((topic) => (
+              {doneTopics.map((topic) => (
                 <TopicRow
                   key={topic.id}
                   topic={topic}
                   meetingId={meeting.id}
                   members={members}
-                  onToggle={handleToggleStatus}
+                  isFirst={false}
+                  isLast={false}
+                  onStatusChange={handleStatusChange}
+                  onMove={() => {/* no sorting in archive */}}
                   onDelete={() => setDeleteTarget(topic)}
                   onNavigate={() => navigate(`/meetings/${meeting.id}/topics/${topic.id}`)}
                   t={t}
@@ -273,42 +302,83 @@ interface TopicRowProps {
   topic: MeetingTopic
   meetingId: string
   members: TeamMember[]
-  onToggle: (topic: MeetingTopic, e: React.MouseEvent) => void
+  isFirst: boolean
+  isLast: boolean
+  onStatusChange: (topic: MeetingTopic, status: MeetingTopicStatus) => void
+  onMove: (topic: MeetingTopic, dir: 'up' | 'down') => void
   onDelete: () => void
   onNavigate: () => void
   t: (key: string, opts?: Record<string, unknown>) => string
 }
 
-function TopicRow({ topic, members, onToggle, onDelete, onNavigate, t }: TopicRowProps) {
-  const isClosed  = topic.status === 'closed'
+function TopicRow({ topic, members, isFirst, isLast, onStatusChange, onMove, onDelete, onNavigate, t }: TopicRowProps) {
+  const isDone    = topic.status === 'done'
   const assignees = members.filter((m) => topic.assigneeIds?.includes(m.id))
+  const cfg       = STATUS_CONFIG[topic.status]
+
+  const STATUSES: MeetingTopicStatus[] = ['todo', 'in_progress', 'deferred', 'done']
+
   return (
     <div
       onClick={onNavigate}
-      className={`group flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-        isClosed
+      className={`group flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all ${
+        isDone
           ? 'bg-slate-50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-800 opacity-60'
           : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-sm'
       }`}
     >
-      <button
-        onClick={(e) => onToggle(topic, e)}
-        className="shrink-0 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-        title={isClosed ? t('meetings.reopen') : t('meetings.close')}
-      >
-        {isClosed
-          ? <CheckCircle2 className="w-5 h-5 text-green-500" />
-          : <Circle className="w-5 h-5" />
-        }
-      </button>
+      {/* Sort arrows (only for active topics) */}
+      {!isDone && (
+        <div className="flex flex-col gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => { e.stopPropagation(); onMove(topic, 'up') }}
+            disabled={isFirst}
+            className="p-0.5 rounded text-slate-400 hover:text-violet-600 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronUp className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onMove(topic, 'down') }}
+            disabled={isLast}
+            className="p-0.5 rounded text-slate-400 hover:text-violet-600 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronDown className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+      {isDone && <div className="w-5 shrink-0" />}
+
+      {/* Status badge (clickable dropdown) */}
+      <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+        <select
+          value={topic.status}
+          onChange={(e) => onStatusChange(topic, e.target.value as MeetingTopicStatus)}
+          className={`text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-violet-500 ${cfg.className}`}
+        >
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>{t(`meetings.status.${s}`)}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Title + description */}
       <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${isClosed ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
+        <p className={`text-sm font-medium truncate ${isDone ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
           {topic.title}
         </p>
         {topic.description && (
           <p className="text-xs text-slate-400 truncate mt-0.5">{topic.description.replace(/[#*`_>\-]/g, '').slice(0, 100)}</p>
         )}
       </div>
+
+      {/* Ticket count badge */}
+      {topic.ticketIds?.length > 0 && (
+        <span className="shrink-0 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded-full">
+          🎫 {topic.ticketIds.length}
+        </span>
+      )}
+
+      {/* Assignees */}
       {assignees.length > 0 && (
         <div className="flex items-center -space-x-1.5 shrink-0">
           {assignees.slice(0, 3).map((m) => (
@@ -328,6 +398,8 @@ function TopicRow({ topic, members, onToggle, onDelete, onNavigate, t }: TopicRo
           )}
         </div>
       )}
+
+      {/* Actions */}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
         <button
           onClick={(e) => { e.stopPropagation(); onDelete() }}

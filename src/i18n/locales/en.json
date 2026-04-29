@@ -12,6 +12,7 @@
     "azureRankings": "Azure Rankings",
     "knownErrors": "Known Error DB",
     "meetings": "Meetings",
+    "tickets": "Tickets",
     "roadmap": "Roadmap",
     "administration": "Administration",
     "userManagement": "Management"
@@ -100,7 +101,21 @@
     "overdue": "Overdue!",
     "due": "Due: {{date}}",
     "moreItems": "+{{count}} more…",
-    "all": "All"
+    "all": "All",
+    "myOpenTickets": "My Open Tickets",
+    "noMyOpenTickets": "No open tickets – all done!",
+    "quickAccess": "Quick Access",
+    "addTile": "Add Tile",
+    "editTile": "Edit Tile",
+    "noTiles": "No tiles yet – add your first quick access link.",
+    "tileTitle": "Title",
+    "tileUrl": "URL",
+    "tileDescription": "Description (optional)",
+    "tileColor": "Color",
+    "tileGlobal": "Visible to all users",
+    "tileGlobalHint": "This tile appears on all team members' dashboards",
+    "deleteTile": "Delete tile",
+    "deleteTileConfirm": "Delete tile \"{{title}}\"?"
   },
   "team": {
     "title": "Team",
@@ -143,7 +158,20 @@
     "membersRated": "{{rated}}/{{total}} members",
     "avgLevel": "Ø {{level}}",
     "experts": "Experts",
-    "totalRow": "Total · Ø {{avg}}"
+    "totalRow": "Total · Ø {{avg}}",
+    "manageAreas": "Configure Areas",
+    "addArea": "Add Area",
+    "newAreaPlaceholder": "New area, e.g. Frontend",
+    "newCategoryPlaceholder": "New category, e.g. Angular",
+    "noAreasDefined": "No areas defined yet.",
+    "noCategories": "No categories",
+    "deleteArea": "Delete Area",
+    "deleteAreaConfirm": "Do you really want to delete the area \"{{name}}\"? All contained categories will be removed and assigned skills will become uncategorised.",
+    "deleteCategory": "Delete Category",
+    "deleteCategoryConfirm": "Do you really want to delete the category \"{{name}}\"? Assigned skills will become uncategorised.",
+    "clearCategory": "Remove category",
+    "noCategoryShort": "Uncategorised",
+    "uncategorised": "Uncategorised"
   },
   "sprints": {
     "title": "Sprints",
@@ -459,6 +487,8 @@
     "fullAccess": "Full Access",
     "noRestrictions": "No Restrictions",
     "me": "Me",
+    "linkedMember": "Linked Team Member",
+    "noLinkedMember": "No member linked",
     "deleteConfirm": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
     "software": {
       "new": "New Software",
@@ -604,7 +634,7 @@
     "topicTitlePlaceholder": "Enter topic…",
     "emptyAgenda": "No open topics.",
     "showArchived": "Archive",
-    "archivedTopics": "Archived Topics",
+    "archivedTopics": "Done Topics",
     "deleteTopicTitle": "Delete Topic",
     "deleteTopicConfirm": "Are you sure you want to delete \"{{title}}\"?",
     "close": "Close",
@@ -624,6 +654,16 @@
     "globalHint": "All teams see this meeting; assignees can be selected from all teams.",
     "deleteCommentTitle": "Delete Comment",
     "deleteCommentConfirm": "Are you sure you want to delete this comment?",
+    "createTicket": "Create Ticket",
+    "linkedTickets": "Linked Tickets",
+    "noLinkedTickets": "No linked tickets.",
+    "unlinkTicket": "Unlink",
+    "status": {
+      "todo": "TODO",
+      "in_progress": "In Progress",
+      "deferred": "Deferred",
+      "done": "Done"
+    },
     "attachments": {
       "title": "Attachments",
       "upload": "Upload",
@@ -647,6 +687,42 @@
       "thursday": "Thursday",
       "friday": "Friday",
       "saturday": "Saturday"
+    }
+  },
+  "tickets": {
+    "title": "Tickets",
+    "subtitle": "Global Kanban board for cross-team tasks",
+    "newTicket": "New Ticket",
+    "editTicket": "Edit Ticket",
+    "titleLabel": "Title",
+    "titlePlaceholder": "Ticket title…",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "What needs to be done?",
+    "assigneesLabel": "Assignees",
+    "noAssignees": "No assignees",
+    "filterByPriority": "Priority",
+    "filterByAssignee": "Assignee",
+    "filterAll": "All",
+    "empty": "No tickets in this column.",
+    "emptyAll": "No tickets yet.",
+    "emptyFiltered": "No tickets match this filter.",
+    "deleteTitle": "Delete Ticket",
+    "deleteConfirm": "Are you sure you want to delete \"{{title}}\"?",
+    "linkedTopics": "Linked Topics",
+    "noLinkedTopics": "No topics linked.",
+    "openDetail": "Open details",
+    "globalLabel": "Cross-team ticket",
+    "globalHint": "All teams see this ticket; assignees can be selected from all teams.",
+    "global": "Cross-team",
+    "status": {
+      "todo": "TODO",
+      "in_progress": "In Progress",
+      "done": "Done"
+    },
+    "priority": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
     }
   },
   "knownErrors": {
@@ -769,7 +845,8 @@
       "retro": "Retro",
       "retroItem": "Retro Item",
       "pulseCheck": "Pulse Check",
-      "software": "Software"
+      "software": "Software",
+      "ticket": "Ticket"
     }
   }
 }

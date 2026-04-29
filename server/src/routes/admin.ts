@@ -18,6 +18,7 @@ interface UserRow {
   forbidden_pages: string
   is_active: number
   created_at: string
+  member_id?: string
 }
 
 function toPublic(u: UserRow) {
@@ -29,6 +30,7 @@ function toPublic(u: UserRow) {
     forbiddenPages: JSON.parse(u.forbidden_pages ?? '[]') as string[],
     isActive: u.is_active === 1,
     createdAt: u.created_at,
+    memberId: u.member_id ?? undefined,
   }
 }
 
@@ -40,13 +42,14 @@ router.get('/users', (_req, res) => {
 
 // POST /api/admin/users
 router.post('/users', (req, res) => {
-  const { username, password, displayName, role, forbiddenPages } =
+  const { username, password, displayName, role, forbiddenPages, memberId } =
     req.body as {
       username?: string
       password?: string
       displayName?: string
       role?: string
       forbiddenPages?: string[]
+      memberId?: string | null
     }
 
   if (!username || !password || !displayName) {
@@ -68,10 +71,11 @@ router.post('/users', (req, res) => {
   const id = crypto.randomUUID()
   const safeRole = role === 'admin' ? 'admin' : 'user'
   const pages = JSON.stringify(Array.isArray(forbiddenPages) ? forbiddenPages : [])
+  const safeMemberId = memberId || null
 
   dbRun(
-    'INSERT INTO users (id, username, password_hash, display_name, role, forbidden_pages, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)',
-    [id, username.toLowerCase().trim(), hash, displayName.trim(), safeRole, pages, new Date().toISOString()],
+    'INSERT INTO users (id, username, password_hash, display_name, role, forbidden_pages, is_active, created_at, member_id) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)',
+    [id, username.toLowerCase().trim(), hash, displayName.trim(), safeRole, pages, new Date().toISOString(), safeMemberId],
   )
 
   const created = dbGet<UserRow>('SELECT * FROM users WHERE id = ?', [id])!
@@ -81,13 +85,14 @@ router.post('/users', (req, res) => {
 // PATCH /api/admin/users/:id
 router.patch('/users/:id', (req, res) => {
   const { id } = req.params
-  const { displayName, role, forbiddenPages, isActive, password } =
+  const { displayName, role, forbiddenPages, isActive, password, memberId } =
     req.body as {
       displayName?: string
       role?: string
       forbiddenPages?: string[]
       isActive?: boolean
       password?: string
+      memberId?: string | null
     }
 
   const user = dbGet<UserRow>('SELECT * FROM users WHERE id = ?', [id])
@@ -114,6 +119,7 @@ router.patch('/users/:id', (req, res) => {
   const newHash         = password && password.length >= 6
     ? bcrypt.hashSync(password, 10)
     : user.password_hash
+  const newMemberId     = memberId !== undefined ? (memberId || null) : user.member_id
 
   if (password && password.length > 0 && password.length < 6) {
     res.status(400).json({ error: 'Password must be at least 6 characters long' })
@@ -121,8 +127,8 @@ router.patch('/users/:id', (req, res) => {
   }
 
   dbRun(
-    'UPDATE users SET display_name = ?, role = ?, forbidden_pages = ?, is_active = ?, password_hash = ? WHERE id = ?',
-    [newDisplayName, newRole, newPages, newActive, newHash, id],
+    'UPDATE users SET display_name = ?, role = ?, forbidden_pages = ?, is_active = ?, password_hash = ?, member_id = ? WHERE id = ?',
+    [newDisplayName, newRole, newPages, newActive, newHash, newMemberId, id],
   )
 
   const updated = dbGet<UserRow>('SELECT * FROM users WHERE id = ?', [id])!

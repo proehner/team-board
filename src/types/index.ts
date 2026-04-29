@@ -34,19 +34,24 @@ export const SKILL_LEVEL_LABELS: Record<SkillLevel, string> = {
   5: 'Meister',
 }
 
-export type SkillCategory =
-  | 'Frontend'
-  | 'Backend'
-  | 'DevOps'
-  | 'Testing'
-  | 'Datenbank'
-  | 'Soft Skills'
-  | 'Sonstiges'
+export interface SkillAreaCategory {
+  id: string
+  name: string
+  areaId: string
+  sortOrder: number
+}
+
+export interface SkillArea {
+  id: string
+  name: string
+  sortOrder: number
+  categories: SkillAreaCategory[]
+}
 
 export interface Skill {
   id: string
   name: string
-  categories: SkillCategory[]
+  categoryId: string | null
   description?: string
 }
 
@@ -191,7 +196,7 @@ export interface KnownErrorComment {
 // ─── Meetings (Recurring Appointments) ───────────────────────────────────────
 
 export type MeetingRecurrence = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'custom'
-export type MeetingTopicStatus = 'open' | 'closed'
+export type MeetingTopicStatus = 'todo' | 'in_progress' | 'deferred' | 'done'
 
 export interface Meeting {
   id: string
@@ -218,6 +223,7 @@ export interface MeetingTopic {
   createdAt: string
   updatedAt: string
   closedAt?: string
+  ticketIds: string[]
 }
 
 export interface TopicComment {
@@ -236,6 +242,25 @@ export interface TopicAttachment {
   mimeType: string
   size: number
   uploadedAt: string
+}
+
+// ─── Tickets (Global Kanban) ─────────────────────────────────────────────────
+
+export type TicketStatus   = 'todo' | 'in_progress' | 'done'
+export type TicketPriority = 'low' | 'medium' | 'high'
+
+export interface Ticket {
+  id: string
+  title: string
+  description: string
+  status: TicketStatus
+  priority: TicketPriority
+  assigneeIds: string[]
+  teamId?: string
+  isGlobal: boolean
+  topicIds: string[]
+  createdAt: string
+  updatedAt: string
 }
 
 // ─── Roadmap ──────────────────────────────────────────────────────────────────
@@ -328,6 +353,20 @@ export interface Team {
   createdAt: string
 }
 
+// ─── Dashboard Tiles ──────────────────────────────────────────────────────────
+
+export interface DashboardTile {
+  id: string
+  title: string
+  url: string
+  description: string
+  color: string
+  isGlobal: boolean
+  userId: string
+  sortOrder: number
+  createdAt: string
+}
+
 // ─── Auth / Users ─────────────────────────────────────────────────────────────
 
 export interface AppUser {
@@ -336,6 +375,7 @@ export interface AppUser {
   displayName: string
   role: 'admin' | 'user'
   forbiddenPages: string[]
+  memberId?: string
 }
 
 export interface AdminUser extends AppUser {

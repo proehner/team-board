@@ -12,6 +12,7 @@
     "azureRankings": "Azure Rankings",
     "knownErrors": "Known Error DB",
     "meetings": "Termine",
+    "tickets": "Tickets",
     "roadmap": "Roadmap",
     "administration": "Administration",
     "userManagement": "Verwaltung"
@@ -100,7 +101,21 @@
     "overdue": "Überfällig!",
     "due": "Fällig: {{date}}",
     "moreItems": "+{{count}} weitere…",
-    "all": "Alle"
+    "all": "Alle",
+    "myOpenTickets": "Meine offenen Tickets",
+    "noMyOpenTickets": "Keine offenen Tickets – alles erledigt!",
+    "quickAccess": "Schnellzugriffe",
+    "addTile": "Kachel hinzufügen",
+    "editTile": "Kachel bearbeiten",
+    "noTiles": "Noch keine Kacheln – füge deinen ersten Schnellzugriff hinzu.",
+    "tileTitle": "Titel",
+    "tileUrl": "URL",
+    "tileDescription": "Beschreibung (optional)",
+    "tileColor": "Farbe",
+    "tileGlobal": "Für alle Benutzer sichtbar",
+    "tileGlobalHint": "Die Kachel erscheint im Dashboard aller Teammitglieder",
+    "deleteTile": "Kachel löschen",
+    "deleteTileConfirm": "Kachel \"{{title}}\" wirklich löschen?"
   },
   "team": {
     "title": "Team",
@@ -143,7 +158,20 @@
     "membersRated": "{{rated}}/{{total}} Mitglieder",
     "avgLevel": "Ø {{level}}",
     "experts": "Experten",
-    "totalRow": "Gesamt · Ø {{avg}}"
+    "totalRow": "Gesamt · Ø {{avg}}",
+    "manageAreas": "Bereiche konfigurieren",
+    "addArea": "Bereich hinzufügen",
+    "newAreaPlaceholder": "Neuer Bereich, z. B. Frontend",
+    "newCategoryPlaceholder": "Neue Kategorie, z. B. Angular",
+    "noAreasDefined": "Noch keine Bereiche angelegt.",
+    "noCategories": "Keine Kategorien",
+    "deleteArea": "Bereich löschen",
+    "deleteAreaConfirm": "Möchtest du den Bereich \"{{name}}\" wirklich löschen? Alle enthaltenen Kategorien werden entfernt und die zugewiesenen Fähigkeiten werden nicht mehr kategorisiert.",
+    "deleteCategory": "Kategorie löschen",
+    "deleteCategoryConfirm": "Möchtest du die Kategorie \"{{name}}\" wirklich löschen? Die zugewiesenen Fähigkeiten werden nicht mehr kategorisiert.",
+    "clearCategory": "Kategorie entfernen",
+    "noCategoryShort": "Nicht zugeordnet",
+    "uncategorised": "Nicht zugeordnet"
   },
   "sprints": {
     "title": "Sprints",
@@ -459,6 +487,8 @@
     "fullAccess": "Vollzugriff",
     "noRestrictions": "Keine Einschränkungen",
     "me": "Ich",
+    "linkedMember": "Verknüpftes Teammitglied",
+    "noLinkedMember": "Kein Mitglied verknüpft",
     "deleteConfirm": "Soll \"{{name}}\" wirklich gelöscht werden? Diese Aktion kann nicht rückgängig gemacht werden.",
     "software": {
       "new": "Neue Software",
@@ -528,7 +558,7 @@
     "topicTitlePlaceholder": "Thema eingeben…",
     "emptyAgenda": "Keine offenen Themen.",
     "showArchived": "Archiv",
-    "archivedTopics": "Archivierte Themen",
+    "archivedTopics": "Erledigte Themen",
     "deleteTopicTitle": "Thema löschen",
     "deleteTopicConfirm": "Möchtest du \"{{title}}\" wirklich löschen?",
     "close": "Abschließen",
@@ -548,6 +578,16 @@
     "globalHint": "Alle Teams sehen diesen Termin, Zuständige aus allen Teams wählbar.",
     "deleteCommentTitle": "Kommentar löschen",
     "deleteCommentConfirm": "Kommentar wirklich löschen?",
+    "createTicket": "Ticket erstellen",
+    "linkedTickets": "Verknüpfte Tickets",
+    "noLinkedTickets": "Keine verknüpften Tickets.",
+    "unlinkTicket": "Verknüpfung aufheben",
+    "status": {
+      "todo": "TODO",
+      "in_progress": "In Bearbeitung",
+      "deferred": "Zurückgelegt",
+      "done": "Erledigt"
+    },
     "attachments": {
       "title": "Anhänge",
       "upload": "Hochladen",
@@ -571,6 +611,42 @@
       "thursday": "Donnerstag",
       "friday": "Freitag",
       "saturday": "Samstag"
+    }
+  },
+  "tickets": {
+    "title": "Tickets",
+    "subtitle": "Globales Kanban-Board für teamübergreifende Aufgaben",
+    "newTicket": "Neues Ticket",
+    "editTicket": "Ticket bearbeiten",
+    "titleLabel": "Titel",
+    "titlePlaceholder": "Ticket-Titel…",
+    "descriptionLabel": "Beschreibung",
+    "descriptionPlaceholder": "Was soll hier erledigt werden?",
+    "assigneesLabel": "Zuständige",
+    "noAssignees": "Keine Zuständigen",
+    "filterByPriority": "Priorität",
+    "filterByAssignee": "Zuständige",
+    "filterAll": "Alle",
+    "empty": "Keine Tickets in dieser Spalte.",
+    "emptyAll": "Noch keine Tickets angelegt.",
+    "emptyFiltered": "Keine Tickets für diesen Filter.",
+    "deleteTitle": "Ticket löschen",
+    "deleteConfirm": "Möchtest du \"{{title}}\" wirklich löschen?",
+    "linkedTopics": "Verknüpfte Themen",
+    "noLinkedTopics": "Kein Thema verknüpft.",
+    "openDetail": "Details öffnen",
+    "globalLabel": "Teamübergreifendes Ticket",
+    "globalHint": "Alle Teams sehen dieses Ticket, Zuständige aus allen Teams wählbar.",
+    "global": "Teamübergreifend",
+    "status": {
+      "todo": "TODO",
+      "in_progress": "In Bearbeitung",
+      "done": "Erledigt"
+    },
+    "priority": {
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch"
     }
   },
   "roadmap": {
@@ -769,7 +845,8 @@
       "retro": "Retro",
       "retroItem": "Retro-Punkt",
       "pulseCheck": "Pulse Check",
-      "software": "Software"
+      "software": "Software",
+      "ticket": "Ticket"
     }
   }
 }

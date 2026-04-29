@@ -2,17 +2,25 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  ArrowLeft, CheckCircle2, Circle, MessageSquare, Send, Trash2,
+  ArrowLeft, MessageSquare, Send, Trash2,
   Paperclip, Upload, Download, File, ImageIcon, Loader2, Users, X,
+  Ticket as TicketIcon, ExternalLink,
 } from 'lucide-react'
 import { useStore } from '@/store'
-import { meetingsApi, topicAttachmentsApi } from '@/api/client'
-import type { MeetingTopic, TopicComment, TopicAttachment } from '@/types'
+import { meetingsApi, topicAttachmentsApi, ticketsApi } from '@/api/client'
+import type { MeetingTopic, MeetingTopicStatus, TopicComment, TopicAttachment, Ticket } from '@/types'
 import { useAuthStore } from '@/store/auth'
 import MarkdownEditor from '@/components/ui/MarkdownEditor'
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import MentionInput, { renderWithMentions } from '@/components/ui/MentionInput'
+
+const TOPIC_STATUS_CONFIG: Record<MeetingTopicStatus, { className: string }> = {
+  todo:        { className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
+  in_progress: { className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+  deferred:    { className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  done:        { className: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -175,22 +183,48 @@ export default function TopicDetailPage() {
   const [editingAssignees, setEditingAssignees] = useState(false)
   const [assigneeDraft,    setAssigneeDraft]    = useState<string[]>([])
 
+  // Tickets
+  const [linkedTickets,        setLinkedTickets]        = useState<Ticket[]>([])
+  const [showCreateTicket,     setShowCreateTicket]     = useState(false)
+  const [newTicketTitle,       setNewTicketTitle]       = useState('')
+  const [creatingTicket,       setCreatingTicket]       = useState(false)
+  const [unlinkConfirm,        setUnlinkConfirm]        = useState<Ticket | null>(null)
+
   useEffect(() => {
     if (!meetingId || !topicId) return
     setLoading(true)
     Promise.all([
       meetingsApi.getTopic(meetingId, topicId),
       meetingsApi.listComments(meetingId, topicId),
-    ]).then(([tp, coms]) => {
+      ticketsApi.byTopic(topicId),
+    ]).then(([tp, coms, tix]) => {
       setTopic(tp)
       setComments(coms)
+      setLinkedTickets(tix)
     }).finally(() => setLoading(false))
   }, [meetingId, topicId])
 
-  async function handleToggleStatus() {
+  async function handleStatusChange(newStatus: MeetingTopicStatus) {
     if (!topic || !meetingId) return
-    const newStatus = topic.status === 'open' ? 'closed' : 'open'
     setTopic(await meetingsApi.updateTopic(meetingId, topic.id, { status: newStatus }))
+  }
+
+  async function handleCreateTicket() {
+    if (!newTicketTitle.trim() || !topicId) return
+    setCreatingTicket(true)
+    try {
+      const ticket = await ticketsApi.create({ title: newTicketTitle.trim(), topicId })
+      setLinkedTickets((prev) => [...prev, ticket])
+      setNewTicketTitle('')
+      setShowCreateTicket(false)
+    } finally { setCreatingTicket(false) }
+  }
+
+  async function handleUnlinkTicket(ticket: Ticket) {
+    if (!topicId) return
+    await ticketsApi.unlink(ticket.id, topicId)
+    setLinkedTickets((prev) => prev.filter((t) => t.id !== ticket.id))
+    setUnlinkConfirm(null)
   }
 
   async function handleSaveDesc() {
@@ -256,7 +290,7 @@ export default function TopicDetailPage() {
     )
   }
 
-  const isClosed  = topic.status === 'closed'
+  const isDone    = topic.status === 'done'
   const pool      = meeting.isGlobal ? allMembers : members.filter((m) => m.isActive)
   const assignees = [...members, ...allMembers].filter(
     (m, i, arr) => topic.assigneeIds.includes(m.id) && arr.findIndex((x) => x.id === m.id) === i,
@@ -289,16 +323,18 @@ export default function TopicDetailPage() {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
         {/* Title row */}
         <div className="flex items-start gap-3">
-          <button
-            onClick={handleToggleStatus}
-            className="shrink-0 mt-0.5 text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-            title={isClosed ? t('meetings.reopen') : t('meetings.close')}
-          >
-            {isClosed
-              ? <CheckCircle2 className="w-6 h-6 text-green-500" />
-              : <Circle className="w-6 h-6" />
-            }
-          </button>
+          {/* Status dropdown */}
+          <div className="shrink-0 mt-0.5">
+            <select
+              value={topic.status}
+              onChange={(e) => handleStatusChange(e.target.value as MeetingTopicStatus)}
+              className={`text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-violet-500 ${TOPIC_STATUS_CONFIG[topic.status].className}`}
+            >
+              {(['todo', 'in_progress', 'deferred', 'done'] as MeetingTopicStatus[]).map((s) => (
+                <option key={s} value={s}>{t(`meetings.status.${s}`)}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex-1 min-w-0">
             {editingTitle ? (
               <div className="flex items-center gap-2">
@@ -314,10 +350,10 @@ export default function TopicDetailPage() {
               </div>
             ) : (
               <div className="flex items-start gap-2 group">
-                <h1 className={`text-base font-semibold leading-snug ${isClosed ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
+                <h1 className={`text-base font-semibold leading-snug ${isDone ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
                   {topic.title}
                 </h1>
-                {!isClosed && (
+                {!isDone && (
                   <button
                     onClick={() => { setTitleDraft(topic.title); setEditingTitle(true) }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
@@ -328,26 +364,24 @@ export default function TopicDetailPage() {
               </div>
             )}
           </div>
+          {/* Create ticket button */}
           <button
-            onClick={handleToggleStatus}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors shrink-0 ${
-              isClosed
-                ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-            }`}
+            onClick={() => setShowCreateTicket(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg shrink-0 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50 transition-colors"
           >
-            {isClosed ? t('meetings.reopen') : t('meetings.close')}
+            <TicketIcon className="w-3.5 h-3.5" />
+            {t('meetings.createTicket')}
           </button>
         </div>
 
-        {isClosed && topic.closedAt && (
-          <p className="text-xs text-slate-400 ml-9">
+        {isDone && topic.closedAt && (
+          <p className="text-xs text-slate-400 ml-0">
             {t('meetings.closedAt', { date: new Date(topic.closedAt).toLocaleDateString() })}
           </p>
         )}
 
         {/* Description – Markdown */}
-        <div className="ml-9">
+        <div>
           {editingDesc ? (
             <div className="space-y-2">
               <MarkdownEditor
@@ -368,13 +402,13 @@ export default function TopicDetailPage() {
             </div>
           ) : (
             <div
-              className={!isClosed ? 'cursor-text' : ''}
-              onClick={() => { if (!isClosed) { setDescDraft(topic.description); setEditingDesc(true) } }}
+              className={!isDone ? 'cursor-text' : ''}
+              onClick={() => { if (!isDone) { setDescDraft(topic.description); setEditingDesc(true) } }}
             >
               {topic.description ? (
                 <MarkdownRenderer content={topic.description} />
               ) : (
-                !isClosed && (
+                !isDone && (
                   <p className="text-sm text-slate-400 italic hover:text-slate-500 transition-colors">
                     {t('meetings.addDescription')}
                   </p>
@@ -392,7 +426,7 @@ export default function TopicDetailPage() {
             <Users className="w-4 h-4" />
             {t('meetings.assignees')}
           </h2>
-          {!editingAssignees && (
+          {!editingAssignees && !isDone && (
             <button
               onClick={() => { setAssigneeDraft([...topic.assigneeIds]); setEditingAssignees(true) }}
               className="text-xs text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
@@ -519,6 +553,103 @@ export default function TopicDetailPage() {
 
       {/* Attachments */}
       <AttachmentsPanel topicId={topic.id} onImageUpload={handleImageUpload} />
+
+      {/* Linked Tickets */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+            <TicketIcon className="w-4 h-4" />
+            {t('meetings.linkedTickets')}
+            {linkedTickets.length > 0 && (
+              <span className="text-xs font-normal text-slate-400">({linkedTickets.length})</span>
+            )}
+          </h2>
+          <button
+            onClick={() => setShowCreateTicket(true)}
+            className="text-xs text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+          >
+            + {t('meetings.createTicket')}
+          </button>
+        </div>
+        {linkedTickets.length === 0 ? (
+          <p className="text-sm text-slate-400 italic text-center py-3">{t('meetings.noLinkedTickets')}</p>
+        ) : (
+          <ul className="space-y-2">
+            {linkedTickets.map((ticket) => (
+              <li key={ticket.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 group transition-colors">
+                <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+                  ticket.status === 'todo'        ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
+                  ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' :
+                  'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                }`}>
+                  {t(`tickets.status.${ticket.status}`)}
+                </span>
+                <span className="flex-1 text-sm text-slate-700 dark:text-slate-300 truncate">{ticket.title}</span>
+                <a
+                  href="/tickets"
+                  onClick={(e) => { e.preventDefault(); navigate('/tickets') }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-indigo-600"
+                  title={t('meetings.linkedTickets')}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+                <button
+                  onClick={() => setUnlinkConfirm(ticket)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-red-600"
+                  title={t('meetings.unlinkTicket')}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Create Ticket Modal */}
+      {showCreateTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <TicketIcon className="w-4 h-4 text-indigo-500" />
+              {t('meetings.createTicket')}
+            </h2>
+            <input
+              autoFocus
+              value={newTicketTitle}
+              onChange={(e) => setNewTicketTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateTicket(); if (e.key === 'Escape') setShowCreateTicket(false) }}
+              placeholder={t('tickets.newTicket')}
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setShowCreateTicket(false); setNewTicketTitle('') }}
+                className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 transition-colors"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleCreateTicket}
+                disabled={!newTicketTitle.trim() || creatingTicket}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {creatingTicket ? '…' : t('common.create')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unlink confirm */}
+      <ConfirmDialog
+        isOpen={!!unlinkConfirm}
+        title={t('meetings.unlinkTicket')}
+        message={`"${unlinkConfirm?.title}" ${t('meetings.unlinkTicket')}?`}
+        onConfirm={() => unlinkConfirm && handleUnlinkTicket(unlinkConfirm)}
+        onClose={() => setUnlinkConfirm(null)}
+        variant="danger"
+      />
 
       {/* Comments */}
       <div className="space-y-4">

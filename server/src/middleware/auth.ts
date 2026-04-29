@@ -36,6 +36,7 @@ export interface AuthUser {
   displayName: string
   role: 'admin' | 'user'
   forbiddenPages: string[]
+  memberId?: string
 }
 
 declare global {

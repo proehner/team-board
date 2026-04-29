@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Users, Star, Zap, RefreshCw, MessageSquare, Shield,
   HeartPulse, Activity, Eye, Trophy, Settings, LogOut, ChevronDown,
   Sun, Moon, Bug, X, ChevronRight, CalendarClock, Map, Search,
+  Ticket,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -63,8 +64,9 @@ export default function Sidebar({ onClose, onOpenSearch }: SidebarProps) {
       items: [
         { to: '/azure-ranking', icon: Trophy,          label: t('nav.azureRankings'), page: 'azure-ranking' },
         { to: '/known-errors',  icon: Bug,             label: t('nav.knownErrors'),   page: 'known-errors' },
-        { to: '/meetings',      icon: CalendarClock,   label: t('nav.meetings'),       page: 'meetings' },
-        { to: '/roadmap',       icon: Map,             label: t('nav.roadmap'),        page: 'roadmap' },
+        { to: '/meetings',      icon: CalendarClock,   label: t('nav.meetings'),      page: 'meetings' },
+        { to: '/tickets',       icon: Ticket,          label: t('nav.tickets'),       page: 'tickets' },
+        { to: '/roadmap',       icon: Map,             label: t('nav.roadmap'),       page: 'roadmap' },
       ],
     },
   ]

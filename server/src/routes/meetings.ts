@@ -25,11 +25,16 @@ function meetingAccessClause(): string {
 }
 
 function toTopic(row: Row) {
+  const ticketLinks = dbAll<{ ticketId: string }>(
+    'SELECT ticketId FROM topic_ticket_links WHERE topicId = ?',
+    [row.id as string],
+  )
   return {
     ...row,
     description: row.description ?? '',
     closedAt:    row.closedAt ?? undefined,
     assigneeIds: JSON.parse((row.assigneeIds as string) ?? '[]'),
+    ticketIds:   ticketLinks.map((l) => l.ticketId),
   }
 }
 
@@ -105,8 +110,8 @@ router.get('/:meetingId/topics', (req, res) => {
   }
   const showArchived = req.query.archived === 'true'
   const rows = showArchived
-    ? dbAll<Row>('SELECT * FROM meeting_topics WHERE meetingId = ? ORDER BY status ASC, sortOrder ASC, createdAt DESC', [meetingId])
-    : dbAll<Row>("SELECT * FROM meeting_topics WHERE meetingId = ? AND status = 'open' ORDER BY sortOrder ASC, createdAt DESC", [meetingId])
+    ? dbAll<Row>('SELECT * FROM meeting_topics WHERE meetingId = ? ORDER BY sortOrder ASC, createdAt DESC', [meetingId])
+    : dbAll<Row>("SELECT * FROM meeting_topics WHERE meetingId = ? AND status != 'done' ORDER BY sortOrder ASC, createdAt DESC", [meetingId])
   res.json(rows.map(toTopic))
 })
 
@@ -134,7 +139,7 @@ router.post('/:meetingId/topics', (req, res) => {
   const now = new Date().toISOString()
   dbRun(
     `INSERT INTO meeting_topics (id, meetingId, title, description, status, sortOrder, assigneeIds, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, 'todo', ?, ?, ?, ?)`,
     [id, meetingId, title.trim(), description, (maxOrder?.m ?? -1) + 1, JSON.stringify(assigneeIds), now, now],
   )
   res.status(201).json(toTopic(dbGet<Row>('SELECT * FROM meeting_topics WHERE id = ?', [id])!))
@@ -162,7 +167,7 @@ router.patch('/:meetingId/topics/:topicId', (req, res) => {
     updates.push('status = ?')
     values.push(req.body.status)
     updates.push('closedAt = ?')
-    values.push(req.body.status === 'closed' ? new Date().toISOString() : null)
+    values.push(req.body.status === 'done' ? new Date().toISOString() : null)
   }
   if (updates.length > 0) {
     updates.push('updatedAt = ?')

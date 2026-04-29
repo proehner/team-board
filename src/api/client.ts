@@ -1,6 +1,6 @@
 import type {
   TeamMember, MemberRole,
-  Skill, MemberSkill, SkillLevel,
+  Skill, MemberSkill, SkillLevel, SkillArea, SkillAreaCategory,
   Sprint, SprintStatus, SprintGoalMet,
   ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig,
   Retrospective, RetroItemType, RetroItem,
@@ -8,7 +8,9 @@ import type {
   AppUser, AdminUser,
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment, KnownErrorComment,
   Team,
-  Meeting, MeetingRecurrence, MeetingTopic, TopicComment, TopicAttachment,
+  Meeting, MeetingRecurrence, MeetingTopic, MeetingTopicStatus, TopicComment, TopicAttachment,
+  Ticket, TicketStatus, TicketPriority,
+  DashboardTile,
   RoadmapFeature, RoadmapTicket, RoadmapStatus, RoadmapPriority, RoadmapTicketType, RoadmapTicketArea,
   RoadmapEndpoint, RoadmapScreen, HttpMethod, EndpointComplexity,
 } from '@/types'
@@ -76,6 +78,17 @@ export const skillsApi = {
   delete:   (id: string) => del(`/skills/${id}`),
   setLevel: (memberId: string, skillId: string, level: SkillLevel, notes?: string) =>
     put<MemberSkill>('/skills/member-skill', { memberId, skillId, level, notes }),
+}
+
+// ─── Skill Areas ──────────────────────────────────────────────────────────────
+export const skillAreasApi = {
+  list:           () => get<SkillArea[]>('/skill-areas'),
+  create:         (name: string) => post<SkillArea>('/skill-areas', { name }),
+  update:         (id: string, name: string) => patch<SkillArea>(`/skill-areas/${id}`, { name }),
+  delete:         (id: string) => del(`/skill-areas/${id}`),
+  addCategory:    (areaId: string, name: string) => post<SkillAreaCategory>(`/skill-areas/${areaId}/categories`, { name }),
+  updateCategory: (areaId: string, catId: string, name: string) => patch<SkillAreaCategory>(`/skill-areas/${areaId}/categories/${catId}`, { name }),
+  deleteCategory: (areaId: string, catId: string) => del(`/skill-areas/${areaId}/categories/${catId}`),
 }
 
 // ─── Sprints ──────────────────────────────────────────────────────────────────
@@ -172,9 +185,9 @@ export const authApi = {
 // ─── Admin – User Management ──────────────────────────────────────────────────
 export const adminApi = {
   listUsers:  () => request<AdminUser[]>('GET', '/admin/users'),
-  createUser: (data: { username: string; password: string; displayName: string; role: 'admin' | 'user'; forbiddenPages: string[] }) =>
+  createUser: (data: { username: string; password: string; displayName: string; role: 'admin' | 'user'; forbiddenPages: string[]; memberId?: string | null }) =>
     request<AdminUser>('POST', '/admin/users', data),
-  updateUser: (id: string, data: { displayName?: string; role?: 'admin' | 'user'; forbiddenPages?: string[]; isActive?: boolean; password?: string }) =>
+  updateUser: (id: string, data: { displayName?: string; role?: 'admin' | 'user'; forbiddenPages?: string[]; isActive?: boolean; password?: string; memberId?: string | null }) =>
     request<AdminUser>('PATCH', `/admin/users/${id}`, data),
   deleteUser: (id: string) => request<void>('DELETE', `/admin/users/${id}`),
 }
@@ -263,7 +276,7 @@ type MeetingCreateData = {
 type MeetingUpdateData = Partial<MeetingCreateData>
 
 type TopicCreateData = { title: string; description?: string; assigneeIds?: string[] }
-type TopicUpdateData = Partial<TopicCreateData> & { status?: 'open' | 'closed'; sortOrder?: number }
+type TopicUpdateData = Partial<TopicCreateData> & { status?: MeetingTopicStatus; sortOrder?: number }
 
 export const meetingsApi = {
   list:   () => get<Meeting[]>('/meetings'),
@@ -289,6 +302,29 @@ export const meetingsApi = {
     post<TopicComment>(`/meetings/${meetingId}/topics/${topicId}/comments`, { content, authorName }),
   deleteComment: (meetingId: string, topicId: string, commentId: string) =>
     del(`/meetings/${meetingId}/topics/${topicId}/comments/${commentId}`),
+}
+
+// ─── Tickets ──────────────────────────────────────────────────────────────────
+type TicketCreateData = {
+  title: string
+  description?: string
+  status?: TicketStatus
+  priority?: TicketPriority
+  assigneeIds?: string[]
+  isGlobal?: boolean
+  topicId?: string
+}
+type TicketUpdateData = Partial<Omit<TicketCreateData, 'topicId'>>
+
+export const ticketsApi = {
+  list:       () => get<Ticket[]>('/tickets'),
+  get:        (id: string) => get<Ticket>(`/tickets/${id}`),
+  create:     (data: TicketCreateData) => post<Ticket>('/tickets', data),
+  update:     (id: string, data: TicketUpdateData) => patch<Ticket>(`/tickets/${id}`, data),
+  delete:     (id: string) => del(`/tickets/${id}`),
+  byTopic:    (topicId: string) => get<Ticket[]>(`/tickets/by-topic/${topicId}`),
+  link:       (ticketId: string, topicId: string) => post<Ticket>(`/tickets/${ticketId}/link/${topicId}`, {}),
+  unlink:     (ticketId: string, topicId: string) => del(`/tickets/${ticketId}/link/${topicId}`),
 }
 
 // ─── Topic Attachments ────────────────────────────────────────────────────────
@@ -432,4 +468,14 @@ export const pulseApi = {
   close:   (id: string) =>
     patch<PulseCheck>(`/pulse/${id}`, { closedAt: new Date().toISOString() }),
   delete:  (id: string) => del(`/pulse/${id}`),
+}
+
+// ─── Dashboard Tiles ──────────────────────────────────────────────────────────
+export const dashboardTilesApi = {
+  list:   () => get<DashboardTile[]>('/dashboard/tiles'),
+  create: (data: { title: string; url: string; description?: string; color?: string; isGlobal?: boolean }) =>
+    post<DashboardTile>('/dashboard/tiles', data),
+  update: (id: string, data: { title?: string; url?: string; description?: string; color?: string; isGlobal?: boolean }) =>
+    patch<DashboardTile>(`/dashboard/tiles/${id}`, data),
+  delete: (id: string) => del(`/dashboard/tiles/${id}`),
 }

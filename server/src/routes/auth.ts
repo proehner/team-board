@@ -15,6 +15,7 @@ interface UserRow {
   role: 'admin' | 'user'
   forbidden_pages: string
   is_active: number
+  member_id?: string
 }
 
 // POST /api/auth/login
@@ -42,6 +43,7 @@ router.post('/login', (req, res) => {
     displayName: user.display_name,
     role: user.role,
     forbiddenPages: JSON.parse(user.forbidden_pages ?? '[]'),
+    memberId: user.member_id ?? undefined,
   }
 
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
@@ -61,6 +63,7 @@ router.get('/me', requireAuth, (req, res) => {
     displayName: user.display_name,
     role: user.role,
     forbiddenPages: JSON.parse(user.forbidden_pages ?? '[]'),
+    memberId: user.member_id ?? undefined,
   }
   res.json(payload)
 })

@@ -91,7 +91,7 @@ router.get('/', (req, res) => {
     const ids = [...meetingMap.keys()]
     const ph  = ids.map(() => '?').join(',')
     const topics = dbAll<{ id: string; title: string; description: string; meetingId: string }>(
-      `SELECT id, title, description, meetingId FROM meeting_topics WHERE meetingId IN (${ph}) AND status = 'open'`,
+      `SELECT id, title, description, meetingId FROM meeting_topics WHERE meetingId IN (${ph}) AND status != 'done'`,
       ids,
     )
     for (const t of topics) {
@@ -101,6 +101,20 @@ router.get('/', (req, res) => {
         hits.push({ type: 'topic', id: t.id, title: t.title, subtitle: mtg?.title, url: `/meetings/${t.meetingId}/topics/${t.id}`, score: s })
       }
     }
+  }
+
+  // ── Tickets (team-scoped + global) ────────────────────────────────────────
+  const ticketBoardRows = teamId
+    ? dbAll<{ id: string; title: string; description: string; status: string; priority: string }>(
+        `SELECT id, title, description, status, priority FROM tickets WHERE (teamId = ? OR isGlobal = 1) AND status != 'done'`,
+        [teamId],
+      )
+    : dbAll<{ id: string; title: string; description: string; status: string; priority: string }>(
+        `SELECT id, title, description, status, priority FROM tickets WHERE isGlobal = 1 AND status != 'done'`,
+      )
+  for (const tk of ticketBoardRows) {
+    const s = scoreHit(tk.title, [tk.description], q)
+    if (s > 0) hits.push({ type: 'ticket', id: tk.id, title: tk.title, subtitle: tk.status, url: '/tickets', score: s })
   }
 
   // ── Roadmap Features (global) ─────────────────────────────────────────────

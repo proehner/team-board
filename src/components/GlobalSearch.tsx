@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Users, Bug, CalendarClock, Map, Zap, Package, MessageSquare,
-  Star, Activity, Globe, Monitor, RefreshCw,
+  Star, Activity, Globe, Monitor, RefreshCw, Ticket,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { searchApi, type SearchHit } from '@/api/client'
@@ -12,6 +12,7 @@ const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   knownError:      Bug,
   meeting:         CalendarClock,
   topic:           MessageSquare,
+  ticket:          Ticket,
   roadmapFeature:  Map,
   roadmapTicket:   Map,
   roadmapEndpoint: Globe,
