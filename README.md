@@ -1,6 +1,6 @@
 # Team Board
 
-A Scrum team dashboard for team leads – manage members, competencies, sprints, rotations, retrospectives, pulse checks, stakeholder communication, and Azure DevOps rankings in a single web application.
+A Scrum team dashboard for team leads – manage members, competencies, sprints, rotations, retrospectives, pulse checks, meetings, tickets, roadmap, known errors, stakeholder communication, and Azure DevOps rankings in a single web application.
 
 ---
 
@@ -20,16 +20,23 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 
 | Area | What it offers |
 | --- | --- |
-| **Dashboard** | Central overview – active sprint, open action items, team metrics |
-| **Team** | Member management with roles and active/inactive status |
-| **Competencies** | Competency matrix and skill catalogue with rating levels |
-| **Sprints** | Sprint planning, capacity management and velocity tracking |
-| **Rotation** | Assignment and rotation of team responsibilities (e.g. on-call, Scrum Master) |
-| **Retrospectives** | Structured retro boards with voting and action items |
-| **Team Health** | Bus factor analysis, workload distribution and absence simulation |
+| **Dashboard** | Customizable overview tiles – active sprint, open action items, team metrics, custom URLs |
+| **Team** | Member management with roles, avatar upload, and active/inactive status |
+| **Competencies** | Competency matrix and hierarchical skill catalogue (areas → categories → skills) with rating levels 0–5 |
+| **Sprints** | Sprint planning, per-member capacity management, velocity tracking, and sprint detail view |
+| **Rotation** | Assignment and rotation of configurable team responsibilities (e.g. on-call, Scrum Master) with color coding |
+| **Retrospectives** | Structured retro boards with voting, status tracking, and action item assignment |
+| **Team Health** | Bus factor analysis, workload distribution, and absence simulation |
 | **Pulse Check** | Anonymous satisfaction surveys within the team |
-| **Stakeholder** | Sprint progress and goal achievement for external communication |
+| **Meetings** | Recurring meeting management with topics, comments, file attachments, and ticket links |
+| **Tickets** | Lightweight ticket tracking with status, priority, multiple assignees, and global/team scoping |
+| **Roadmap** | Feature planning with sub-tickets, API endpoint definitions, UI screens, and per-feature detail views |
+| **Known Errors** | Error database with severity, solutions, workarounds, comments, and file attachments |
+| **Software** | Registry for tracking vendor software versions used by the team |
+| **Stakeholder** | Sprint progress and goal achievement overview for external communication |
 | **Azure Rankings** | Gamified developer ranking based on Azure DevOps metrics |
+| **Global Search** | Cross-module search across members, skills, tickets, topics, errors, and roadmap features |
+| **Multi-Team** | Full tenant isolation – each team has its own members, sprints, assignments, and settings |
 | **Dark / Light Mode** | Toggleable via the sidebar button, persisted across sessions |
 
 ---
@@ -39,18 +46,23 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 ### Frontend
 
 - React 18 + TypeScript
-- Vite (build tool)
-- Tailwind CSS (dark mode via `class` strategy)
+- Vite 5 (build tool)
+- Tailwind CSS 3 (dark mode via `class` strategy)
 - Zustand (state management)
 - React Router v6
 - Lucide React (icons)
+- React Markdown + remark-gfm (rich text rendering)
+- date-fns (date utilities)
 - i18next + react-i18next (English / German, auto-detection)
 
 ### Backend (`server/`)
 
-- Node.js + Express
+- Node.js + Express 4
 - SQLite via `node-sqlite3-wasm` (no native compilation required)
-- JWT authentication
+- JWT authentication (jsonwebtoken)
+- bcryptjs (password hashing)
+- Multer (file upload handling)
+- Nodemailer (email notifications)
 - TypeScript
 
 ---
@@ -96,7 +108,7 @@ One command builds the frontend, compiles the server, and assembles a self-conta
 npm run build:deploy
 ```
 
-This creates a `release/` folder that can be copied directly to the IIS deployment directory:
+This creates a `release/` folder (first deployment) and an `update/` folder (subsequent updates) that can be copied directly to the IIS deployment directory:
 
 ```powershell
 xcopy /E /Y /I release\* C:\inetpub\wwwroot\board\
@@ -109,11 +121,15 @@ xcopy /E /Y /I release\* C:\inetpub\wwwroot\board\
 | Prerequisites | Install [iisnode](https://github.com/Azure/iisnode/releases) and [URL Rewrite Module](https://www.iis.net/downloads/microsoft/url-rewrite) |
 | IIS Application | Configure the target folder as an **IIS Application** (not just a virtual directory) |
 | Permissions | Grant write access on `server\data\` to the IIS app pool user |
-| `web.config` | Adjust `DB_PATH` to the absolute path of the database file |
+| `web.config` | Set `DB_PATH` to the absolute path of the database file |
 
 The `web.config` is included in the `release/` output and pre-configured for iisnode. Only `DB_PATH` needs to be set to the actual absolute path on the target server.
 
 For the complete step-by-step guide including redeployment, PM2 alternative, and troubleshooting, see [OPERATIONS.md](OPERATIONS.md).
+
+### Docker Deployment
+
+For Docker-based deployments (nginx + HTTPS), see [DOCKER.md](DOCKER.md).
 
 ### Custom IIS alias
 
@@ -134,7 +150,7 @@ The application uses JWT-based authentication.
 | Role | Permissions |
 | --- | --- |
 | `admin` | Full access to all areas including user management |
-| `user` | Access to permitted areas (configurable per user) |
+| `user` | Access to permitted pages (configurable per user in Admin → User Management) |
 
 **Default admin after first start:**
 
@@ -175,27 +191,43 @@ Copy `.env.example` to `server/.env` as a starting point.
 
 ```txt
 team-board/
-├── src/                      # React frontend (TypeScript)
-│   ├── api/                  # API client (fetch wrapper)
+├── src/                          # React frontend (TypeScript)
+│   ├── api/                      # API client (fetch wrapper)
 │   ├── components/
-│   │   ├── layout/           # Sidebar, layout
-│   │   └── ui/               # Reusable UI components
-│   ├── i18n/                 # i18next setup + locale files (en/de)
-│   ├── pages/                # Page components
-│   ├── store/                # Zustand stores (app, auth, theme)
-│   └── types/                # Shared TypeScript types
-├── server/                   # Express backend (TypeScript)
+│   │   ├── layout/               # Sidebar, Layout wrapper
+│   │   └── ui/                   # Reusable UI components (Button, Card, Modal, …)
+│   ├── i18n/                     # i18next setup + locale files (en/de)
+│   ├── pages/                    # Page components (one per module)
+│   ├── store/                    # Zustand stores (app, auth, theme)
+│   ├── types/                    # Shared TypeScript interfaces
+│   └── utils/                    # Date and avatar helpers
+├── server/                       # Express backend (TypeScript)
 │   ├── src/
-│   │   ├── index.ts          # Entry point
-│   │   ├── db.ts             # SQLite initialisation
-│   │   └── routes/           # REST API endpoints
+│   │   ├── index.ts              # Entry point, middleware, route registration
+│   │   ├── db.ts                 # SQLite initialisation (30 tables)
+│   │   ├── seed.ts               # Demo data seeding
+│   │   ├── email.ts              # Email notification helpers
+│   │   ├── middleware/
+│   │   │   └── auth.ts           # JWT validation & page access control
+│   │   └── routes/               # REST API endpoints (one file per module)
 │   └── data/
-│       └── teamlead.db       # SQLite database (created automatically)
+│       └── teamlead.db           # SQLite database (created automatically)
+├── docker/                       # Docker deployment
+│   ├── Dockerfile                # Multi-stage build (frontend + backend)
+│   ├── docker-compose.yml        # Service orchestration (app + nginx)
+│   ├── .env.docker.example       # Docker environment template
+│   ├── scripts/
+│   │   └── generate-ssl.sh       # Self-signed certificate generator
+│   └── nginx/
+│       ├── nginx.conf            # HTTPS termination + HTTP redirect
+│       └── ssl/                  # cert.pem / key.pem (not in Git)
 ├── scripts/
-│   └── build-deploy.mjs      # Production build + assembly script
-├── .env.example              # Template for environment variables
-├── web.config                # IIS configuration (iisnode + URL Rewrite)
-├── OPERATIONS.md             # Full operations guide (build, deploy, DB, troubleshooting)
+│   └── build-deploy.mjs          # Production build + assembly script
+├── public/                       # Static public assets
+├── .env.example                  # Template for environment variables
+├── web.config                    # IIS configuration (iisnode + URL Rewrite)
+├── OPERATIONS.md                 # Full operations guide (build, deploy, DB, troubleshooting)
+├── DOCKER.md                     # Docker setup guide
 ├── vite.config.ts
 └── package.json
 ```

@@ -15,17 +15,31 @@
 
 ```txt
 team-board/
-├── src/                  Frontend (React + TypeScript + Vite)
+├── src/                      Frontend (React + TypeScript + Vite)
+│   ├── api/                  API client (fetch wrapper)
+│   ├── components/
+│   │   ├── layout/           Sidebar, Layout wrapper
+│   │   └── ui/               Reusable UI components
+│   ├── i18n/                 i18next setup + locale files (en/de)
+│   ├── pages/                Page components (one per module)
+│   ├── store/                Zustand stores (app, auth, theme)
+│   ├── types/                Shared TypeScript interfaces
+│   └── utils/                Date and avatar helpers
 ├── server/
-│   ├── src/              Backend (Express + SQLite via node-sqlite3-wasm)
-│   │   ├── index.ts      Server entry point
-│   │   ├── db.ts         Database initialisation
-│   │   └── routes/       REST API endpoints
-│   └── data/             SQLite database file (created automatically on first run)
+│   ├── src/
+│   │   ├── index.ts          Server entry point, middleware, route registration
+│   │   ├── db.ts             Database initialisation (30 tables)
+│   │   ├── seed.ts           Demo data seeding
+│   │   ├── email.ts          Email notification helpers
+│   │   ├── middleware/
+│   │   │   └── auth.ts       JWT validation & page access control
+│   │   └── routes/           REST API endpoints (one file per module)
+│   └── data/                 SQLite database file (created automatically on first run)
+├── docker/                   Docker deployment files
 ├── scripts/
-│   └── build-deploy.mjs  Production build + assembly script
+│   └── build-deploy.mjs      Production build + assembly script
 ├── vite.config.ts
-├── web.config            IIS configuration (ready to use)
+├── web.config                IIS configuration (ready to use)
 └── package.json
 ```
 
@@ -76,7 +90,7 @@ The script runs three steps automatically:
 
 1. **Frontend** – TypeScript check + Vite build (output: `dist/`)
 2. **Server** – TypeScript compilation (output: `server/dist/`)
-3. **Assembly** – everything is collected into `release/`
+3. **Assembly** – everything is collected into `release/` and `update/`
 
 ### Output
 
@@ -166,11 +180,12 @@ xcopy /E /Y /I release\* C:\inetpub\wwwroot\board\
 
 ### Step 4 – Grant write access
 
-The IIS app pool user needs write access on `server\data\`:
+The IIS app pool user needs write access on `server\data\` (database) and `server\uploads\` (file attachments):
 
 ```powershell
 # Adjust user name as needed (e.g. "IIS AppPool\board" or "DefaultAppPool")
 icacls "C:\inetpub\wwwroot\board\server\data" /grant "IIS AppPool\board:(OI)(CI)M"
+icacls "C:\inetpub\wwwroot\board\server\uploads" /grant "IIS AppPool\board:(OI)(CI)M"
 ```
 
 ### Step 5 – Adjust `web.config`
@@ -260,15 +275,36 @@ sqlite3 server/data/teamlead.db .schema
 
 | Table | Description |
 | --- | --- |
-| `teams` | Teams (multi-team support) |
-| `members` | Team members |
+| `teams` | Teams (multi-tenant support) |
+| `users` | Login users with hashed passwords, roles, and page access restrictions |
+| `members` | Team members with roles, avatar, and active/inactive status |
 | `skills` | Skill catalogue (global) |
-| `member_skills` | Competency matrix (member × skill) |
-| `sprints` | Sprints with metadata |
-| `sprint_capacity` | Capacity per member per sprint |
-| `assignments` | Rotation assignments |
-| `retrospectives` | Retrospectives |
-| `retro_items` | Individual items of a retrospective |
+| `skill_areas` | Hierarchical skill area groupings |
+| `skill_area_categories` | Sub-categories within skill areas |
+| `member_skills` | Competency matrix (member × skill, level 0–5) |
+| `sprints` | Sprints with goal, dates, status, velocity, and capacity metrics |
+| `sprint_capacity` | Per-member capacity per sprint |
+| `assignments` | Rotation assignments with start/end dates |
+| `responsibility_types` | Configurable rotation types with color coding |
+| `retrospectives` | Retrospective metadata |
+| `retro_items` | Retrospective items (what went well/wrong/improve) with votes, status, assignee |
+| `pulse_checks` | Pulse check survey metadata |
+| `pulse_responses` | Anonymous pulse check ratings |
+| `meetings` | Meeting definitions with recurrence settings |
+| `meeting_topics` | Meeting agenda topics with assignees and status |
+| `topic_comments` | Comments on meeting topics |
+| `topic_attachments` | File attachments on meeting topics |
+| `topic_ticket_links` | Links between meeting topics and tickets |
+| `tickets` | Tickets with status, priority, assignees, global/team scope |
+| `known_errors` | Error database with severity, solution, and workaround |
+| `known_error_attachments` | File attachments on known errors |
+| `known_error_comments` | Comments on known errors |
+| `roadmap_features` | Roadmap features with status, priority, target version/quarter |
+| `roadmap_tickets` | Sub-tickets within roadmap features |
+| `roadmap_endpoints` | API endpoint definitions per roadmap feature |
+| `roadmap_screens` | UI screen definitions per roadmap feature |
+| `software` | Vendor software versions registry |
+| `dashboard_tiles` | Per-user customizable dashboard tiles |
 
 ---
 
@@ -287,6 +323,7 @@ If that fails: server not running, port conflict, or firewall blocking the port.
 - Check `iisnode-logs/` in the deployment directory
 - Is Node.js available in PATH for the app pool user?
 - Does `server\data\` have write permissions?
+- Does `server\uploads\` exist and have write permissions?
 
 ### Database locked
 
@@ -301,6 +338,11 @@ rmdir /S /Q server\data\teamlead.db.lock
 npx tsc --noEmit            # frontend
 cd server && npx tsc --noEmit   # server
 ```
+
+### File uploads not working
+
+The `server/uploads/` directory must exist and be writable by the server process.
+On IIS, grant write access as shown in [Step 4](#step-4--grant-write-access).
 
 ---
 
