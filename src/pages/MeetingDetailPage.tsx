@@ -25,6 +25,7 @@ export default function MeetingDetailPage() {
   const navigate        = useNavigate()
   const meetings        = useStore((s) => s.meetings)
   const members         = useStore((s) => s.members)
+  const allMembers      = useStore((s) => s.allMembers)
 
   const meeting = meetings.find((m) => m.id === meetingId)
 
@@ -83,11 +84,14 @@ export default function MeetingDetailPage() {
       meetingsApi.updateTopic(meetingId, topic.id,     { sortOrder: swapTopic.sortOrder }),
       meetingsApi.updateTopic(meetingId, swapTopic.id, { sortOrder: topic.sortOrder }),
     ])
-    setTopics((prev) => prev.map((tp) => {
-      if (tp.id === updA.id) return updA
-      if (tp.id === updB.id) return updB
-      return tp
-    }))
+    setTopics((prev) => prev
+      .map((tp) => {
+        if (tp.id === updA.id) return updA
+        if (tp.id === updB.id) return updB
+        return tp
+      })
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+    )
   }
 
   async function handleDeleteTopic() {
@@ -236,7 +240,7 @@ export default function MeetingDetailPage() {
               key={topic.id}
               topic={topic}
               meetingId={meeting.id}
-              members={members}
+              members={meeting.isGlobal ? allMembers : members}
               isFirst={idx === 0}
               isLast={idx === activeTopics.length - 1}
               onStatusChange={handleStatusChange}
@@ -262,7 +266,7 @@ export default function MeetingDetailPage() {
                   key={topic.id}
                   topic={topic}
                   meetingId={meeting.id}
-                  members={members}
+                  members={meeting.isGlobal ? allMembers : members}
                   isFirst={false}
                   isLast={false}
                   onStatusChange={handleStatusChange}
