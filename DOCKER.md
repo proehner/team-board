@@ -9,7 +9,7 @@ Team Board runs as two Docker containers:
 | `app` | Node.js – serves the frontend (static files) and REST API |
 | `nginx` | HTTPS termination (port 443) + HTTP→HTTPS redirect (port 80) |
 
-The SQLite database is stored in a named Docker volume (`db-data`) and persists across restarts and updates.
+The SQLite database and uploaded files are stored in a named Docker volume (`db-data`) and persist across restarts and updates.
 
 ---
 
@@ -121,10 +121,13 @@ The app will then be available at **<https://localhost:8443>**.
 
 ---
 
-## Database Backup
+## Database & File Backup
 
-The database is automatically backed up as `teamlead.db.backup-<timestamp>` on every start.  
-For a manual backup:
+The database and uploaded files are stored in the `db-data` Docker volume and are preserved across container restarts.
+
+On every container start, the database is automatically backed up as `teamlead.db.backup-<timestamp>`.
+
+For a manual backup of the entire volume:
 
 ```bash
 docker run --rm \
@@ -143,12 +146,12 @@ team-board/
 ├── DOCKER.md                   # This documentation
 └── docker/
     ├── Dockerfile              # Multi-stage build (frontend + backend)
-    ├── docker-compose.yml      # Service orchestration
+    ├── docker-compose.yml      # Service orchestration (app + nginx)
     ├── .env.docker.example     # Template for environment variables
     ├── scripts/
     │   └── generate-ssl.sh     # Helper script for self-signed certificates
     └── nginx/
-        ├── nginx.conf          # nginx HTTPS configuration
+        ├── nginx.conf          # nginx HTTPS configuration + HTTP redirect
         └── ssl/
             ├── cert.pem        # (not in Git – generate yourself)
             └── key.pem         # (not in Git – generate yourself)
