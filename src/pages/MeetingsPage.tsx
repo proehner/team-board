@@ -218,7 +218,7 @@ export default function MeetingsPage() {
 
       {/* Create / Edit Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-lg space-y-4 p-6">
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
               {editId ? t('meetings.editMeeting') : t('meetings.newMeeting')}
@@ -337,7 +337,7 @@ export default function MeetingsPage() {
 
       {/* Delete Confirm */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">{t('meetings.deleteTitle')}</h2>
             <p className="text-sm text-slate-500">{t('meetings.deleteConfirm', { title: deleteTarget.title })}</p>

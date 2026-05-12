@@ -16,6 +16,7 @@ const STATUS_CONFIG: Record<MeetingTopicStatus, { label: string; className: stri
   todo:        { label: 'meetings.status.todo',        className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
   in_progress: { label: 'meetings.status.in_progress', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
   deferred:    { label: 'meetings.status.deferred',    className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  fixed:       { label: 'meetings.status.fixed',       className: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' },
   done:        { label: 'meetings.status.done',        className: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
 }
 
@@ -283,7 +284,7 @@ export default function MeetingDetailPage() {
 
       {/* Delete confirm */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">{t('meetings.deleteTopicTitle')}</h2>
             <p className="text-sm text-slate-500">{t('meetings.deleteTopicConfirm', { title: deleteTarget.title })}</p>
@@ -320,7 +321,7 @@ function TopicRow({ topic, members, isFirst, isLast, onStatusChange, onMove, onD
   const assignees = members.filter((m) => topic.assigneeIds?.includes(m.id))
   const cfg       = STATUS_CONFIG[topic.status]
 
-  const STATUSES: MeetingTopicStatus[] = ['todo', 'in_progress', 'deferred', 'done']
+  const STATUSES: MeetingTopicStatus[] = ['todo', 'in_progress', 'deferred', 'fixed', 'done']
 
   return (
     <div

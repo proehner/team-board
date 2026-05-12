@@ -9,7 +9,7 @@ import type {
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment, KnownErrorComment,
   Team,
   Meeting, MeetingRecurrence, MeetingTopic, MeetingTopicStatus, TopicComment, TopicAttachment,
-  Ticket, TicketStatus, TicketPriority,
+  Ticket, TicketStatus, TicketPriority, TicketCategory,
   DashboardTile,
   RoadmapFeature, RoadmapTicket, RoadmapStatus, RoadmapPriority, RoadmapTicketType, RoadmapTicketArea,
   RoadmapEndpoint, RoadmapScreen, HttpMethod, EndpointComplexity,
@@ -296,6 +296,9 @@ export const meetingsApi = {
   deleteTopic:  (meetingId: string, topicId: string) =>
     del(`/meetings/${meetingId}/topics/${topicId}`),
 
+  getTopicById:  (topicId: string) =>
+    get<MeetingTopic>(`/meetings/topic-lookup/${topicId}`),
+
   listComments:  (meetingId: string, topicId: string) =>
     get<TopicComment[]>(`/meetings/${meetingId}/topics/${topicId}/comments`),
   createComment: (meetingId: string, topicId: string, content: string, authorName?: string) =>
@@ -312,12 +315,13 @@ type TicketCreateData = {
   priority?: TicketPriority
   assigneeIds?: string[]
   isGlobal?: boolean
+  categoryId?: string | null
   topicId?: string
 }
-type TicketUpdateData = Partial<Omit<TicketCreateData, 'topicId'>>
+type TicketUpdateData = Partial<Omit<TicketCreateData, 'topicId'> & { isArchived: boolean }>
 
 export const ticketsApi = {
-  list:       () => get<Ticket[]>('/tickets'),
+  list:       (archived = false) => get<Ticket[]>(archived ? '/tickets?archived=1' : '/tickets'),
   get:        (id: string) => get<Ticket>(`/tickets/${id}`),
   create:     (data: TicketCreateData) => post<Ticket>('/tickets', data),
   update:     (id: string, data: TicketUpdateData) => patch<Ticket>(`/tickets/${id}`, data),
@@ -325,6 +329,15 @@ export const ticketsApi = {
   byTopic:    (topicId: string) => get<Ticket[]>(`/tickets/by-topic/${topicId}`),
   link:       (ticketId: string, topicId: string) => post<Ticket>(`/tickets/${ticketId}/link/${topicId}`, {}),
   unlink:     (ticketId: string, topicId: string) => del(`/tickets/${ticketId}/link/${topicId}`),
+}
+
+// ─── Ticket Categories ────────────────────────────────────────────────────────
+export const ticketCategoriesApi = {
+  list:   () => get<TicketCategory[]>('/ticket-categories'),
+  create: (data: { name: string; color: string }) => post<TicketCategory>('/ticket-categories', data),
+  update: (id: string, data: Partial<{ name: string; color: string; sortOrder: number }>) =>
+    patch<TicketCategory>(`/ticket-categories/${id}`, data),
+  delete: (id: string) => del(`/ticket-categories/${id}`),
 }
 
 // ─── Topic Attachments ────────────────────────────────────────────────────────

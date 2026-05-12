@@ -35,7 +35,7 @@ export default function Layout() {
       {/* ── Mobile overlay backdrop ─────────────────────────────────────────── */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/50 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-20 overflow-hidden bg-black/50 backdrop-blur-sm md:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />

@@ -33,6 +33,22 @@ export default function PulsePage() {
   const [newQuestions, setNewQuestions] = useState<string[]>(DEFAULT_QUESTIONS)
   const [newSprintId, setNewSprintId] = useState('')
   const [ratings, setRatings] = useState<number[]>([])
+  const [votedIds, setVotedIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('pulse_voted_ids')
+      return stored ? new Set<string>(JSON.parse(stored)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
+
+  function markVoted(id: string) {
+    setVotedIds((prev) => {
+      const next = new Set(prev).add(id)
+      try { localStorage.setItem('pulse_voted_ids', JSON.stringify([...next])) } catch {}
+      return next
+    })
+  }
 
   function openCreate() {
     setNewTitle('Pulse Check')
@@ -59,6 +75,7 @@ export default function PulsePage() {
     if (ratings.some((r) => r === 0)) { alert('Please answer all questions.'); return }
     try {
       await respondPulse(showRespondModal.id, ratings)
+      markVoted(showRespondModal.id)
       setShowRespondModal(null)
     } catch { alert(t('competencies.saveError')) }
   }
@@ -82,7 +99,7 @@ export default function PulsePage() {
         <div className="space-y-4">
           {open.length > 0 && <>
             <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">{t('pulse.active')}</h2>
-            {open.map((pc) => <PulseCard key={pc.id} pc={pc} onRespond={() => openRespond(pc)} onClose={() => closePulse(pc.id)} onDelete={() => setDeleteTarget(pc)} />)}
+            {open.map((pc) => <PulseCard key={pc.id} pc={pc} onRespond={() => openRespond(pc)} onClose={() => closePulse(pc.id)} onDelete={() => setDeleteTarget(pc)} hasVoted={votedIds.has(pc.id)} />)}
           </>}
           {closed.length > 0 && <>
             <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mt-4">{t('pulse.completed')}</h2>
@@ -147,7 +164,7 @@ export default function PulsePage() {
   )
 }
 
-function PulseCard({ pc, onRespond, onClose, onDelete }: { pc: PulseCheck; onRespond?: () => void; onClose?: () => void; onDelete: () => void }) {
+function PulseCard({ pc, onRespond, onClose, onDelete, hasVoted }: { pc: PulseCheck; onRespond?: () => void; onClose?: () => void; onDelete: () => void; hasVoted?: boolean }) {
   const { t } = useTranslation()
   const sprint = useStore((s) => s.sprints.find((sp) => sp.id === pc.sprintId))
   const isClosed = !!pc.closedAt
@@ -185,7 +202,10 @@ function PulseCard({ pc, onRespond, onClose, onDelete }: { pc: PulseCheck; onRes
         </div>
       )}
       {pc.responseCount === 0 && !isClosed && <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">{t('pulse.noResponses')}</p>}
-      {!isClosed && onRespond && <Button variant="secondary" size="sm" icon={<Send className="w-3.5 h-3.5" />} onClick={onRespond}>{t('pulse.participate')}</Button>}
+      {!isClosed && (hasVoted
+        ? <p className="text-xs text-slate-400 dark:text-slate-500">{t('pulse.alreadyVoted')}</p>
+        : onRespond && <Button variant="secondary" size="sm" icon={<Send className="w-3.5 h-3.5" />} onClick={onRespond}>{t('pulse.participate')}</Button>
+      )}
     </div>
   )
 }

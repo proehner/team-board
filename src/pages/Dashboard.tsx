@@ -512,7 +512,7 @@ export default function Dashboard() {
 
       {/* Tile Create / Edit Modal */}
       {tileModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setTileModal({ open: false })}>
+        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setTileModal({ open: false })}>
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">

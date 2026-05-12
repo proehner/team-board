@@ -196,7 +196,7 @@ export interface KnownErrorComment {
 // ─── Meetings (Recurring Appointments) ───────────────────────────────────────
 
 export type MeetingRecurrence = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'custom'
-export type MeetingTopicStatus = 'todo' | 'in_progress' | 'deferred' | 'done'
+export type MeetingTopicStatus = 'todo' | 'in_progress' | 'deferred' | 'fixed' | 'done'
 
 export interface Meeting {
   id: string
@@ -249,6 +249,13 @@ export interface TopicAttachment {
 export type TicketStatus   = 'todo' | 'in_progress' | 'done'
 export type TicketPriority = 'low' | 'medium' | 'high'
 
+export interface TicketCategory {
+  id: string
+  name: string
+  color: string
+  sortOrder: number
+}
+
 export interface Ticket {
   id: string
   title: string
@@ -258,6 +265,8 @@ export interface Ticket {
   assigneeIds: string[]
   teamId?: string
   isGlobal: boolean
+  categoryId: string | null
+  isArchived: boolean
   topicIds: string[]
   createdAt: string
   updatedAt: string

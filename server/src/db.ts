@@ -363,6 +363,13 @@ try {
     FOREIGN KEY (topicId) REFERENCES meeting_topics(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS ticket_categories (
+    id        TEXT PRIMARY KEY,
+    name      TEXT NOT NULL,
+    color     TEXT NOT NULL DEFAULT '#6366f1',
+    sortOrder INTEGER NOT NULL DEFAULT 0
+  );
+
   CREATE TABLE IF NOT EXISTS tickets (
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL,
@@ -372,8 +379,11 @@ try {
     assigneeIds TEXT NOT NULL DEFAULT '[]',
     teamId      TEXT,
     isGlobal    INTEGER NOT NULL DEFAULT 0,
+    categoryId  TEXT,
+    isArchived  INTEGER NOT NULL DEFAULT 0,
     createdAt   TEXT NOT NULL,
-    updatedAt   TEXT NOT NULL
+    updatedAt   TEXT NOT NULL,
+    FOREIGN KEY (categoryId) REFERENCES ticket_categories(id) ON DELETE SET NULL
   );
 
   CREATE TABLE IF NOT EXISTS topic_ticket_links (
@@ -542,6 +552,12 @@ if (hasOldClosedStatus > 0) {
 const ticketCols = db.prepare('PRAGMA table_info(tickets)').all([]) as Array<{ name: string }>
 if (ticketCols.length > 0 && !ticketCols.some((c) => c.name === 'isGlobal')) {
   db.exec('ALTER TABLE tickets ADD COLUMN isGlobal INTEGER NOT NULL DEFAULT 0')
+}
+if (ticketCols.length > 0 && !ticketCols.some((c) => c.name === 'categoryId')) {
+  db.exec('ALTER TABLE tickets ADD COLUMN categoryId TEXT')
+}
+if (ticketCols.length > 0 && !ticketCols.some((c) => c.name === 'isArchived')) {
+  db.exec('ALTER TABLE tickets ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0')
 }
 
 // ─── skill_areas / skill_area_categories: add tables if missing ──────────────

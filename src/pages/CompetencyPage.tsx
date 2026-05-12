@@ -192,7 +192,7 @@ export default function CompetencyPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-5">
+    <div className="h-full flex flex-col p-4 sm:p-6 gap-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('competencies.title')}</h1>
@@ -257,29 +257,31 @@ export default function CompetencyPage() {
         </div>
       )}
 
-      {tab === 'matrix' ? (
-        <MatrixTab
-          members={members}
-          grouped={grouped}
-          uncategorised={uncategorised}
-          getLevel={getLevel}
-          getSkillRisk={getSkillRisk}
-          activeCell={activeCell}
-          setActiveCell={setActiveCell}
-          setMemberSkillLevel={setMemberSkillLevel}
-          popoverRef={popoverRef}
-        />
-      ) : (
-        <CatalogTab
-          grouped={grouped}
-          uncategorised={uncategorised}
-          memberSkills={memberSkills}
-          members={members}
-          getSkillRisk={getSkillRisk}
-          onEdit={openEditSkill}
-          onDelete={(sk) => setDeleteSkillTarget(sk)}
-        />
-      )}
+      <div className="flex-1 min-h-0">
+        {tab === 'matrix' ? (
+          <MatrixTab
+            members={members}
+            grouped={grouped}
+            uncategorised={uncategorised}
+            getLevel={getLevel}
+            getSkillRisk={getSkillRisk}
+            activeCell={activeCell}
+            setActiveCell={setActiveCell}
+            setMemberSkillLevel={setMemberSkillLevel}
+            popoverRef={popoverRef}
+          />
+        ) : (
+          <CatalogTab
+            grouped={grouped}
+            uncategorised={uncategorised}
+            memberSkills={memberSkills}
+            members={members}
+            getSkillRisk={getSkillRisk}
+            onEdit={openEditSkill}
+            onDelete={(sk) => setDeleteSkillTarget(sk)}
+          />
+        )}
+      </div>
 
       {/* ── Skill Modal ─────────────────────────────────────────────────────── */}
       <Modal
@@ -572,13 +574,13 @@ function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, ac
 
   return (
     <div
-      className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+      className="overflow-auto h-full scrollbar-thin rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
       onMouseLeave={() => setHovered({ row: null, col: null })}
     >
       <table className="text-sm min-w-full">
         <thead>
-          <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-            <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide w-52 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10">
+          <tr className="bg-slate-50 dark:bg-slate-800">
+            <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide w-52 sticky left-0 top-0 bg-slate-50 dark:bg-slate-800 z-30 border-b border-slate-200 dark:border-slate-700">
               {t('competencies.skillColumn')}
             </th>
             {members.map((m) => {
@@ -586,7 +588,7 @@ function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, ac
               return (
               <th
                 key={m.id}
-                className={`px-3 py-3 text-center text-xs font-medium min-w-[90px] transition-colors ${colActive ? 'bg-indigo-100/60 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-300'}`}
+                className={`px-3 py-3 text-center text-xs font-medium min-w-[90px] transition-colors sticky top-0 z-20 border-b border-slate-200 dark:border-slate-700 ${colActive ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300' : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
               >
                 <div className="flex flex-col items-center gap-1">
                   <div
@@ -770,7 +772,7 @@ function CatalogTab({ grouped, uncategorised, memberSkills, members, getSkillRis
   }
 
   return (
-    <div className="space-y-8">
+    <div className="h-full overflow-y-auto scrollbar-thin space-y-8 pb-2">
       {grouped.map(({ area, cats }) => (
         <div key={area.id} className="space-y-5">
           <div className="flex items-center gap-3">
