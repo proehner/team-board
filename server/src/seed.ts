@@ -41,7 +41,12 @@ export function seedResponsibilityTypes(teamId: string): void {
 export function seedResponsibilityTypesForAllTeams(): void {
   const teams = dbAll<{ id: string }>('SELECT id FROM teams')
   for (const team of teams) {
-    seedResponsibilityTypes(team.id)
+    const count = dbGet<{ n: number }>(
+      'SELECT COUNT(*) as n FROM responsibility_types WHERE teamId = ?', [team.id],
+    )
+    if ((count?.n ?? 0) === 0) {
+      seedResponsibilityTypes(team.id)
+    }
   }
 }
 
