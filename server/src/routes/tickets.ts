@@ -17,15 +17,18 @@ function toTicket(row: Row) {
     description: row.description ?? '',
     assigneeIds: JSON.parse((row.assigneeIds as string) ?? '[]'),
     isGlobal:    row.isGlobal === 1 || row.isGlobal === true,
+    isArchived:  row.isArchived === 1 || row.isArchived === true,
+    categoryId:  row.categoryId ?? null,
     topicIds:    topicLinks.map((l) => l.topicId),
   }
 }
 
-// GET /api/tickets
+// GET /api/tickets?archived=1
 router.get('/', (req, res) => {
+  const archived = req.query.archived === '1' || req.query.archived === 'true'
   const rows = dbAll<Row>(
-    'SELECT * FROM tickets WHERE teamId = ? OR isGlobal = 1 ORDER BY createdAt DESC',
-    [req.teamId],
+    `SELECT * FROM tickets WHERE (teamId = ? OR isGlobal = 1) AND isArchived = ? ORDER BY createdAt DESC`,
+    [req.teamId, archived ? 1 : 0],
   )
   res.json(rows.map(toTicket))
 })
@@ -51,15 +54,15 @@ router.get('/:id', (req, res) => {
 
 // POST /api/tickets
 router.post('/', (req, res) => {
-  const { title, description = '', status = 'todo', priority = 'medium', assigneeIds = [], isGlobal = false, topicId } = req.body
+  const { title, description = '', status = 'todo', priority = 'medium', assigneeIds = [], isGlobal = false, categoryId, topicId } = req.body
   if (!title?.trim()) return res.status(400).json({ error: 'title is required.' })
   const id     = uid()
   const now    = new Date().toISOString()
   const teamId = isGlobal ? null : req.teamId
   dbRun(
-    `INSERT INTO tickets (id, title, description, status, priority, assigneeIds, teamId, isGlobal, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, title.trim(), description, status, priority, JSON.stringify(assigneeIds), teamId, isGlobal ? 1 : 0, now, now],
+    `INSERT INTO tickets (id, title, description, status, priority, assigneeIds, teamId, isGlobal, categoryId, isArchived, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    [id, title.trim(), description, status, priority, JSON.stringify(assigneeIds), teamId, isGlobal ? 1 : 0, categoryId ?? null, now, now],
   )
   if (topicId) {
     dbRun('INSERT OR IGNORE INTO topic_ticket_links (topicId, ticketId) VALUES (?, ?)', [topicId, id])
@@ -87,6 +90,14 @@ router.patch('/:id', (req, res) => {
     values.push(req.body.isGlobal ? 1 : 0)
     updates.push('teamId = ?')
     values.push(req.body.isGlobal ? null : req.teamId)
+  }
+  if (req.body.categoryId !== undefined) {
+    updates.push('categoryId = ?')
+    values.push(req.body.categoryId ?? null)
+  }
+  if (req.body.isArchived !== undefined) {
+    updates.push('isArchived = ?')
+    values.push(req.body.isArchived ? 1 : 0)
   }
   if (updates.length > 0) {
     updates.push('updatedAt = ?')

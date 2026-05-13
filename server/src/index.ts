@@ -20,6 +20,7 @@ import softwareRouter from './routes/software'
 import knownErrorsRouter from './routes/knownErrors'
 import meetingsRouter from './routes/meetings'
 import ticketsRouter from './routes/tickets'
+import ticketCategoriesRouter from './routes/ticketCategories'
 import dashboardRouter from './routes/dashboardTiles'
 import roadmapRouter from './routes/roadmap'
 import uploadsRouter from './routes/uploads'
@@ -87,6 +88,7 @@ app.use('/api/software',             ...guard,      softwareRouter)
 app.use('/api/known-errors',         ...guard,      knownErrorsRouter)
 app.use('/api/meetings',             ...teamGuard,  meetingsRouter)
 app.use('/api/tickets',              ...teamGuard,  ticketsRouter)
+app.use('/api/ticket-categories',    ...guard,      ticketCategoriesRouter)
 app.use('/api/dashboard',            ...guard,      dashboardRouter)
 app.use('/api/roadmap',              ...guard,      roadmapRouter)
 app.use('/api/search',               ...guard,      searchRouter)

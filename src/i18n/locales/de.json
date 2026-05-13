@@ -349,7 +349,8 @@
     "noResponses": "Noch keine Antworten.",
     "participate": "Anonym teilnehmen",
     "deleteCheck": "Pulse Check löschen",
-    "deleteConfirm": "'{{title}}' und alle Antworten dauerhaft löschen?"
+    "deleteConfirm": "'{{title}}' und alle Antworten dauerhaft löschen?",
+    "alreadyVoted": "Du hast bereits teilgenommen."
   },
   "stakeholder": {
     "title": "Sprint-Übersicht",
@@ -460,7 +461,19 @@
     "pageSubtitle": "Benutzer und Stammdaten verwalten.",
     "tab": {
       "users": "Benutzer",
-      "software": "Software"
+      "software": "Software",
+      "ticketCategories": "Ticket-Kategorien"
+    },
+    "ticketCategories": {
+      "new": "Neue Kategorie",
+      "edit": "Kategorie bearbeiten",
+      "delete": "Kategorie löschen",
+      "deleteConfirm": "Möchtest du die Kategorie \"{{name}}\" wirklich löschen? Sie wird von allen Tickets entfernt.",
+      "empty": "Noch keine Ticket-Kategorien angelegt.",
+      "nameRequired": "Name ist erforderlich.",
+      "color": "Farbe",
+      "namePlaceholder": "z. B. Bug, Feature, Infra",
+      "preview": "Vorschau"
     },
     "title": "Verwaltung",
     "subtitle": "Benutzer anlegen, bearbeiten und Berechtigungen vergeben.",
@@ -586,6 +599,7 @@
       "todo": "TODO",
       "in_progress": "In Bearbeitung",
       "deferred": "Zurückgelegt",
+      "fixed": "Fixiert",
       "done": "Erledigt"
     },
     "attachments": {
@@ -626,12 +640,20 @@
     "noAssignees": "Keine Zuständigen",
     "filterByPriority": "Priorität",
     "filterByAssignee": "Zuständige",
+    "filterByCategory": "Kategorie",
     "filterAll": "Alle",
+    "noCategory": "Keine Kategorie",
     "empty": "Keine Tickets in dieser Spalte.",
     "emptyAll": "Noch keine Tickets angelegt.",
     "emptyFiltered": "Keine Tickets für diesen Filter.",
+    "emptyArchive": "Keine archivierten Tickets.",
     "deleteTitle": "Ticket löschen",
     "deleteConfirm": "Möchtest du \"{{title}}\" wirklich löschen?",
+    "archiveTitle": "Ticket archivieren",
+    "archiveConfirm": "Möchtest du \"{{title}}\" archivieren? Das Ticket verschwindet vom Board, bleibt aber im Archiv abrufbar.",
+    "archive": "Archiv",
+    "archivedNote": "Dieses Ticket ist archiviert.",
+    "unarchive": "Wiederherstellen",
     "linkedTopics": "Verknüpfte Themen",
     "noLinkedTopics": "Kein Thema verknüpft.",
     "openDetail": "Details öffnen",

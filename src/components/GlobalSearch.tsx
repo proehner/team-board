@@ -114,7 +114,7 @@ export default function GlobalSearch({ open, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 overflow-hidden flex items-start justify-center pt-16 sm:pt-24 px-4 bg-black/60 backdrop-blur-sm"
       onMouseDown={onClose}
     >
       <div

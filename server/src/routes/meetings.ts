@@ -47,6 +47,13 @@ router.get('/', (req, res) => {
   )
 })
 
+// GET /api/meetings/topic-lookup/:topicId – fetch any topic without knowing the meetingId
+router.get('/topic-lookup/:topicId', (req, res) => {
+  const row = dbGet<Row>('SELECT * FROM meeting_topics WHERE id = ?', [req.params.topicId])
+  if (!row) return res.status(404).json({ error: 'Topic not found.' })
+  res.json(toTopic(row))
+})
+
 // GET /api/meetings/:id
 router.get('/:id', (req, res) => {
   const row = dbGet<Row>(`SELECT * FROM meetings WHERE id = ? AND ${meetingAccessClause()}`, [req.params.id, req.teamId])

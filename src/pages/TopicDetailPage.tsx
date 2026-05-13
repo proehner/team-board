@@ -4,21 +4,23 @@ import { useTranslation } from 'react-i18next'
 import {
   ArrowLeft, MessageSquare, Send, Trash2,
   Paperclip, Upload, Download, File, ImageIcon, Loader2, Users, X,
-  Ticket as TicketIcon, ExternalLink,
+  Ticket as TicketIcon, Flag, Globe, Tag,
 } from 'lucide-react'
 import { useStore } from '@/store'
-import { meetingsApi, topicAttachmentsApi, ticketsApi } from '@/api/client'
-import type { MeetingTopic, MeetingTopicStatus, TopicComment, TopicAttachment, Ticket } from '@/types'
+import { meetingsApi, topicAttachmentsApi, ticketsApi, ticketCategoriesApi } from '@/api/client'
+import type { MeetingTopic, MeetingTopicStatus, TopicComment, TopicAttachment, Ticket, TicketPriority, TicketCategory } from '@/types'
 import { useAuthStore } from '@/store/auth'
 import MarkdownEditor from '@/components/ui/MarkdownEditor'
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import MentionInput, { renderWithMentions } from '@/components/ui/MentionInput'
+import TicketDetailModal from '@/components/tickets/TicketDetailModal'
 
 const TOPIC_STATUS_CONFIG: Record<MeetingTopicStatus, { className: string }> = {
   todo:        { className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
   in_progress: { className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
   deferred:    { className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  fixed:       { className: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' },
   done:        { className: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
 }
 
@@ -183,10 +185,19 @@ export default function TopicDetailPage() {
   const [editingAssignees, setEditingAssignees] = useState(false)
   const [assigneeDraft,    setAssigneeDraft]    = useState<string[]>([])
 
+  // Categories & ticket modal
+  const [categories,           setCategories]           = useState<TicketCategory[]>([])
+  const [detailTicket,         setDetailTicket]         = useState<Ticket | null>(null)
+
   // Tickets
   const [linkedTickets,        setLinkedTickets]        = useState<Ticket[]>([])
   const [showCreateTicket,     setShowCreateTicket]     = useState(false)
   const [newTicketTitle,       setNewTicketTitle]       = useState('')
+  const [newTicketDesc,        setNewTicketDesc]        = useState('')
+  const [newTicketPriority,    setNewTicketPriority]    = useState<TicketPriority>('medium')
+  const [newTicketAssigneeIds, setNewTicketAssigneeIds] = useState<string[]>([])
+  const [newTicketCategoryId,  setNewTicketCategoryId]  = useState<string | null>(null)
+  const [newTicketIsGlobal,    setNewTicketIsGlobal]    = useState(false)
   const [creatingTicket,       setCreatingTicket]       = useState(false)
   const [unlinkConfirm,        setUnlinkConfirm]        = useState<Ticket | null>(null)
 
@@ -197,10 +208,12 @@ export default function TopicDetailPage() {
       meetingsApi.getTopic(meetingId, topicId),
       meetingsApi.listComments(meetingId, topicId),
       ticketsApi.byTopic(topicId),
-    ]).then(([tp, coms, tix]) => {
+      ticketCategoriesApi.list(),
+    ]).then(([tp, coms, tix, cats]) => {
       setTopic(tp)
       setComments(coms)
       setLinkedTickets(tix)
+      setCategories(cats)
     }).finally(() => setLoading(false))
   }, [meetingId, topicId])
 
@@ -213,11 +226,34 @@ export default function TopicDetailPage() {
     if (!newTicketTitle.trim() || !topicId) return
     setCreatingTicket(true)
     try {
-      const ticket = await ticketsApi.create({ title: newTicketTitle.trim(), topicId })
+      const ticket = await ticketsApi.create({
+        title:       newTicketTitle.trim(),
+        description: newTicketDesc.trim() || undefined,
+        priority:    newTicketPriority,
+        assigneeIds: newTicketAssigneeIds,
+        categoryId:  newTicketCategoryId ?? undefined,
+        isGlobal:    newTicketIsGlobal,
+        topicId,
+      })
       setLinkedTickets((prev) => [...prev, ticket])
       setNewTicketTitle('')
+      setNewTicketDesc('')
+      setNewTicketPriority('medium')
+      setNewTicketAssigneeIds([])
+      setNewTicketCategoryId(null)
+      setNewTicketIsGlobal(false)
       setShowCreateTicket(false)
     } finally { setCreatingTicket(false) }
+  }
+
+  function handleTicketChange(updated: Ticket) {
+    setLinkedTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
+    if (detailTicket?.id === updated.id) setDetailTicket(updated)
+  }
+
+  function handleTicketDelete(ticketId: string) {
+    setLinkedTickets((prev) => prev.filter((t) => t.id !== ticketId))
+    setDetailTicket(null)
   }
 
   async function handleUnlinkTicket(ticket: Ticket) {
@@ -330,7 +366,7 @@ export default function TopicDetailPage() {
               onChange={(e) => handleStatusChange(e.target.value as MeetingTopicStatus)}
               className={`text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-violet-500 ${TOPIC_STATUS_CONFIG[topic.status].className}`}
             >
-              {(['todo', 'in_progress', 'deferred', 'done'] as MeetingTopicStatus[]).map((s) => (
+              {(['todo', 'in_progress', 'deferred', 'fixed', 'done'] as MeetingTopicStatus[]).map((s) => (
                 <option key={s} value={s}>{t(`meetings.status.${s}`)}</option>
               ))}
             </select>
@@ -576,7 +612,11 @@ export default function TopicDetailPage() {
         ) : (
           <ul className="space-y-2">
             {linkedTickets.map((ticket) => (
-              <li key={ticket.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 group transition-colors">
+              <li
+                key={ticket.id}
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 group transition-colors cursor-pointer"
+                onClick={() => setDetailTicket(ticket)}
+              >
                 <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
                   ticket.status === 'todo'        ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
                   ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' :
@@ -585,16 +625,8 @@ export default function TopicDetailPage() {
                   {t(`tickets.status.${ticket.status}`)}
                 </span>
                 <span className="flex-1 text-sm text-slate-700 dark:text-slate-300 truncate">{ticket.title}</span>
-                <a
-                  href="/tickets"
-                  onClick={(e) => { e.preventDefault(); navigate('/tickets') }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-indigo-600"
-                  title={t('meetings.linkedTickets')}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
                 <button
-                  onClick={() => setUnlinkConfirm(ticket)}
+                  onClick={(e) => { e.stopPropagation(); setUnlinkConfirm(ticket) }}
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-red-600"
                   title={t('meetings.unlinkTicket')}
                 >
@@ -608,23 +640,145 @@ export default function TopicDetailPage() {
 
       {/* Create Ticket Modal */}
       {showCreateTicket && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <TicketIcon className="w-4 h-4 text-indigo-500" />
-              {t('meetings.createTicket')}
-            </h2>
-            <input
-              autoFocus
-              value={newTicketTitle}
-              onChange={(e) => setNewTicketTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateTicket(); if (e.key === 'Escape') setShowCreateTicket(false) }}
-              placeholder={t('tickets.newTicket')}
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <div className="flex justify-end gap-2">
+        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <TicketIcon className="w-4 h-4 text-indigo-500" />
+                {t('meetings.createTicket')}
+              </h2>
               <button
                 onClick={() => { setShowCreateTicket(false); setNewTicketTitle('') }}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Title */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">{t('tickets.titleLabel')}</label>
+              <input
+                autoFocus
+                value={newTicketTitle}
+                onChange={(e) => setNewTicketTitle(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setShowCreateTicket(false) }}
+                placeholder={t('tickets.titlePlaceholder')}
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">{t('tickets.descriptionLabel')}</label>
+              <textarea
+                value={newTicketDesc}
+                onChange={(e) => setNewTicketDesc(e.target.value)}
+                placeholder={t('tickets.descriptionPlaceholder')}
+                rows={3}
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              />
+            </div>
+
+            {/* Priority + Category */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                  <Flag className="w-3 h-3" />
+                  {t('tickets.filterByPriority')}
+                </label>
+                <select
+                  value={newTicketPriority}
+                  onChange={(e) => setNewTicketPriority(e.target.value as TicketPriority)}
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {(['low', 'medium', 'high'] as TicketPriority[]).map((p) => (
+                    <option key={p} value={p}>{t(`tickets.priority.${p}`)}</option>
+                  ))}
+                </select>
+              </div>
+              {categories.length > 0 && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                    <Tag className="w-3 h-3" />
+                    {t('tickets.filterByCategory')}
+                  </label>
+                  <select
+                    value={newTicketCategoryId ?? ''}
+                    onChange={(e) => setNewTicketCategoryId(e.target.value || null)}
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">{t('tickets.noCategory')}</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Assignees */}
+            {pool.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  {t('tickets.assigneesLabel')}
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {pool.map((m) => {
+                    const selected = newTicketAssigneeIds.includes(m.id)
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setNewTicketAssigneeIds((prev) =>
+                          prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id],
+                        )}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          selected
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-400'
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${selected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'}`}>
+                          {m.name.charAt(0).toUpperCase()}
+                        </span>
+                        {m.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* isGlobal */}
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newTicketIsGlobal}
+                onChange={(e) => setNewTicketIsGlobal(e.target.checked)}
+                className="mt-0.5 accent-indigo-600"
+              />
+              <div>
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <Globe className="w-3 h-3" />
+                  {t('tickets.globalLabel')}
+                </span>
+                <p className="text-xs text-slate-400 mt-0.5">{t('tickets.globalHint')}</p>
+              </div>
+            </label>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => {
+                  setShowCreateTicket(false)
+                  setNewTicketTitle('')
+                  setNewTicketDesc('')
+                  setNewTicketPriority('medium')
+                  setNewTicketAssigneeIds([])
+                  setNewTicketCategoryId(null)
+                  setNewTicketIsGlobal(false)
+                }}
                 className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 transition-colors"
               >
                 {t('common.cancel')}
@@ -728,6 +882,18 @@ export default function TopicDetailPage() {
         onClose={() => setConfirmDeleteComment(null)}
         variant="danger"
       />
+
+      {detailTicket && (
+        <TicketDetailModal
+          ticket={detailTicket}
+          members={members}
+          allMembers={allMembers}
+          categories={categories}
+          onTicketChange={handleTicketChange}
+          onTicketDelete={handleTicketDelete}
+          onClose={() => setDetailTicket(null)}
+        />
+      )}
     </div>
   )
 }

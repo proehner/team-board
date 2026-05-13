@@ -349,7 +349,8 @@
     "noResponses": "No answers yet.",
     "participate": "Participate Anonymously",
     "deleteCheck": "Delete Pulse Check",
-    "deleteConfirm": "Delete \"{{title}}\" and all answers permanently?"
+    "deleteConfirm": "Delete \"{{title}}\" and all answers permanently?",
+    "alreadyVoted": "You have already participated."
   },
   "stakeholder": {
     "title": "Sprint Overview",
@@ -460,7 +461,19 @@
     "pageSubtitle": "Manage users and master data.",
     "tab": {
       "users": "Users",
-      "software": "Software"
+      "software": "Software",
+      "ticketCategories": "Ticket Categories"
+    },
+    "ticketCategories": {
+      "new": "New Category",
+      "edit": "Edit Category",
+      "delete": "Delete Category",
+      "deleteConfirm": "Are you sure you want to delete the category \"{{name}}\"? It will be removed from all tickets.",
+      "empty": "No ticket categories defined yet.",
+      "nameRequired": "Name is required.",
+      "color": "Color",
+      "namePlaceholder": "e.g. Bug, Feature, Infra",
+      "preview": "Preview"
     },
     "title": "Management",
     "subtitle": "Create, edit users and assign permissions.",
@@ -662,6 +675,7 @@
       "todo": "TODO",
       "in_progress": "In Progress",
       "deferred": "Deferred",
+      "fixed": "Fixed",
       "done": "Done"
     },
     "attachments": {
@@ -702,12 +716,20 @@
     "noAssignees": "No assignees",
     "filterByPriority": "Priority",
     "filterByAssignee": "Assignee",
+    "filterByCategory": "Category",
     "filterAll": "All",
+    "noCategory": "No category",
     "empty": "No tickets in this column.",
     "emptyAll": "No tickets yet.",
     "emptyFiltered": "No tickets match this filter.",
+    "emptyArchive": "No archived tickets.",
     "deleteTitle": "Delete Ticket",
     "deleteConfirm": "Are you sure you want to delete \"{{title}}\"?",
+    "archiveTitle": "Archive Ticket",
+    "archiveConfirm": "Archive \"{{title}}\"? The ticket will be removed from the board but remain accessible in the archive.",
+    "archive": "Archive",
+    "archivedNote": "This ticket is archived.",
+    "unarchive": "Restore",
     "linkedTopics": "Linked Topics",
     "noLinkedTopics": "No topics linked.",
     "openDetail": "Open details",
