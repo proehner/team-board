@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  Plus, Search, Map, ChevronRight, Tag, Calendar, Layers,
+  Plus, Search, Map, ChevronRight, ChevronLeft, Tag, Calendar, Layers,
   Circle, CheckCircle2, XCircle, Lightbulb, Clock,
   LayoutList, CalendarDays, Users, TrendingUp,
-  Loader2, AlertCircle,
+  Loader2, AlertCircle, ArrowUpDown, X, GripVertical,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import type { RoadmapFeature, RoadmapStatus, RoadmapPriority, RoadmapTicketArea } from '@/types'
@@ -20,12 +20,14 @@ const STATUS_CONFIG: Record<RoadmapStatus, { label: string; icon: React.ElementT
   cancelled:    { label: 'Abgebrochen', icon: XCircle,      color: 'text-slate-500',                       bg: 'bg-slate-100 dark:bg-slate-800',       border: 'border-slate-300 dark:border-slate-600' },
 }
 
-const PRIORITY_CONFIG: Record<RoadmapPriority, { label: string; color: string }> = {
-  low:      { label: 'Niedrig',  color: 'text-slate-500' },
-  medium:   { label: 'Mittel',   color: 'text-blue-600 dark:text-blue-400' },
-  high:     { label: 'Hoch',     color: 'text-orange-600 dark:text-orange-400' },
-  critical: { label: 'Kritisch', color: 'text-red-600 dark:text-red-400' },
+const PRIORITY_CONFIG: Record<RoadmapPriority, { label: string; color: string; dot: string }> = {
+  low:      { label: 'Niedrig',  color: 'text-slate-500',                        dot: 'bg-slate-400' },
+  medium:   { label: 'Mittel',   color: 'text-blue-600 dark:text-blue-400',      dot: 'bg-blue-500' },
+  high:     { label: 'Hoch',     color: 'text-orange-600 dark:text-orange-400',  dot: 'bg-orange-500' },
+  critical: { label: 'Kritisch', color: 'text-red-600 dark:text-red-400',        dot: 'bg-red-500' },
 }
+
+const PRIORITY_ORDER: Record<RoadmapPriority, number> = { critical: 0, high: 1, medium: 2, low: 3 }
 
 const ALL_STATUSES: RoadmapStatus[] = ['idea', 'planned', 'in-progress', 'done', 'cancelled']
 const PLANNING_SECTIONS = ['goals', 'acceptanceCriteria', 'uiNotes', 'backendNotes', 'technicalNotes', 'risks'] as const
@@ -80,6 +82,14 @@ function CreateFeatureModal({ onClose, onCreated }: CreateModalProps) {
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState<string | null>(null)
 
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) { setError(t('roadmap.titleRequired')); return }
@@ -93,8 +103,11 @@ function CreateFeatureModal({ onClose, onCreated }: CreateModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-lg">
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">{t('roadmap.newFeature')}</h2>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{error}</p>}
@@ -154,6 +167,7 @@ function CreateFeatureModal({ onClose, onCreated }: CreateModalProps) {
 
 function FeatureCard({ feature, onClick, compact = false }: { feature: RoadmapFeature; onClick: () => void; compact?: boolean }) {
   const sc = STATUS_CONFIG[feature.status]
+  const pc = PRIORITY_CONFIG[feature.priority]
   const StatusIcon = sc.icon
   if (compact) {
     return (
@@ -165,6 +179,9 @@ function FeatureCard({ feature, onClick, compact = false }: { feature: RoadmapFe
           {feature.category && (
             <span className="text-xs text-slate-400 truncate">{feature.category}</span>
           )}
+          <span className={`ml-auto text-xs font-medium ${pc.color}`}>
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${pc.dot} mr-0.5`} />
+          </span>
         </div>
       </button>
     )
@@ -174,10 +191,14 @@ function FeatureCard({ feature, onClick, compact = false }: { feature: RoadmapFe
       className="w-full text-left bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-sm transition-all group">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${sc.bg} ${sc.color}`}>
               <StatusIcon className="w-3 h-3" />
               {sc.label}
+            </span>
+            <span className={`inline-flex items-center gap-1 text-xs font-medium ${pc.color}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${pc.dot}`} />
+              {pc.label}
             </span>
             {feature.category && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
@@ -196,9 +217,6 @@ function FeatureCard({ feature, onClick, compact = false }: { feature: RoadmapFe
         <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 shrink-0 mt-0.5 transition-colors" />
       </div>
       <div className="flex items-center gap-3 mt-3 flex-wrap">
-        <span className={`text-xs font-medium ${PRIORITY_CONFIG[feature.priority].color}`}>
-          ▲ {PRIORITY_CONFIG[feature.priority].label}
-        </span>
         {(feature.targetYear || feature.targetVersion) && (
           <span className="inline-flex items-center gap-1 text-xs text-slate-500">
             <Calendar className="w-3 h-3" />
@@ -222,98 +240,353 @@ function FeatureCard({ feature, onClick, compact = false }: { feature: RoadmapFe
   )
 }
 
+// ─── Draggable Compact Card (Timeline) ───────────────────────────────────────
+
+interface DraggableCardProps {
+  feature: RoadmapFeature
+  onOpen: () => void
+  onDragStart: () => void
+  onDragEnd: () => void
+  isDragging: boolean
+}
+
+function DraggableCompactCard({ feature, onOpen, onDragStart, onDragEnd, isDragging }: DraggableCardProps) {
+  const sc = STATUS_CONFIG[feature.status]
+  const pc = PRIORITY_CONFIG[feature.priority]
+  const { filled, total } = planningScore(feature)
+  const pct = (filled / total) * 100
+  const barColor = pct === 100 ? 'bg-green-500' : pct >= 50 ? 'bg-indigo-500' : pct > 0 ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move'
+        e.dataTransfer.setData('text/plain', feature.id)
+        // Delay so the drag image is captured before opacity changes
+        setTimeout(() => onDragStart(), 0)
+      }}
+      onDragEnd={onDragEnd}
+      title={[feature.title, feature.description].filter(Boolean).join('\n')}
+      className={`group rounded-lg border ${sc.border} bg-white dark:bg-slate-900 cursor-grab active:cursor-grabbing select-none transition-all ${
+        isDragging ? 'opacity-30 scale-95' : 'hover:shadow-sm'
+      }`}
+    >
+      <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5">
+        <GripVertical className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <span className={`w-1.5 h-1.5 rounded-full ${pc.dot} shrink-0`} />
+        <button
+          onClick={(e) => { e.stopPropagation(); onOpen() }}
+          className={`flex-1 text-left text-xs font-medium truncate ${sc.color} hover:underline`}
+        >
+          {feature.title}
+        </button>
+      </div>
+      <div className="px-2 pb-1.5 pt-0.5">
+        <div className="h-0.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Timeline View ────────────────────────────────────────────────────────────
 
 function TimelineView({ features, onFeatureClick }: { features: RoadmapFeature[]; onFeatureClick: (id: string) => void }) {
-  const currentYear = new Date().getFullYear()
-  const years = [currentYear, currentYear + 1, currentYear + 2]
+  const { t } = useTranslation()
+  const updateRoadmapFeature = useStore((s) => s.updateRoadmapFeature)
+  const roadmapTickets       = useStore((s) => s.roadmapTickets)
+
+  const now          = new Date()
+  const todayYear    = now.getFullYear()
+  const todayQuarter = Math.ceil((now.getMonth() + 1) / 3)
+
+  const [startYear,    setStartYear]    = useState(todayYear)
+  const [draggingId,   setDraggingId]   = useState<string | null>(null)
+  const [dragOverSlot, setDragOverSlot] = useState<string | null>(null)
+
+  const years    = [startYear, startYear + 1, startYear + 2]
   const quarters = [1, 2, 3, 4] as const
 
   const unplanned = features.filter((f) => !f.targetYear)
 
-  function featuresForSlot(year: number, quarter: number) {
-    return features.filter((f) => f.targetYear === year && (f.targetQuarter === quarter || !f.targetQuarter))
-      .filter((f) => f.targetQuarter === quarter || (!f.targetQuarter && quarter === 1))
-  }
-  // For features with year but no quarter - put them in Q1 with a special mark
-  function featuresForYear(year: number) {
-    return features.filter((f) => f.targetYear === year && !f.targetQuarter)
-  }
-  // For features with year+quarter
-  function featuresForYearQuarter(year: number, quarter: number) {
-    return features.filter((f) => f.targetYear === year && f.targetQuarter === quarter)
+  const isCurrentSlot = (year: number, q: number) => year === todayYear && q === todayQuarter
+  const isPastSlot    = (year: number, q: number) =>
+    year < todayYear || (year === todayYear && q < todayQuarter)
+
+  const featuresForSlot     = (year: number, q: number) =>
+    features.filter((f) => f.targetYear === year && f.targetQuarter === q)
+  const featuresForYearOnly = (year: number) =>
+    features.filter((f) => f.targetYear === year && !f.targetQuarter)
+
+  // SP sum for a list of features, using already-loaded ticket data (best-effort)
+  const spForList = (list: RoadmapFeature[]) =>
+    list.reduce((sum, f) =>
+      sum + (roadmapTickets[f.id] ?? []).reduce((s, t) => s + (t.storyPoints ?? 0), 0), 0)
+
+  async function dropOnSlot(year: number, quarter: number) {
+    if (!draggingId) return
+    const f = features.find((x) => x.id === draggingId)
+    if (!f || (f.targetYear === year && f.targetQuarter === quarter)) return
+    await updateRoadmapFeature(draggingId, {
+      targetYear:    year    as unknown as number,
+      targetQuarter: quarter as unknown as 1,
+    })
+    setDraggingId(null)
+    setDragOverSlot(null)
   }
 
-  const isCurrentQuarter = (year: number, q: number) => {
-    const now = new Date()
-    return year === now.getFullYear() && q === Math.ceil((now.getMonth() + 1) / 3)
+  async function dropOnUnplanned() {
+    if (!draggingId) return
+    const f = features.find((x) => x.id === draggingId)
+    if (!f || !f.targetYear) return
+    await updateRoadmapFeature(draggingId, {
+      targetYear:    null as unknown as number,
+      targetQuarter: null as unknown as 1,
+    })
+    setDraggingId(null)
+    setDragOverSlot(null)
   }
+
+  function onCellDragOver(e: React.DragEvent, key: string) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverSlot !== key) setDragOverSlot(key)
+  }
+
+  function onCellDragLeave(e: React.DragEvent) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverSlot(null)
+  }
+
+  const isDragging = draggingId !== null
 
   return (
-    <div className="space-y-6">
-      {/* Year columns */}
+    <div className="space-y-5">
+
+      {/* ── Year navigation ── */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setStartYear((y) => y - 1)}
+          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          title="Vorheriges Jahr"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums min-w-[6rem] text-center">
+          {startYear} – {startYear + 2}
+        </span>
+        <button
+          onClick={() => setStartYear((y) => y + 1)}
+          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          title="Nächstes Jahr"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+        {startYear !== todayYear && (
+          <button
+            onClick={() => setStartYear(todayYear)}
+            className="ml-1 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-700 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors"
+          >
+            {t('roadmap.timelineJumpToToday')}
+          </button>
+        )}
+        <span className="ml-auto text-xs text-slate-400 hidden sm:block italic">
+          {t('roadmap.timelineDragHint')}
+        </span>
+      </div>
+
+      {/* ── Year blocks ── */}
       {years.map((year) => {
-        const yearOnlyFeatures = featuresForYear(year)
-        const hasAny = quarters.some((q) => featuresForYearQuarter(year, q).length > 0) || yearOnlyFeatures.length > 0
+        const yearOnly = featuresForYearOnly(year)
+        const isPastYear = year < todayYear
+        const totalInYear = quarters.reduce((n, q) => n + featuresForSlot(year, q).length, 0) + yearOnly.length
+
         return (
-          <div key={year}>
-            <div className="flex items-center gap-2 mb-3 px-1">
-              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{year}</span>
+          <div key={year} className={isPastYear ? 'opacity-55' : ''}>
+            {/* Year header */}
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <span className={`text-sm font-bold ${isPastYear ? 'text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>
+                {year}
+              </span>
+              {isPastYear && (
+                <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                  {t('roadmap.timelinePast')}
+                </span>
+              )}
               <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
+              {totalInYear > 0 && (
+                <span className="text-xs text-slate-400">{totalInYear}</span>
+              )}
             </div>
+
+            {/* Year-only features (no quarter set) */}
+            {yearOnly.length > 0 && (
+              <div className="mb-2 flex items-start gap-2 flex-wrap px-1">
+                <span className="text-xs text-slate-400 italic shrink-0 mt-1.5">
+                  {t('roadmap.timelineYearOnly')}:
+                </span>
+                <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+                  {yearOnly.map((f) => (
+                    <div key={f.id} className="w-40">
+                      <DraggableCompactCard
+                        feature={f}
+                        onOpen={() => onFeatureClick(f.id)}
+                        onDragStart={() => setDraggingId(f.id)}
+                        onDragEnd={() => { setDraggingId(null); setDragOverSlot(null) }}
+                        isDragging={draggingId === f.id}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quarter grid */}
             <div className="grid grid-cols-4 gap-3">
               {quarters.map((q) => {
-                const items = featuresForYearQuarter(year, q)
-                const extraItems = q === 1 ? yearOnlyFeatures : []
-                const isCurrent = isCurrentQuarter(year, q)
+                const items    = featuresForSlot(year, q)
+                const isCurrent = isCurrentSlot(year, q)
+                const isPast    = isPastSlot(year, q)
+                const slotKey   = `${year}-${q}`
+                const isOver    = dragOverSlot === slotKey
+                const sp        = spForList(items)
+
                 return (
-                  <div key={q} className={`rounded-xl border p-3 min-h-[120px] ${isCurrent ? 'border-indigo-300 dark:border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900'}`}>
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <span className={`text-xs font-semibold ${isCurrent ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>
-                        Q{q}
-                      </span>
-                      {isCurrent && <span className="text-xs bg-indigo-500 text-white px-1.5 py-0.5 rounded-full">Jetzt</span>}
-                      {(items.length + extraItems.length) > 0 && (
-                        <span className="ml-auto text-xs text-slate-400">{items.length + extraItems.length}</span>
+                  <div
+                    key={q}
+                    onDragOver={(e) => onCellDragOver(e, slotKey)}
+                    onDragLeave={onCellDragLeave}
+                    onDrop={(e) => { e.preventDefault(); dropOnSlot(year, q) }}
+                    className={`rounded-xl border p-3 min-h-[110px] transition-all ${
+                      isOver
+                        ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 shadow-md ring-1 ring-indigo-300 dark:ring-indigo-700'
+                        : isCurrent
+                          ? 'border-indigo-300 dark:border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20'
+                          : isPast
+                            ? 'border-slate-100 dark:border-slate-800/70 bg-transparent'
+                            : isDragging
+                              ? 'border-slate-300 dark:border-slate-600 border-dashed bg-slate-50 dark:bg-slate-900'
+                              : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900'
+                    }`}
+                  >
+                    {/* Cell header */}
+                    <div className="flex items-center gap-1 mb-2">
+                      <span className={`text-xs font-semibold ${
+                        isCurrent ? 'text-indigo-600 dark:text-indigo-400'
+                        : isPast   ? 'text-slate-300 dark:text-slate-700'
+                        : 'text-slate-400'
+                      }`}>Q{q}</span>
+                      {isCurrent && (
+                        <span className="text-[10px] bg-indigo-500 text-white px-1.5 py-0.5 rounded-full leading-tight font-medium">
+                          Jetzt
+                        </span>
                       )}
+                      <div className="ml-auto flex items-center gap-1.5">
+                        {sp > 0 && (
+                          <span className="text-[10px] font-semibold text-indigo-500 dark:text-indigo-400 tabular-nums">
+                            {sp} SP
+                          </span>
+                        )}
+                        {items.length > 0 && (
+                          <span className="text-[10px] text-slate-400 tabular-nums">{items.length}</span>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Feature cards */}
                     <div className="space-y-1.5">
                       {items.map((f) => (
-                        <FeatureCard key={f.id} feature={f} onClick={() => onFeatureClick(f.id)} compact />
+                        <DraggableCompactCard
+                          key={f.id}
+                          feature={f}
+                          onOpen={() => onFeatureClick(f.id)}
+                          onDragStart={() => setDraggingId(f.id)}
+                          onDragEnd={() => { setDraggingId(null); setDragOverSlot(null) }}
+                          isDragging={draggingId === f.id}
+                        />
                       ))}
-                      {extraItems.map((f) => (
-                        <div key={f.id} className="relative">
-                          <FeatureCard feature={f} onClick={() => onFeatureClick(f.id)} compact />
-                          <span className="absolute -top-1 -right-1 text-xs bg-slate-400 text-white px-1 rounded" title="Kein Quartal angegeben">?Q</span>
+
+                      {/* Drop indicator */}
+                      {isOver && (
+                        <div className="rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-600 py-2 text-center">
+                          <p className="text-[10px] font-medium text-indigo-500 dark:text-indigo-400">
+                            {t('roadmap.timelineDropHere')}
+                          </p>
                         </div>
-                      ))}
+                      )}
+
+                      {/* Empty cell drag hint */}
+                      {items.length === 0 && !isOver && isDragging && (
+                        <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-700 py-3 flex items-center justify-center">
+                          <span className="text-[10px] text-slate-300 dark:text-slate-700">+</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
               })}
             </div>
-            {!hasAny && (
-              <p className="text-xs text-slate-400 text-center py-2">{year} — Noch keine Features geplant</p>
-            )}
           </div>
         )
       })}
 
-      {/* Unplanned */}
-      {unplanned.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3 px-1">
-            <span className="text-sm font-bold text-slate-500">Nicht terminiert</span>
+      {/* ── Backlog / Unplanned ── */}
+      <div
+        onDragOver={(e) => onCellDragOver(e, 'unplanned')}
+        onDragLeave={onCellDragLeave}
+        onDrop={(e) => { e.preventDefault(); dropOnUnplanned() }}
+        className={`rounded-xl border-2 border-dashed p-4 transition-all ${
+          dragOverSlot === 'unplanned'
+            ? 'border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+            : unplanned.length === 0 && !isDragging
+              ? 'border-transparent p-0'
+              : 'border-slate-200 dark:border-slate-700'
+        }`}
+      >
+        {/* Backlog header — hide when empty and not dragging */}
+        {(unplanned.length > 0 || isDragging) && (
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-bold text-slate-500">{t('roadmap.timelineBacklog')}</span>
             <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-            <span className="text-xs text-slate-400">{unplanned.length}</span>
+            {unplanned.length > 0 && (
+              <span className="text-xs text-slate-400">{unplanned.length}</span>
+            )}
           </div>
+        )}
+
+        {dragOverSlot === 'unplanned' && (
+          <div className="mb-3 rounded-lg border border-dashed border-amber-300 dark:border-amber-600 py-3 text-center">
+            <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+              {t('roadmap.timelineDropUnschedule')}
+            </p>
+          </div>
+        )}
+
+        {unplanned.length === 0 && isDragging && dragOverSlot !== 'unplanned' && (
+          <p className="text-xs text-slate-400 text-center py-2">{t('roadmap.timelineDropHere')}</p>
+        )}
+
+        {unplanned.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {unplanned.map((f) => (
-              <FeatureCard key={f.id} feature={f} onClick={() => onFeatureClick(f.id)} />
+              <div
+                key={f.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move'
+                  e.dataTransfer.setData('text/plain', f.id)
+                  setTimeout(() => setDraggingId(f.id), 0)
+                }}
+                onDragEnd={() => { setDraggingId(null); setDragOverSlot(null) }}
+                className={`transition-opacity ${draggingId === f.id ? 'opacity-30' : ''}`}
+              >
+                <FeatureCard feature={f} onClick={() => onFeatureClick(f.id)} />
+              </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
@@ -342,7 +615,6 @@ function TeamWorkloadView() {
 
   type TeamEntry = { tickets: number; sp: number; areas: RoadmapTicketArea[]; featureIds: string[] }
 
-  // Per-team aggregation
   const teamStats = useMemo(() => {
     if (!allTickets) return [] as (TeamEntry & { team: string })[]
     const map: Record<string, { tickets: number; sp: number; areas: Set<string>; featureIds: Set<string> }> = {}
@@ -359,7 +631,6 @@ function TeamWorkloadView() {
       .sort((a, b) => b.sp - a.sp || b.tickets - a.tickets)
   }, [allTickets])
 
-  // Per-area aggregation
   const areaStats = useMemo(() => {
     if (!allTickets) return [] as { area: RoadmapTicketArea; tickets: number; sp: number }[]
     const map: Partial<Record<RoadmapTicketArea, { tickets: number; sp: number }>> = {}
@@ -398,7 +669,6 @@ function TeamWorkloadView() {
 
   return (
     <div className="space-y-6">
-      {/* Summary row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Tickets gesamt', value: allTickets.length },
@@ -414,7 +684,6 @@ function TeamWorkloadView() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Per-team breakdown */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <Users className="w-4 h-4 text-indigo-500" />
@@ -458,7 +727,6 @@ function TeamWorkloadView() {
           </div>
         </div>
 
-        {/* Per-area breakdown */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp className="w-4 h-4 text-indigo-500" />
@@ -489,7 +757,6 @@ function TeamWorkloadView() {
             })}
           </div>
 
-          {/* Features without tickets warning */}
           {(() => {
             const withTickets = new Set(allTickets.map((t) => t.featureId))
             const without = features.filter((f) => !withTickets.has(f.id) && f.status !== 'cancelled' && f.status !== 'done')
@@ -517,22 +784,70 @@ function TeamWorkloadView() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 type ViewMode = 'list' | 'timeline' | 'workload'
+type SortMode = 'default' | 'priority' | 'completeness' | 'updated'
+
+const selectCls = 'px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500'
 
 export default function RoadmapPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const features = useStore((s) => s.roadmapFeatures)
 
-  const [view,         setView]         = useState<ViewMode>('list')
-  const [search,       setSearch]       = useState('')
-  const [statusFilter, setStatusFilter] = useState<RoadmapStatus | 'all'>('all')
-  const [showCreate,   setShowCreate]   = useState(false)
+  const [view,            setView]            = useState<ViewMode>('list')
+  const [search,          setSearch]          = useState('')
+  const [statusFilter,    setStatusFilter]    = useState<RoadmapStatus | 'all'>('all')
+  const [priorityFilter,  setPriorityFilter]  = useState<RoadmapPriority | 'all'>('all')
+  const [categoryFilter,  setCategoryFilter]  = useState<string | 'all'>('all')
+  const [sortBy,          setSortBy]          = useState<SortMode>('default')
+  const [showCreate,      setShowCreate]      = useState(false)
 
-  const filtered = features.filter((f) => {
-    const matchSearch = !search || f.title.toLowerCase().includes(search.toLowerCase()) || f.description.toLowerCase().includes(search.toLowerCase()) || (f.category ?? '').toLowerCase().includes(search.toLowerCase())
-    const matchStatus = statusFilter === 'all' || f.status === statusFilter
-    return matchSearch && matchStatus
-  })
+  // Keyboard shortcut: N to create new feature
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (
+        e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLTextAreaElement) &&
+        !(e.target instanceof HTMLSelectElement)
+      ) {
+        setShowCreate(true)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  // Computed categories from all features
+  const categories = useMemo(() => {
+    const cats = new Set(features.map((f) => f.category).filter(Boolean) as string[])
+    return [...cats].sort()
+  }, [features])
+
+  // Filtered + sorted features
+  const filtered = useMemo(() => {
+    let result = features.filter((f) => {
+      const q = search.toLowerCase()
+      const matchSearch = !search ||
+        f.title.toLowerCase().includes(q) ||
+        f.description.toLowerCase().includes(q) ||
+        (f.category ?? '').toLowerCase().includes(q) ||
+        f.tags.some((tag) => tag.toLowerCase().includes(q))
+      const matchStatus   = statusFilter   === 'all' || f.status   === statusFilter
+      const matchPriority = priorityFilter === 'all' || f.priority === priorityFilter
+      const matchCategory = categoryFilter === 'all' || (f.category ?? '') === categoryFilter
+      return matchSearch && matchStatus && matchPriority && matchCategory
+    })
+
+    if (sortBy === 'priority') {
+      result = [...result].sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority])
+    } else if (sortBy === 'completeness') {
+      result = [...result].sort((a, b) => planningScore(b).filled - planningScore(a).filled)
+    } else if (sortBy === 'updated') {
+      result = [...result].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    }
+
+    return result
+  }, [features, search, statusFilter, priorityFilter, categoryFilter, sortBy])
 
   const grouped = ALL_STATUSES.reduce<Record<RoadmapStatus, RoadmapFeature[]>>((acc, s) => {
     acc[s] = filtered.filter((f) => f.status === s)
@@ -544,7 +859,6 @@ export default function RoadmapPage() {
     count: features.filter((f) => f.status === s).length,
   }))
 
-  // Planning completeness stats
   const completenessStats = useMemo(() => {
     if (features.length === 0) return null
     const scores = features.map((f) => planningScore(f).filled)
@@ -552,6 +866,21 @@ export default function RoadmapPage() {
     const ready = features.filter((f) => planningScore(f).filled === 6).length
     return { avg: Math.round(avg * 10) / 10, ready, total: features.length }
   }, [features])
+
+  const activeFilterCount = [
+    statusFilter !== 'all',
+    priorityFilter !== 'all',
+    categoryFilter !== 'all',
+    search !== '',
+  ].filter(Boolean).length
+
+  function clearFilters() {
+    setSearch('')
+    setStatusFilter('all')
+    setPriorityFilter('all')
+    setCategoryFilter('all')
+    setSortBy('default')
+  }
 
   const VIEW_TABS: { id: ViewMode; icon: React.ElementType; label: string }[] = [
     { id: 'list',     icon: LayoutList,  label: t('roadmap.viewList') },
@@ -574,14 +903,15 @@ export default function RoadmapPage() {
             </div>
           </div>
           <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+            title="N">
             <Plus className="w-4 h-4" />
             {t('roadmap.newFeature')}
           </button>
         </div>
 
         {/* Stats row */}
-        <div className="flex items-center gap-4 mt-4 flex-wrap">
+        <div className="flex items-center gap-3 mt-4 flex-wrap">
           {totalByStatus.map(({ status, count }) => {
             if (count === 0) return null
             const sc = STATUS_CONFIG[status]
@@ -607,10 +937,10 @@ export default function RoadmapPage() {
         </div>
       </div>
 
-      {/* View tabs + search */}
-      <div className="px-6 py-3 flex items-center gap-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+      {/* Toolbar */}
+      <div className="px-6 py-3 flex items-center gap-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex-wrap">
         {/* View switcher */}
-        <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 gap-0.5">
+        <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 gap-0.5 shrink-0">
           {VIEW_TABS.map(({ id, icon: Icon, label }) => (
             <button key={id} onClick={() => setView(id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
@@ -624,19 +954,55 @@ export default function RoadmapPage() {
           ))}
         </div>
 
-        {/* Search + status filter — always rendered to keep bar height stable */}
-        <div className={`relative flex-1 max-w-sm transition-opacity ${view === 'list' ? '' : 'invisible'}`}>
+        {/* Search — always visible */}
+        <div className="relative flex-1 min-w-[160px] max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('common.search')}
-            tabIndex={view === 'list' ? 0 : -1}
             className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RoadmapStatus | 'all')}
-          tabIndex={view === 'list' ? 0 : -1}
-          className={`px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-opacity ${view === 'list' ? '' : 'invisible'}`}>
-          <option value="all">{t('roadmap.allStatuses')}</option>
-          {ALL_STATUSES.map((s) => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
-        </select>
+
+        {/* Filters — visible based on view */}
+        {view !== 'workload' && (
+          <>
+            <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as RoadmapPriority | 'all')} className={selectCls}>
+              <option value="all">{t('roadmap.allPriorities')}</option>
+              {(['critical', 'high', 'medium', 'low'] as RoadmapPriority[]).map((p) => (
+                <option key={p} value={p}>{PRIORITY_CONFIG[p].label}</option>
+              ))}
+            </select>
+          </>
+        )}
+
+        {view === 'list' && (
+          <>
+            {categories.length > 0 && (
+              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className={selectCls}>
+                <option value="all">{t('roadmap.allCategories')}</option>
+                {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+              </select>
+            )}
+
+            <div className="relative shrink-0">
+              <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortMode)}
+                className={`${selectCls} pl-8`}>
+                <option value="default">{t('roadmap.sortDefault')}</option>
+                <option value="priority">{t('roadmap.sortPriority')}</option>
+                <option value="completeness">{t('roadmap.sortCompleteness')}</option>
+                <option value="updated">{t('roadmap.sortUpdated')}</option>
+              </select>
+            </div>
+          </>
+        )}
+
+        {/* Clear filters */}
+        {activeFilterCount > 0 && (
+          <button onClick={clearFilters}
+            className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium text-slate-500 hover:text-red-600 dark:hover:text-red-400 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-red-300 dark:hover:border-red-700 transition-colors shrink-0">
+            <X className="w-3.5 h-3.5" />
+            {t('roadmap.clearFilters')} ({activeFilterCount})
+          </button>
+        )}
       </div>
 
       {/* Content */}
@@ -655,11 +1021,15 @@ export default function RoadmapPage() {
               </button>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-center space-y-2">
+            <div className="flex flex-col items-center justify-center h-64 text-center space-y-3">
               <Search className="w-10 h-10 text-slate-300 dark:text-slate-700" />
-              <p className="text-sm text-slate-500">{t('roadmap.noResults')}</p>
+              <p className="text-sm text-slate-500">{t('roadmap.noFeaturesFiltered')}</p>
+              <button onClick={clearFilters}
+                className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+                {t('roadmap.clearFilters')}
+              </button>
             </div>
-          ) : statusFilter === 'all' ? (
+          ) : statusFilter === 'all' && sortBy === 'default' ? (
             <div className="space-y-8">
               {ALL_STATUSES.map((status) => {
                 const items = grouped[status]
@@ -701,7 +1071,7 @@ export default function RoadmapPage() {
           ) : (
             <>
               <p className="text-xs text-slate-400 mb-4">{t('roadmap.timelineHint')}</p>
-              <TimelineView features={features} onFeatureClick={(id) => navigate(`/roadmap/${id}`)} />
+              <TimelineView features={filtered} onFeatureClick={(id) => navigate(`/roadmap/${id}`)} />
             </>
           )
         )}

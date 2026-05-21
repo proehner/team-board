@@ -10,12 +10,13 @@ interface ConfirmDialogProps {
   title: string
   message: string
   confirmLabel?: string
+  cancelLabel?: string
   variant?: 'danger' | 'warning'
 }
 
 export default function ConfirmDialog({
   isOpen, onClose, onConfirm, title, message,
-  confirmLabel, variant = 'danger',
+  confirmLabel, cancelLabel, variant = 'danger',
 }: ConfirmDialogProps) {
   const { t } = useTranslation()
   return (
@@ -26,7 +27,7 @@ export default function ConfirmDialog({
       size="sm"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>{t('confirmDialog.cancel')}</Button>
+          <Button variant="secondary" onClick={onClose}>{cancelLabel ?? t('confirmDialog.cancel')}</Button>
           <Button
             variant={variant === 'danger' ? 'danger' : 'primary'}
             onClick={() => { onConfirm(); onClose() }}
