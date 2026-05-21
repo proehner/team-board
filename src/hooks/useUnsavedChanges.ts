@@ -14,8 +14,8 @@ export function useUnsavedChanges(dirty: boolean) {
   const dirtyRef   = useRef(dirty)
   dirtyRef.current = dirty
 
-  const [pendingNav, setPendingNav] = useState<string | null>(null)
-  const pendingNavRef = useRef<string | null>(null)
+  const [pendingNav, setPendingNav] = useState<string | number | null>(null)
+  const pendingNavRef = useRef<string | number | null>(null)
   pendingNavRef.current = pendingNav
 
   // Number of guard entries currently on the history stack
@@ -82,9 +82,9 @@ export function useUnsavedChanges(dirty: boolean) {
 
   /** Use instead of navigate() for buttons that should be guarded. */
   const guardedNavigate = useCallback(
-    (to: string) => {
+    (to: string | number) => {
       if (dirtyRef.current) setPendingNav(to)
-      else navigate(to)
+      else typeof to === 'number' ? navigate(to) : navigate(to)
     },
     [navigate],
   )
@@ -99,6 +99,8 @@ export function useUnsavedChanges(dirty: boolean) {
       // Skip past all guard entries + one more step to reach the previous page
       skipNext.current = true
       window.history.go(-(depth + 1))
+    } else if (typeof dest === 'number') {
+      navigate(dest)
     } else {
       // Link-click or guardedNavigate: just navigate (guard entries in history
       // are harmless – they share the same hash so won't cause wrong renders)

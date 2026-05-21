@@ -1,14 +1,14 @@
-import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   Plus, Search, Map, ChevronRight, ChevronLeft, Tag, Calendar, Layers,
   Circle, CheckCircle2, XCircle, Lightbulb, Clock,
-  LayoutList, CalendarDays, Users, TrendingUp,
+  LayoutList, CalendarDays, Users, TrendingUp, GanttChartSquare,
   Loader2, AlertCircle, ArrowUpDown, X, GripVertical,
 } from 'lucide-react'
 import { useStore } from '@/store'
-import type { RoadmapFeature, RoadmapStatus, RoadmapPriority, RoadmapTicketArea } from '@/types'
+import type { RoadmapFeature, RoadmapStatus, RoadmapPriority, RoadmapTicketArea, RoadmapQuarter } from '@/types'
 
 // ─── Shared config ────────────────────────────────────────────────────────────
 
@@ -591,6 +591,380 @@ function TimelineView({ features, onFeatureClick }: { features: RoadmapFeature[]
   )
 }
 
+// ─── Gantt View ───────────────────────────────────────────────────────────────
+
+const COL_W  = 80   // px per quarter column
+const LEFT_W = 220  // sticky left panel width
+const ROW_H  = 44   // row height
+const BAR_H  = 24   // bar height
+
+function GanttView({ features, onFeatureClick }: { features: RoadmapFeature[]; onFeatureClick: (id: string) => void }) {
+  const { t }                = useTranslation()
+  const updateRoadmapFeature = useStore((s) => s.updateRoadmapFeature)
+
+  const now          = new Date()
+  const todayYear    = now.getFullYear()
+  const todayQuarter = Math.ceil((now.getMonth() + 1) / 3)
+  // fraction (0..1) through current quarter based on day-in-quarter
+  const todayFraction = (now.getMonth() % 3) / 3 + now.getDate() / 91
+
+  const [draggingId,  setDraggingId]  = useState<string | null>(null)
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null)
+  const [resizing, setResizing] = useState<{
+    id: string
+    edge: 'start' | 'end'
+    currentIdx: number
+  } | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Compute visible year range from all feature dates + ±1 year buffer
+  const { minYear, maxYear } = useMemo(() => {
+    const years: number[] = [todayYear - 1, todayYear + 1]
+    for (const f of features) {
+      if (f.startYear)  years.push(f.startYear)
+      if (f.targetYear) years.push(f.targetYear)
+    }
+    return { minYear: Math.min(...years), maxYear: Math.max(...years) }
+  }, [features, todayYear])
+
+  const totalCols = (maxYear - minYear + 1) * 4
+  const totalW    = totalCols * COL_W
+
+  function colIdxFor(year: number, quarter: number) {
+    return (year - minYear) * 4 + (quarter - 1)
+  }
+
+  const todayLeft = (colIdxFor(todayYear, todayQuarter) + todayFraction) * COL_W
+
+  // Sort key: earliest known quarter index (start preferred; target as fallback)
+  function ganttSortKey(f: RoadmapFeature) {
+    if (f.startYear && f.startQuarter)   return f.startYear  * 4 + f.startQuarter
+    if (f.targetYear && f.targetQuarter) return f.targetYear * 4 + f.targetQuarter
+    if (f.targetYear)                    return f.targetYear * 4 + 5  // year-only → after Q4
+    return Infinity
+  }
+
+  const scheduled = features
+    .filter((f) => f.targetYear || f.startYear)
+    .slice()
+    .sort((a, b) => {
+      const d = ganttSortKey(a) - ganttSortKey(b)
+      if (d !== 0) return d
+      // Secondary: target end date
+      const aEnd = a.targetYear && a.targetQuarter ? a.targetYear * 4 + a.targetQuarter : Infinity
+      const bEnd = b.targetYear && b.targetQuarter ? b.targetYear * 4 + b.targetQuarter : Infinity
+      if (aEnd !== bEnd) return aEnd - bEnd
+      return a.title.localeCompare(b.title)
+    })
+  const unscheduled = features.filter((f) => !f.targetYear && !f.startYear)
+
+  const groups = ALL_STATUSES
+    .map((s) => ({ status: s, items: scheduled.filter((f) => f.status === s) }))
+    .filter((g) => g.items.length > 0)
+
+  async function dropOnQuarter(year: number, quarter: number) {
+    if (!draggingId) return
+    const f = features.find((x) => x.id === draggingId)
+    if (!f) return
+
+    // Maintain duration when feature has both start and target
+    let patchStartYear: number | null    = f.startYear ?? null
+    let patchStartQ: RoadmapQuarter | null = f.startQuarter ?? null
+
+    if (f.startYear && f.startQuarter && f.targetYear && f.targetQuarter) {
+      const duration    = colIdxFor(f.targetYear, f.targetQuarter) - colIdxFor(f.startYear, f.startQuarter)
+      const newEndIdx   = colIdxFor(year, quarter)
+      const newStartIdx = Math.max(0, newEndIdx - duration)
+      patchStartYear = minYear + Math.floor(newStartIdx / 4)
+      patchStartQ    = ((newStartIdx % 4) + 1) as RoadmapQuarter
+    }
+
+    await updateRoadmapFeature(draggingId, {
+      targetYear:    year           as unknown as number,
+      targetQuarter: quarter        as unknown as 1,
+      startYear:     patchStartYear as unknown as number,
+      startQuarter:  patchStartQ    as unknown as 1,
+    })
+    setDraggingId(null)
+    setDragOverCol(null)
+  }
+
+  function startResize(e: React.MouseEvent, id: string, edge: 'start' | 'end', currentIdx: number) {
+    e.preventDefault()
+    e.stopPropagation()
+    setResizing({ id, edge, currentIdx })
+  }
+
+  // Global mouse listeners while a resize is active
+  useEffect(() => {
+    if (!resizing) return
+
+    function onMouseMove(e: MouseEvent) {
+      if (!containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      const x    = e.clientX - rect.left + containerRef.current.scrollLeft - LEFT_W
+      const idx  = Math.max(0, Math.min(totalCols - 1, Math.floor(x / COL_W)))
+      setResizing((prev) => prev ? { ...prev, currentIdx: idx } : null)
+    }
+
+    async function onMouseUp() {
+      if (!resizing) return
+      const f = features.find((x) => x.id === resizing.id)
+      if (f) {
+        const existingStartIdx = f.startYear  && f.startQuarter  ? (f.startYear  - minYear) * 4 + (f.startQuarter  - 1) : null
+        const existingEndIdx   = f.targetYear && f.targetQuarter ? (f.targetYear - minYear) * 4 + (f.targetQuarter - 1) : null
+        if (resizing.edge === 'start') {
+          const clamped = existingEndIdx !== null ? Math.min(resizing.currentIdx, existingEndIdx) : resizing.currentIdx
+          const year    = minYear + Math.floor(clamped / 4)
+          const quarter = ((clamped % 4) + 1) as RoadmapQuarter
+          await updateRoadmapFeature(resizing.id, { startYear: year as unknown as number, startQuarter: quarter as unknown as 1 })
+        } else {
+          const clamped = existingStartIdx !== null ? Math.max(resizing.currentIdx, existingStartIdx) : resizing.currentIdx
+          const year    = minYear + Math.floor(clamped / 4)
+          const quarter = ((clamped % 4) + 1) as RoadmapQuarter
+          await updateRoadmapFeature(resizing.id, { targetYear: year as unknown as number, targetQuarter: quarter as unknown as 1 })
+        }
+      }
+      setResizing(null)
+    }
+
+    document.body.style.cursor     = 'ew-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup',   onMouseUp)
+    return () => {
+      document.body.style.cursor     = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup',   onMouseUp)
+    }
+  }, [resizing, features, totalCols, minYear, updateRoadmapFeature])
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-slate-400 italic">{t('roadmap.ganttHint')}</p>
+
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto" ref={containerRef}>
+          <div style={{ minWidth: LEFT_W + totalW }}>
+
+            {/* ── Header ── */}
+            <div className="flex border-b-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 sticky top-0 z-20">
+              <div style={{ width: LEFT_W, minWidth: LEFT_W }}
+                className="sticky left-0 z-30 bg-slate-50 dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 px-3 py-2 flex items-end">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Feature</span>
+              </div>
+              <div className="flex">
+                {Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i).map((year) => (
+                  <div key={year} style={{ width: 4 * COL_W }}
+                    className="border-r border-slate-200 dark:border-slate-700 last:border-r-0">
+                    <div className={`px-2 py-0.5 text-[10px] font-bold border-b border-slate-200 dark:border-slate-700 ${
+                      year === todayYear ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'
+                    }`}>
+                      {year}
+                    </div>
+                    <div className="flex">
+                      {[1, 2, 3, 4].map((q) => {
+                        const isCurrent = year === todayYear && q === todayQuarter
+                        const isPast    = year < todayYear || (year === todayYear && q < todayQuarter)
+                        const key       = `${year}-${q}`
+                        return (
+                          <div key={q} style={{ width: COL_W }}
+                            onDragOver={(e) => { e.preventDefault(); if (dragOverCol !== key) setDragOverCol(key) }}
+                            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null) }}
+                            onDrop={(e) => { e.preventDefault(); dropOnQuarter(year, q) }}
+                            className={`text-center py-1 text-[10px] font-semibold border-r border-slate-100 dark:border-slate-800 last:border-r-0 select-none transition-colors ${
+                              dragOverCol === key
+                                ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                : isCurrent
+                                  ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400'
+                                  : isPast
+                                    ? 'text-slate-300 dark:text-slate-700'
+                                    : 'text-slate-400'
+                            }`}
+                          >
+                            Q{q}
+                            {isCurrent && <span className="block text-[8px] leading-none text-indigo-400">▼</span>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Feature rows (grouped by status) ── */}
+            {groups.length === 0 ? (
+              <div className="flex">
+                <div style={{ width: LEFT_W, minWidth: LEFT_W }}
+                  className="sticky left-0 border-r border-slate-200 dark:border-slate-700" />
+                <div style={{ width: totalW }} className="py-14 text-center">
+                  <p className="text-sm text-slate-400">{t('roadmap.ganttNoScheduled')}</p>
+                </div>
+              </div>
+            ) : groups.map(({ status, items }) => {
+              const sc   = STATUS_CONFIG[status]
+              const Icon = sc.icon
+              return (
+                <div key={status}>
+                  {/* Status section header */}
+                  <div className="flex bg-slate-50/80 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800">
+                    <div style={{ width: LEFT_W, minWidth: LEFT_W }}
+                      className="sticky left-0 z-10 bg-slate-50/80 dark:bg-slate-800/30 border-r border-slate-200 dark:border-slate-700 px-3 py-1.5 flex items-center gap-1.5">
+                      <Icon className={`w-3 h-3 ${sc.color}`} />
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${sc.color}`}>{sc.label}</span>
+                      <span className="text-[10px] text-slate-400">({items.length})</span>
+                    </div>
+                    <div style={{ width: totalW }} className="relative">
+                      <div style={{ left: todayLeft, width: 1 }}
+                        className="absolute top-0 bottom-0 bg-indigo-400/25 dark:bg-indigo-500/20 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Feature rows */}
+                  {items.map((f) => {
+                    let barStartIdx: number | null = null
+                    let barEndIdx:   number | null = null
+                    let isMilestone = false
+
+                    if (f.targetYear && f.targetQuarter) {
+                      barEndIdx = colIdxFor(f.targetYear, f.targetQuarter)
+                      if (f.startYear && f.startQuarter) {
+                        barStartIdx = colIdxFor(f.startYear, f.startQuarter)
+                        if (barStartIdx > barEndIdx) barStartIdx = barEndIdx
+                      } else {
+                        barStartIdx = barEndIdx
+                        isMilestone = true
+                      }
+                    } else if (f.startYear && f.startQuarter) {
+                      barStartIdx = colIdxFor(f.startYear, f.startQuarter)
+                      barEndIdx   = barStartIdx
+                      isMilestone = true
+                    }
+
+                    return (
+                      <div key={f.id}
+                        style={{ height: ROW_H }}
+                        className="flex border-b border-slate-100 dark:border-slate-800 last:border-b-0 group hover:bg-slate-50/60 dark:hover:bg-slate-800/20">
+
+                        {/* Left: feature name */}
+                        <div style={{ width: LEFT_W, minWidth: LEFT_W }}
+                          className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50/60 dark:group-hover:bg-slate-800/20 border-r border-slate-200 dark:border-slate-700 px-3 flex items-center">
+                          <button onClick={() => onFeatureClick(f.id)}
+                            className={`text-xs font-medium truncate hover:underline text-left w-full ${sc.color}`}>
+                            {f.title}
+                          </button>
+                        </div>
+
+                        {/* Right: bar area */}
+                        <div style={{ width: totalW, position: 'relative' }}>
+                          {/* Column background stripes */}
+                          <div className="absolute inset-0 flex pointer-events-none">
+                            {Array.from({ length: totalCols }, (_, i) => {
+                              const y = minYear + Math.floor(i / 4)
+                              const q = (i % 4) + 1
+                              const isCurr = y === todayYear && q === todayQuarter
+                              const isPast = y < todayYear || (y === todayYear && q < todayQuarter)
+                              return (
+                                <div key={i} style={{ width: COL_W }}
+                                  className={`border-r border-slate-100 dark:border-slate-800 last:border-r-0 ${
+                                    isCurr ? 'bg-indigo-50/40 dark:bg-indigo-950/10' :
+                                    isPast  ? 'bg-slate-50/50 dark:bg-slate-900/20' : ''
+                                  }`} />
+                              )
+                            })}
+                          </div>
+
+                          {/* Today marker line */}
+                          <div style={{ left: todayLeft, width: 2 }}
+                            className="absolute top-0 bottom-0 bg-indigo-400/50 dark:bg-indigo-500/50 pointer-events-none z-10" />
+
+                          {/* Feature bar */}
+                          {barStartIdx !== null && barEndIdx !== null && (() => {
+                            const isResizingThis = resizing?.id === f.id
+                            let dispStart = barStartIdx
+                            let dispEnd   = barEndIdx
+                            if (isResizingThis) {
+                              if (resizing!.edge === 'start') dispStart = Math.min(resizing!.currentIdx, dispEnd)
+                              else                            dispEnd   = Math.max(resizing!.currentIdx, dispStart)
+                            }
+                            const barLeft  = isMilestone ? dispStart * COL_W + (COL_W - BAR_H) / 2 : dispStart * COL_W + 4
+                            const barWidth = isMilestone ? BAR_H : (dispEnd - dispStart + 1) * COL_W - 8
+                            return (
+                              <div
+                                draggable={!resizing}
+                                onDragStart={(e) => {
+                                  e.dataTransfer.effectAllowed = 'move'
+                                  e.dataTransfer.setData('text/plain', f.id)
+                                  setTimeout(() => setDraggingId(f.id), 0)
+                                }}
+                                onDragEnd={() => { setDraggingId(null); setDragOverCol(null) }}
+                                title={f.title}
+                                style={{ left: barLeft, width: barWidth, top: (ROW_H - BAR_H) / 2, height: BAR_H }}
+                                className={`absolute z-20 select-none ${
+                                  isResizingThis ? 'cursor-ew-resize' : draggingId === f.id ? 'opacity-30 cursor-grabbing' : 'cursor-grab hover:brightness-95'
+                                } ${isMilestone
+                                  ? 'flex items-center justify-center'
+                                  : `rounded-md ${sc.bg} border ${sc.border} flex items-center overflow-hidden`
+                                }`}
+                              >
+                                {isMilestone ? (
+                                  <div className={`w-full h-full rotate-45 rounded-sm ${sc.bg} border ${sc.border}`} />
+                                ) : (
+                                  <>
+                                    {/* Left resize handle */}
+                                    <div
+                                      onMouseDown={(e) => startResize(e, f.id, 'start', dispStart)}
+                                      className="absolute left-0 top-0 bottom-0 w-2.5 flex items-center justify-center cursor-ew-resize hover:bg-black/10 dark:hover:bg-white/15 rounded-l-md z-10 group/lh"
+                                    >
+                                      <div className="w-px h-3.5 rounded-full bg-current opacity-30 group-hover/lh:opacity-80 transition-opacity" />
+                                    </div>
+
+                                    <span className={`text-[10px] font-medium truncate ${sc.color} px-3`}>{f.title}</span>
+
+                                    {/* Right resize handle */}
+                                    <div
+                                      onMouseDown={(e) => startResize(e, f.id, 'end', dispEnd)}
+                                      className="absolute right-0 top-0 bottom-0 w-2.5 flex items-center justify-center cursor-ew-resize hover:bg-black/10 dark:hover:bg-white/15 rounded-r-md z-10 group/rh"
+                                    >
+                                      <div className="w-px h-3.5 rounded-full bg-current opacity-30 group-hover/rh:opacity-80 transition-opacity" />
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Unscheduled section */}
+      {unscheduled.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-bold text-slate-500">{t('roadmap.ganttUnscheduled')}</span>
+            <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
+            <span className="text-xs text-slate-400">{unscheduled.length}</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {unscheduled.map((f) => (
+              <FeatureCard key={f.id} feature={f} compact onClick={() => onFeatureClick(f.id)} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Team Workload View ───────────────────────────────────────────────────────
 
 const AREA_LABELS: Record<RoadmapTicketArea, string> = {
@@ -783,7 +1157,7 @@ function TeamWorkloadView() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type ViewMode = 'list' | 'timeline' | 'workload'
+type ViewMode = 'list' | 'timeline' | 'gantt' | 'workload'
 type SortMode = 'default' | 'priority' | 'completeness' | 'updated'
 
 const selectCls = 'px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500'
@@ -793,7 +1167,11 @@ export default function RoadmapPage() {
   const navigate = useNavigate()
   const features = useStore((s) => s.roadmapFeatures)
 
-  const [view,            setView]            = useState<ViewMode>('list')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view = (searchParams.get('view') as ViewMode | null) ?? 'list'
+  function setView(v: ViewMode) {
+    setSearchParams((p) => { p.set('view', v); return p }, { replace: true })
+  }
   const [search,          setSearch]          = useState('')
   const [statusFilter,    setStatusFilter]    = useState<RoadmapStatus | 'all'>('all')
   const [priorityFilter,  setPriorityFilter]  = useState<RoadmapPriority | 'all'>('all')
@@ -883,9 +1261,10 @@ export default function RoadmapPage() {
   }
 
   const VIEW_TABS: { id: ViewMode; icon: React.ElementType; label: string }[] = [
-    { id: 'list',     icon: LayoutList,  label: t('roadmap.viewList') },
-    { id: 'timeline', icon: CalendarDays,label: t('roadmap.viewTimeline') },
-    { id: 'workload', icon: Users,        label: t('roadmap.viewWorkload') },
+    { id: 'list',     icon: LayoutList,        label: t('roadmap.viewList') },
+    { id: 'timeline', icon: CalendarDays,       label: t('roadmap.viewTimeline') },
+    { id: 'gantt',    icon: GanttChartSquare,   label: t('roadmap.viewGantt') },
+    { id: 'workload', icon: Users,              label: t('roadmap.viewWorkload') },
   ]
 
   return (
@@ -1073,6 +1452,18 @@ export default function RoadmapPage() {
               <p className="text-xs text-slate-400 mb-4">{t('roadmap.timelineHint')}</p>
               <TimelineView features={filtered} onFeatureClick={(id) => navigate(`/roadmap/${id}`)} />
             </>
+          )
+        )}
+
+        {/* ── Gantt View ── */}
+        {view === 'gantt' && (
+          features.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center space-y-2">
+              <GanttChartSquare className="w-10 h-10 text-slate-300 dark:text-slate-700" />
+              <p className="text-sm text-slate-500">{t('roadmap.noFeatures')}</p>
+            </div>
+          ) : (
+            <GanttView features={filtered} onFeatureClick={(id) => navigate(`/roadmap/${id}`)} />
           )
         )}
 

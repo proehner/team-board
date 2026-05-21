@@ -832,7 +832,13 @@
     "spEstimated": "{{n}}/{{total}} mit SP",
     "savedConfirm": "Gespeichert",
     "noFeaturesFiltered": "Keine Features passen zu den aktuellen Filtern.",
-    "clearFilters": "Filter zurücksetzen"
+    "clearFilters": "Filter zurücksetzen",
+    "viewGantt": "Gantt",
+    "ganttHint": "Gantt-Diagramm — Balken per Drag & Drop verschieben. Features mit Start + Ziel werden als Zeitspannen dargestellt; nur mit Zieldatum als Meilenstein.",
+    "ganttUnscheduled": "Nicht terminiert",
+    "ganttNoScheduled": "Noch keine Features mit Start- oder Zieldatum.",
+    "startYear": "Startjahr",
+    "startQuarter": "Startquartal"
   },
   "knownErrors": {
     "title": "Known Error DB",

@@ -1008,6 +1008,8 @@ export default function RoadmapFeatureDetailPage() {
         targetVersion:      feature.targetVersion ?? '',
         targetYear:         feature.targetYear,
         targetQuarter:      feature.targetQuarter,
+        startYear:          feature.startYear,
+        startQuarter:       feature.startQuarter,
         category:           feature.category ?? '',
         tags:               feature.tags,
         goals:              feature.goals,
@@ -1107,6 +1109,8 @@ export default function RoadmapFeatureDetailPage() {
         // Send null explicitly so JSON.stringify includes them and the backend clears the column
         targetYear:     (form.targetYear ?? null) as unknown as number,
         targetQuarter:  (form.targetQuarter ?? null) as unknown as 1,
+        startYear:      (form.startYear ?? null) as unknown as number,
+        startQuarter:   (form.startQuarter ?? null) as unknown as 1,
         category:       (form.category as string)?.trim() || undefined,
         tags:           form.tags ?? [],
       })
@@ -1135,7 +1139,7 @@ export default function RoadmapFeatureDetailPage() {
   async function handleDelete() {
     if (!featureId) return
     await deleteRoadmapFeature(featureId)
-    navigate('/roadmap')
+    navigate('/roadmap')  // intentional hard nav after delete — no "back" target exists
   }
 
   const [exportCopied, setExportCopied] = useState(false)
@@ -1220,7 +1224,7 @@ export default function RoadmapFeatureDetailPage() {
         <div className="text-center space-y-2">
           <Map className="w-10 h-10 text-slate-300 mx-auto" />
           <p className="text-sm text-slate-500">{t('roadmap.featureNotFound')}</p>
-          <button onClick={() => navigate('/roadmap')} className="text-sm text-indigo-600 hover:underline">{t('roadmap.backToRoadmap')}</button>
+          <button onClick={() => navigate(-1)} className="text-sm text-indigo-600 hover:underline">{t('roadmap.backToRoadmap')}</button>
         </div>
       </div>
     )
@@ -1247,7 +1251,7 @@ export default function RoadmapFeatureDetailPage() {
       {/* Top Bar */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => guardedNavigate('/roadmap')}
+          <button onClick={() => guardedNavigate(-1)}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -1331,26 +1335,45 @@ export default function RoadmapFeatureDetailPage() {
               </div>
             </div>
 
-            {/* Year / Quarter / Tags */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">
-                  <Calendar className="w-3 h-3 inline mr-1" />{t('roadmap.targetYear')}
-                </label>
-                <input type="number" min={2024} max={2035} value={form.targetYear ?? ''}
-                  onChange={(e) => updateField('targetYear', e.target.value ? Number(e.target.value) : undefined as unknown as number)}
-                  placeholder="2025"
-                  className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            {/* Start / Target Year+Quarter / Tags */}
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    <Calendar className="w-3 h-3 inline mr-1" />{t('roadmap.startYear')}
+                  </label>
+                  <input type="number" min={2024} max={2035} value={form.startYear ?? ''}
+                    onChange={(e) => updateField('startYear', e.target.value ? Number(e.target.value) : undefined as unknown as number)}
+                    placeholder="2025"
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.startQuarter')}</label>
+                  <select value={form.startQuarter ?? ''} onChange={(e) => updateField('startQuarter', e.target.value ? Number(e.target.value) as 1 | 2 | 3 | 4 : undefined as unknown as 1)}
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">{t('roadmap.quarterNotSet')}</option>
+                    {QUARTERS.map((q) => <option key={q} value={q}>Q{q}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    <Calendar className="w-3 h-3 inline mr-1" />{t('roadmap.targetYear')}
+                  </label>
+                  <input type="number" min={2024} max={2035} value={form.targetYear ?? ''}
+                    onChange={(e) => updateField('targetYear', e.target.value ? Number(e.target.value) : undefined as unknown as number)}
+                    placeholder="2025"
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.targetQuarter')}</label>
+                  <select value={form.targetQuarter ?? ''} onChange={(e) => updateField('targetQuarter', e.target.value ? Number(e.target.value) as 1 | 2 | 3 | 4 : undefined as unknown as 1)}
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">{t('roadmap.quarterNotSet')}</option>
+                    {QUARTERS.map((q) => <option key={q} value={q}>Q{q}</option>)}
+                  </select>
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.targetQuarter')}</label>
-                <select value={form.targetQuarter ?? ''} onChange={(e) => updateField('targetQuarter', e.target.value ? Number(e.target.value) as 1 | 2 | 3 | 4 : undefined as unknown as 1)}
-                  className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="">{t('roadmap.quarterNotSet')}</option>
-                  {QUARTERS.map((q) => <option key={q} value={q}>Q{q}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-500 mb-1">
                   <Tag className="w-3 h-3 inline mr-1" />{t('roadmap.tags')} <span className="text-slate-400">({t('roadmap.tagsSeparator')})</span>
                 </label>

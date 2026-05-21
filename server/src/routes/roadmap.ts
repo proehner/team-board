@@ -19,6 +19,8 @@ function toFeature(row: Row) {
     targetVersion:    row.targetVersion  ?? undefined,
     targetYear:       row.targetYear     ?? undefined,
     targetQuarter:    row.targetQuarter  ?? undefined,
+    startYear:        row.startYear      ?? undefined,
+    startQuarter:     row.startQuarter   ?? undefined,
     category:         row.category       ?? undefined,
   }
 }
@@ -63,6 +65,8 @@ router.post('/features', (req, res) => {
     targetVersion,
     targetYear,
     targetQuarter,
+    startYear,
+    startQuarter,
     category,
     tags = [],
     goals = '',
@@ -78,11 +82,13 @@ router.post('/features', (req, res) => {
   dbRun(
     `INSERT INTO roadmap_features
        (id, title, description, status, priority, targetVersion, targetYear, targetQuarter,
-        category, tags, goals, acceptanceCriteria, uiNotes, backendNotes, technicalNotes, risks, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        startYear, startQuarter, category, tags, goals, acceptanceCriteria, uiNotes,
+        backendNotes, technicalNotes, risks, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, title.trim(), description, status, priority,
       targetVersion ?? null, targetYear ?? null, targetQuarter ?? null,
+      startYear ?? null, startQuarter ?? null,
       category ?? null,
       JSON.stringify(tags),
       goals, acceptanceCriteria, uiNotes, backendNotes, technicalNotes, risks,
@@ -102,8 +108,8 @@ router.patch('/features/:id', (req, res) => {
   const values: unknown[] = []
   const textFields = [
     'title', 'description', 'status', 'priority', 'targetVersion', 'targetYear',
-    'targetQuarter', 'category', 'goals', 'acceptanceCriteria', 'uiNotes',
-    'backendNotes', 'technicalNotes', 'risks',
+    'targetQuarter', 'startYear', 'startQuarter', 'category', 'goals',
+    'acceptanceCriteria', 'uiNotes', 'backendNotes', 'technicalNotes', 'risks',
   ]
   for (const f of textFields) {
     if (req.body[f] !== undefined) {

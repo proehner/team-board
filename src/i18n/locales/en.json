@@ -675,7 +675,13 @@
     "spEstimated": "{{n}}/{{total}} with SP",
     "savedConfirm": "Saved",
     "noFeaturesFiltered": "No features match the current filters.",
-    "clearFilters": "Clear filters"
+    "clearFilters": "Clear filters",
+    "viewGantt": "Gantt",
+    "ganttHint": "Gantt chart — drag bars to reschedule. Features with start + target show as spans; target-only features show as milestones.",
+    "ganttUnscheduled": "Unscheduled",
+    "ganttNoScheduled": "No features have start or target dates set yet.",
+    "startYear": "Start Year",
+    "startQuarter": "Start Quarter"
   },
   "meetings": {
     "title": "Meetings",
