@@ -827,20 +827,35 @@ function GanttView({ features, onFeatureClick }: { features: RoadmapFeature[]; o
                     let barStartIdx: number | null = null
                     let barEndIdx:   number | null = null
                     let isMilestone = false
+                    let isYearOnly  = false
 
                     if (f.targetYear && f.targetQuarter) {
                       barEndIdx = colIdxFor(f.targetYear, f.targetQuarter)
                       if (f.startYear && f.startQuarter) {
                         barStartIdx = colIdxFor(f.startYear, f.startQuarter)
                         if (barStartIdx > barEndIdx) barStartIdx = barEndIdx
+                      } else if (f.startYear) {
+                        // startYear but no quarter → start at Q1 of that year
+                        barStartIdx = colIdxFor(f.startYear, 1)
+                        if (barStartIdx > barEndIdx) barStartIdx = barEndIdx
                       } else {
                         barStartIdx = barEndIdx
                         isMilestone = true
                       }
+                    } else if (f.targetYear) {
+                      // targetYear without quarter → span Q1-Q4 of that year (approximate)
+                      barStartIdx = colIdxFor(f.targetYear, 1)
+                      barEndIdx   = colIdxFor(f.targetYear, 4)
+                      isYearOnly  = true
                     } else if (f.startYear && f.startQuarter) {
                       barStartIdx = colIdxFor(f.startYear, f.startQuarter)
                       barEndIdx   = barStartIdx
                       isMilestone = true
+                    } else if (f.startYear) {
+                      // startYear only → span Q1-Q4
+                      barStartIdx = colIdxFor(f.startYear, 1)
+                      barEndIdx   = colIdxFor(f.startYear, 4)
+                      isYearOnly  = true
                     }
 
                     return (
@@ -906,7 +921,7 @@ function GanttView({ features, onFeatureClick }: { features: RoadmapFeature[]; o
                                   isResizingThis ? 'cursor-ew-resize' : draggingId === f.id ? 'opacity-30 cursor-grabbing' : 'cursor-grab hover:brightness-95'
                                 } ${isMilestone
                                   ? 'flex items-center justify-center'
-                                  : `rounded-md ${sc.bg} border ${sc.border} flex items-center overflow-hidden`
+                                  : `rounded-md ${sc.bg} ${isYearOnly ? 'border-dashed opacity-70' : ''} border ${sc.border} flex items-center overflow-hidden`
                                 }`}
                               >
                                 {isMilestone ? (
