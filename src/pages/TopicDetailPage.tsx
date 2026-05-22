@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { usePagePermission } from '@/hooks/usePagePermission'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import {
   ArrowLeft, MessageSquare, Send, Trash2,
   Paperclip, Upload, Download, File, ImageIcon, Loader2, Users, X,
@@ -35,9 +37,10 @@ function formatFileSize(bytes: number): string {
 
 // ─── Attachments Panel ────────────────────────────────────────────────────────
 
-function AttachmentsPanel({ topicId, onImageUpload }: {
+function AttachmentsPanel({ topicId, onImageUpload, canWrite }: {
   topicId: string
   onImageUpload: (file: File) => Promise<string>
+  canWrite: boolean
 }) {
   const { t } = useTranslation()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -84,16 +87,20 @@ function AttachmentsPanel({ topicId, onImageUpload }: {
             <span className="text-xs font-normal text-slate-400">({attachments.length})</span>
           )}
         </h2>
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors disabled:opacity-50"
-        >
-          {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-          {t('meetings.attachments.upload')}
-        </button>
-        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileChange} />
+        {canWrite && (
+          <>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors disabled:opacity-50"
+            >
+              {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              {t('meetings.attachments.upload')}
+            </button>
+            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileChange} />
+          </>
+        )}
       </div>
 
       {loading ? (
@@ -130,14 +137,16 @@ function AttachmentsPanel({ topicId, onImageUpload }: {
                   >
                     <Download className="w-3.5 h-3.5" />
                   </a>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(att)}
-                    disabled={deletingId === att.id}
-                    className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50"
-                  >
-                    {deletingId === att.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                  </button>
+                  {canWrite && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(att)}
+                      disabled={deletingId === att.id}
+                      className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50"
+                    >
+                      {deletingId === att.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
                 </div>
               </li>
             )
@@ -168,6 +177,8 @@ export default function TopicDetailPage() {
   const allMembers    = useStore((s) => s.allMembers)
   const user          = useAuthStore((s) => s.user)
   const teams         = useAuthStore((s) => s.teams)
+
+  const { canWrite, isReadOnly } = usePagePermission('meetings')
 
   const meeting = meetings.find((m) => m.id === meetingId)
 
@@ -335,6 +346,7 @@ export default function TopicDetailPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
+      {isReadOnly && <ReadOnlyBanner />}
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-xs text-slate-400">
         <button onClick={() => navigate('/meetings')} className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
@@ -365,7 +377,8 @@ export default function TopicDetailPage() {
             <select
               value={topic.status}
               onChange={(e) => handleStatusChange(e.target.value as MeetingTopicStatus)}
-              className={`text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-violet-500 ${TOPIC_STATUS_CONFIG[topic.status].className}`}
+              disabled={!canWrite}
+              className={`text-xs font-medium px-2 py-1 rounded-full border-0 ${canWrite ? 'cursor-pointer' : 'cursor-default'} appearance-none focus:outline-none focus:ring-2 focus:ring-violet-500 ${TOPIC_STATUS_CONFIG[topic.status].className}`}
             >
               {(['todo', 'in_progress', 'deferred', 'fixed', 'done'] as MeetingTopicStatus[]).map((s) => (
                 <option key={s} value={s}>{t(`meetings.status.${s}`)}</option>
@@ -390,7 +403,7 @@ export default function TopicDetailPage() {
                 <h1 className={`text-base font-semibold leading-snug ${isDone ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
                   {topic.title}
                 </h1>
-                {!isDone && (
+                {!isDone && canWrite && (
                   <button
                     onClick={() => { setTitleDraft(topic.title); setEditingTitle(true) }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
@@ -402,13 +415,15 @@ export default function TopicDetailPage() {
             )}
           </div>
           {/* Create ticket button */}
-          <button
-            onClick={() => setShowCreateTicket(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg shrink-0 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50 transition-colors"
-          >
-            <TicketIcon className="w-3.5 h-3.5" />
-            {t('meetings.createTicket')}
-          </button>
+          {canWrite && (
+            <button
+              onClick={() => setShowCreateTicket(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg shrink-0 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50 transition-colors"
+            >
+              <TicketIcon className="w-3.5 h-3.5" />
+              {t('meetings.createTicket')}
+            </button>
+          )}
         </div>
 
         {isDone && topic.closedAt && (
@@ -439,8 +454,8 @@ export default function TopicDetailPage() {
             </div>
           ) : (
             <div
-              className={!isDone ? 'cursor-text' : ''}
-              onClick={() => { if (!isDone) { setDescDraft(topic.description); setEditingDesc(true) } }}
+              className={!isDone && canWrite ? 'cursor-text' : ''}
+              onClick={() => { if (!isDone && canWrite) { setDescDraft(topic.description); setEditingDesc(true) } }}
             >
               {topic.description ? (
                 <MarkdownRenderer content={topic.description} />
@@ -463,7 +478,7 @@ export default function TopicDetailPage() {
             <Users className="w-4 h-4" />
             {t('meetings.assignees')}
           </h2>
-          {!editingAssignees && !isDone && (
+          {!editingAssignees && !isDone && canWrite && (
             <button
               onClick={() => { setAssigneeDraft([...topic.assigneeIds]); setEditingAssignees(true) }}
               className="text-xs text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
@@ -589,7 +604,7 @@ export default function TopicDetailPage() {
       </div>
 
       {/* Attachments */}
-      <AttachmentsPanel topicId={topic.id} onImageUpload={handleImageUpload} />
+      <AttachmentsPanel topicId={topic.id} onImageUpload={handleImageUpload} canWrite={canWrite} />
 
       {/* Linked Tickets */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
@@ -601,12 +616,14 @@ export default function TopicDetailPage() {
               <span className="text-xs font-normal text-slate-400">({linkedTickets.length})</span>
             )}
           </h2>
-          <button
-            onClick={() => setShowCreateTicket(true)}
-            className="text-xs text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-          >
-            + {t('meetings.createTicket')}
-          </button>
+          {canWrite && (
+            <button
+              onClick={() => setShowCreateTicket(true)}
+              className="text-xs text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+            >
+              + {t('meetings.createTicket')}
+            </button>
+          )}
         </div>
         {linkedTickets.length === 0 ? (
           <p className="text-sm text-slate-400 italic text-center py-3">{t('meetings.noLinkedTickets')}</p>
@@ -626,13 +643,15 @@ export default function TopicDetailPage() {
                   {t(`tickets.status.${ticket.status}`)}
                 </span>
                 <span className="flex-1 text-sm text-slate-700 dark:text-slate-300 truncate">{ticket.title}</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setUnlinkConfirm(ticket) }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-red-600"
-                  title={t('meetings.unlinkTicket')}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                {canWrite && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setUnlinkConfirm(ticket) }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-red-600"
+                    title={t('meetings.unlinkTicket')}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -837,44 +856,48 @@ export default function TopicDetailPage() {
                   </div>
                   <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5">{renderWithMentions(c.content, allMembers)}</p>
                 </div>
-                <button
-                  onClick={() => setConfirmDeleteComment(c)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 self-start mt-1 p-1 text-slate-400 hover:text-red-600 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {canWrite && (
+                  <button
+                    onClick={() => setConfirmDeleteComment(c)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 self-start mt-1 p-1 text-slate-400 hover:text-red-600 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             ))}
           </div>
         )}
 
         {/* New comment */}
-        <div className="flex gap-2 pt-2">
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold text-white"
-            style={{ backgroundColor: members.find((m) => m.name === user?.displayName)?.avatarColor ?? '#6366f1' }}
-          >
-            {(user?.displayName || '?').charAt(0).toUpperCase()}
-          </div>
-          <div className="flex-1 flex gap-2">
-            <MentionInput
-              value={newComment}
-              onChange={setNewComment}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment() } }}
-              members={allMembers}
-              rows={2}
-              placeholder={t('meetings.commentPlaceholder')}
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
-            />
-            <button
-              onClick={handleSendComment}
-              disabled={!newComment.trim() || sending}
-              className="self-end px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+        {canWrite && (
+          <div className="flex gap-2 pt-2">
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold text-white"
+              style={{ backgroundColor: members.find((m) => m.name === user?.displayName)?.avatarColor ?? '#6366f1' }}
             >
-              <Send className="w-4 h-4" />
-            </button>
+              {(user?.displayName || '?').charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 flex gap-2">
+              <MentionInput
+                value={newComment}
+                onChange={setNewComment}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment() } }}
+                members={allMembers}
+                rows={2}
+                placeholder={t('meetings.commentPlaceholder')}
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+              />
+              <button
+                onClick={handleSendComment}
+                disabled={!newComment.trim() || sending}
+                className="self-end px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <ConfirmDialog

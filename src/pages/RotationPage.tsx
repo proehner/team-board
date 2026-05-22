@@ -6,6 +6,8 @@ import Avatar from '@/components/ui/Avatar'
 import Badge from '@/components/ui/Badge'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import { formatDate, todayISO, daysUntil } from '@/utils/date'
 import {
   Plus, RefreshCw, Edit2, Trash2, Wand2, BarChart2, Settings,
@@ -59,6 +61,7 @@ function addDaysToISO(iso: string, days: number): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function RotationPage() {
   const { t } = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('rotation')
   const members        = useStore((s) => s.members).filter((m) => m.isActive)
   const allMembers     = useStore((s) => s.members)
   const sprints        = useStore((s) => s.sprints)
@@ -105,6 +108,7 @@ export default function RotationPage() {
   const [deleteTarget, setDeleteTarget] = useState<ResponsibilityAssignment | null>(null)
   const [form,         setForm]         = useState<AssignmentFormData>(makeDefaultForm())
   const [formErrors,   setFormErrors]   = useState<Partial<AssignmentFormData>>({})
+  const [assignmentSaveError, setAssignmentSaveError] = useState('')
 
   function makeDefaultForm(type?: ResponsibilityType, memberId?: string): AssignmentFormData {
     const today = todayISO()
@@ -167,8 +171,8 @@ export default function RotationPage() {
       if (editTarget) await updateAssignment(editTarget.id, data)
       else             await addAssignment(data)
       setShowModal(false)
-    } catch {
-      alert(t('competencies.saveError'))
+    } catch (err) {
+      setAssignmentSaveError(err instanceof Error ? err.message : t('common.saveError'))
     }
   }
 
@@ -320,17 +324,20 @@ export default function RotationPage() {
             />
             {showMoreMenu && (
               <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg py-1 z-20">
-                <MenuButton icon={<Settings className="w-4 h-4" />} label={t('rotation.types')} onClick={() => { openAddType(); setShowMoreMenu(false) }} />
+                {canWrite && <MenuButton icon={<Settings className="w-4 h-4" />} label={t('rotation.types')} onClick={() => { openAddType(); setShowMoreMenu(false) }} />}
                 <MenuButton icon={<BarChart2 className="w-4 h-4" />} label={t('rotation.statistics')} onClick={() => { setShowStats(true); setShowMoreMenu(false) }} />
-                <MenuButton icon={<Archive className="w-4 h-4" />} label={t('rotation.cleanup')} onClick={() => { openCleanup(); setShowMoreMenu(false) }} />
+                {canWrite && <MenuButton icon={<Archive className="w-4 h-4" />} label={t('rotation.cleanup')} onClick={() => { openCleanup(); setShowMoreMenu(false) }} />}
               </div>
             )}
           </div>
-          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => openAdd()}>
-            {t('rotation.newAssignment')}
-          </Button>
+          {canWrite && (
+            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => openAdd()}>
+              {t('rotation.newAssignment')}
+            </Button>
+          )}
         </div>
       </div>
+      {isReadOnly && <ReadOnlyBanner />}
 
       {/* ── Active Now ── */}
       {responsibilityTypes.length > 0 && (
@@ -347,8 +354,9 @@ export default function RotationPage() {
               return (
                 <button
                   key={rt.id}
-                  onClick={() => openAdd(rt.name)}
-                  className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-3 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-sm transition-all group"
+                  onClick={() => canWrite && openAdd(rt.name)}
+                  disabled={!canWrite}
+                  className={`text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-3 transition-all group ${canWrite ? 'hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-sm' : 'cursor-default'}`}
                 >
                   <div className="flex items-center gap-2 mb-2.5">
                     <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: rt.color }} />
@@ -440,7 +448,7 @@ export default function RotationPage() {
           icon={<RefreshCw className="w-12 h-12" />}
           title={filterType !== 'all' || filterMember !== 'all' ? t('rotation.noAssignmentsForFilter') : t('rotation.newAssignment')}
           description=""
-          action={filterType === 'all' && filterMember === 'all' ? (
+          action={filterType === 'all' && filterMember === 'all' && canWrite ? (
             <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => openAdd()}>
               {t('rotation.newAssignment')}
             </Button>
@@ -484,6 +492,7 @@ export default function RotationPage() {
         title={editTarget ? t('common.edit') : t('rotation.newAssignment')}
         footer={
           <>
+            {assignmentSaveError && <p className="flex-1 text-sm text-red-600">{assignmentSaveError}</p>}
             <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
             <Button variant="primary" onClick={handleAssignmentSubmit}>{editTarget ? t('common.save') : t('common.create')}</Button>
           </>
@@ -785,7 +794,7 @@ export default function RotationPage() {
         onConfirm={async () => {
           if (deleteTypeTarget) {
             try { await deleteResponsibilityType(deleteTypeTarget.id) }
-            catch { alert(t('admin.errorDeleting')) }
+            catch { /* deletion errors are surfaced by the store */ }
           }
         }}
         title={t('common.delete')}

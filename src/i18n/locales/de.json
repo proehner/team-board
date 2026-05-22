@@ -39,7 +39,12 @@
     "details": "Details",
     "confirm": "Bestätigen",
     "average": "Durchschnitt",
-    "close": "Schließen"
+    "close": "Schließen",
+    "page": "Seite",
+    "readOnlyMode": "Nur-Lesen-Modus",
+    "readOnlyMatrixEditable": "Die Einträge in der Kompetenzmatrix können weiterhin bearbeitet werden.",
+    "readOnlyOwnMatrixEditable": "Eigene Einträge in der Kompetenzmatrix können weiterhin bearbeitet werden.",
+    "saveError": "Fehler beim Speichern"
   },
   "teams": {
     "selectTitle": "Team auswählen",
@@ -171,7 +176,17 @@
     "deleteCategoryConfirm": "Möchtest du die Kategorie \"{{name}}\" wirklich löschen? Die zugewiesenen Fähigkeiten werden nicht mehr kategorisiert.",
     "clearCategory": "Kategorie entfernen",
     "noCategoryShort": "Nicht zugeordnet",
-    "uncategorised": "Nicht zugeordnet"
+    "uncategorised": "Nicht zugeordnet",
+    "totalSkillsLabel": "Fähigkeiten",
+    "atRiskLabel": "mit Risiko",
+    "coverageLabel": "Abdeckung:",
+    "teamAvgLabel": "Team-Ø:",
+    "sortBy": "Sortieren:",
+    "sortName": "Name",
+    "sortAvg": "Ø-Level",
+    "sortCoverage": "Abdeckung",
+    "filterMembers": "Mitglieder:",
+    "showAllMembers": "Alle zeigen"
   },
   "sprints": {
     "title": "Sprints",
@@ -492,8 +507,38 @@
     "pageSubtitle": "Benutzer und Stammdaten verwalten.",
     "tab": {
       "users": "Benutzer",
+      "groups": "Berechtigungsgruppen",
       "software": "Software",
       "ticketCategories": "Ticket-Kategorien"
+    },
+    "groups": {
+      "new": "Neue Gruppe",
+      "edit": "Gruppe bearbeiten",
+      "delete": "Gruppe löschen",
+      "deleteConfirm": "Möchtest du die Gruppe \"{{name}}\" wirklich löschen? Mitglieder dieser Gruppe verlieren die zugehörigen Berechtigungen.",
+      "empty": "Noch keine Berechtigungsgruppen angelegt. Erstelle eine Gruppe, um Benutzern Berechtigungen zuzuweisen.",
+      "nameRequired": "Gruppenname ist erforderlich.",
+      "noGroupAssigned": "Keine Gruppe zugewiesen",
+      "noGroupsYet": "Es gibt noch keine Berechtigungsgruppen. Erstelle zuerst eine Gruppe.",
+      "default": "Standard",
+      "setDefault": "Standardgruppe",
+      "setDefaultHint": "wird neuen Benutzern automatisch zugewiesen",
+      "description": "Beschreibung",
+      "namePlaceholder": "z. B. Entwickler, Betrachter, Product Owner",
+      "descriptionPlaceholder": "Kurze Beschreibung…",
+      "permissions": "Berechtigungen pro Seite",
+      "memberCount": "{{count}} Mitglied(er)",
+      "matrixPermLabel": "↳ Kompetenzmatrix",
+      "perm": {
+        "write": "Schreiben",
+        "writeHint": "Vollzugriff",
+        "write-own": "Eigene",
+        "write-ownHint": "Nur eigene Einträge bearbeiten",
+        "read": "Lesen",
+        "readHint": "Nur ansehen",
+        "none": "Kein",
+        "noneHint": "kein Zugriff"
+      }
     },
     "ticketCategories": {
       "new": "Neue Kategorie",

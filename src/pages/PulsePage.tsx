@@ -4,6 +4,8 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import { formatDate } from '@/utils/date'
 import { Plus, Activity, Lock, Trash2, Send } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -19,6 +21,7 @@ const RATING_LABELS: Record<number, string> = { 1: '😞', 2: '😕', 3: '😐',
 
 export default function PulsePage() {
   const { t } = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('pulse')
   const sprints = useStore((s) => s.sprints)
   const pulseChecks = useStore((s) => s.pulseChecks)
   const createPulse = useStore((s) => s.createPulse)
@@ -57,27 +60,33 @@ export default function PulsePage() {
     setShowCreateModal(true)
   }
 
+  const [createError, setCreateError] = useState('')
+  const [respondError, setRespondError] = useState('')
+
   async function handleCreate() {
     if (!newTitle.trim()) return
+    setCreateError('')
     try {
       await createPulse({ title: newTitle.trim(), questions: newQuestions.filter((q) => q.trim()), sprintId: newSprintId || undefined })
       setShowCreateModal(false)
-    } catch { alert(t('competencies.saveError')) }
+    } catch (err) { setCreateError(err instanceof Error ? err.message : t('common.saveError')) }
   }
 
   function openRespond(pc: PulseCheck) {
     setRatings(new Array(pc.questions.length).fill(0))
+    setRespondError('')
     setShowRespondModal(pc)
   }
 
   async function handleRespond() {
     if (!showRespondModal) return
-    if (ratings.some((r) => r === 0)) { alert('Please answer all questions.'); return }
+    if (ratings.some((r) => r === 0)) { setRespondError(t('pulse.questionsLabel')); return }
+    setRespondError('')
     try {
       await respondPulse(showRespondModal.id, ratings)
       markVoted(showRespondModal.id)
       setShowRespondModal(null)
-    } catch { alert(t('competencies.saveError')) }
+    } catch (err) { setRespondError(err instanceof Error ? err.message : t('common.saveError')) }
   }
 
   const open = pulseChecks.filter((p) => !p.closedAt)
@@ -90,26 +99,27 @@ export default function PulsePage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('pulse.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('pulse.subtitle')}</p>
         </div>
-        <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreate}>{t('pulse.newCheck')}</Button>
+        {canWrite && <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreate}>{t('pulse.newCheck')}</Button>}
       </div>
+      {isReadOnly && <ReadOnlyBanner />}
 
       {pulseChecks.length === 0 ? (
-        <EmptyState icon={<Activity className="w-12 h-12" />} title={t('pulse.noChecks')} description={t('pulse.noChecksSubtitle')} action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreate}>{t('pulse.newCheck')}</Button>} />
+        <EmptyState icon={<Activity className="w-12 h-12" />} title={t('pulse.noChecks')} description={t('pulse.noChecksSubtitle')} action={canWrite ? <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreate}>{t('pulse.newCheck')}</Button> : undefined} />
       ) : (
         <div className="space-y-4">
           {open.length > 0 && <>
             <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">{t('pulse.active')}</h2>
-            {open.map((pc) => <PulseCard key={pc.id} pc={pc} onRespond={() => openRespond(pc)} onClose={() => closePulse(pc.id)} onDelete={() => setDeleteTarget(pc)} hasVoted={votedIds.has(pc.id)} />)}
+            {open.map((pc) => <PulseCard key={pc.id} pc={pc} onRespond={() => openRespond(pc)} onClose={canWrite ? () => closePulse(pc.id) : undefined} onDelete={canWrite ? () => setDeleteTarget(pc) : undefined} hasVoted={votedIds.has(pc.id)} />)}
           </>}
           {closed.length > 0 && <>
             <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mt-4">{t('pulse.completed')}</h2>
-            {closed.map((pc) => <PulseCard key={pc.id} pc={pc} onDelete={() => setDeleteTarget(pc)} />)}
+            {closed.map((pc) => <PulseCard key={pc.id} pc={pc} onDelete={canWrite ? () => setDeleteTarget(pc) : undefined} />)}
           </>}
         </div>
       )}
 
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title={t('pulse.newCheck')}
-        footer={<><Button variant="secondary" onClick={() => setShowCreateModal(false)}>{t('common.cancel')}</Button><Button variant="primary" onClick={handleCreate}>{t('common.create')}</Button></>}>
+        footer={<>{createError && <p className="flex-1 text-sm text-red-600">{createError}</p>}<Button variant="secondary" onClick={() => setShowCreateModal(false)}>{t('common.cancel')}</Button><Button variant="primary" onClick={handleCreate}>{t('common.create')}</Button></>}>
         <div className="space-y-4">
           <div className="space-y-1">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('pulse.titleLabel')}</label>
@@ -138,7 +148,7 @@ export default function PulsePage() {
 
       {showRespondModal && (
         <Modal isOpen={true} onClose={() => setShowRespondModal(null)} title={showRespondModal.title}
-          footer={<><Button variant="secondary" onClick={() => setShowRespondModal(null)}>{t('common.cancel')}</Button><Button variant="primary" icon={<Send className="w-4 h-4" />} onClick={handleRespond}>{t('pulse.submitAnonymously')}</Button></>}>
+          footer={<>{respondError && <p className="flex-1 text-sm text-red-600">{respondError}</p>}<Button variant="secondary" onClick={() => setShowRespondModal(null)}>{t('common.cancel')}</Button><Button variant="primary" icon={<Send className="w-4 h-4" />} onClick={handleRespond}>{t('pulse.submitAnonymously')}</Button></>}>
           <div className="space-y-5">
             <p className="text-xs text-slate-400 bg-slate-50 dark:bg-slate-950 dark:text-slate-500 rounded-lg px-3 py-2">{t('pulse.anonymousAnswerNote')}</p>
             {showRespondModal.questions.map((q, i) => (
@@ -164,7 +174,7 @@ export default function PulsePage() {
   )
 }
 
-function PulseCard({ pc, onRespond, onClose, onDelete, hasVoted }: { pc: PulseCheck; onRespond?: () => void; onClose?: () => void; onDelete: () => void; hasVoted?: boolean }) {
+function PulseCard({ pc, onRespond, onClose, onDelete, hasVoted }: { pc: PulseCheck; onRespond?: () => void; onClose?: () => void; onDelete?: () => void; hasVoted?: boolean }) {
   const { t } = useTranslation()
   const sprint = useStore((s) => s.sprints.find((sp) => sp.id === pc.sprintId))
   const isClosed = !!pc.closedAt
@@ -181,7 +191,7 @@ function PulseCard({ pc, onRespond, onClose, onDelete, hasVoted }: { pc: PulseCh
         </div>
         <div className="flex gap-1">
           {!isClosed && onClose && <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"><Lock className="w-4 h-4" /></button>}
-          <button onClick={onDelete} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+          {onDelete && <button onClick={onDelete} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>}
         </div>
       </div>
       {pc.responseCount > 0 && (

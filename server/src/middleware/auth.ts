@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
-import { dbGet } from '../db'
+import { dbAll, dbGet } from '../db'
 
 // ─── JWT Secret ───────────────────────────────────────────────────────────────
-// No fallback: if the environment variable is missing, the server will not start.
 if (!process.env.JWT_SECRET) {
   console.error(
     '\n❌  ERROR: Environment variable JWT_SECRET is not set.\n' +
@@ -17,18 +16,46 @@ if (!process.env.JWT_SECRET) {
 export const JWT_SECRET     = process.env.JWT_SECRET
 export const JWT_EXPIRES_IN = '8h'
 
+export type PagePermission = 'none' | 'read' | 'write-own' | 'write'
+
+// ─── All controllable page keys ───────────────────────────────────────────────
+export const ALL_PAGE_KEYS = [
+  'dashboard',
+  'team',
+  'kompetenzen',
+  'kompetenzen-matrix',
+  'sprints',
+  'rotation',
+  'retro',
+  'health',
+  'pulse',
+  'stakeholder',
+  'azure-ranking',
+  'known-errors',
+  'meetings',
+  'tickets',
+  'roadmap',
+]
+
 // ─── Mapping: page key → API path prefixes ────────────────────────────────────
-// Used for server-side access control (requirePageAccess).
-const PAGE_TO_API: Record<string, string[]> = {
-  team:           ['/api/members'],
-  kompetenzen:    ['/api/skills'],
-  sprints:        ['/api/sprints'],
-  rotation:       ['/api/assignments', '/api/responsibility-types'],
-  retro:          ['/api/retrospectives'],
-  pulse:          ['/api/pulse'],
-  'azure-ranking': ['/api/azure-ranking'],
-  // dashboard, health, stakeholder have no dedicated API endpoints
+// NOTE: kompetenzen-matrix must come BEFORE kompetenzen so that
+// /api/skills/member-skill is matched by the more specific prefix first.
+export const PAGE_TO_API: Record<string, string[]> = {
+  team:                 ['/api/members'],
+  'kompetenzen-matrix': ['/api/skills/member-skill'],
+  kompetenzen:          ['/api/skills', '/api/skill-areas'],
+  sprints:              ['/api/sprints'],
+  rotation:             ['/api/assignments', '/api/responsibility-types'],
+  retro:                ['/api/retrospectives'],
+  pulse:                ['/api/pulse'],
+  'azure-ranking':      ['/api/azure-ranking'],
+  'known-errors':       ['/api/known-errors'],
+  meetings:             ['/api/meetings'],
+  tickets:              ['/api/tickets', '/api/ticket-categories'],
+  roadmap:              ['/api/roadmap'],
 }
+
+const PERM_RANK: Record<PagePermission, number> = { none: 0, read: 1, 'write-own': 2, write: 3 }
 
 export interface AuthUser {
   id: string
@@ -36,6 +63,7 @@ export interface AuthUser {
   displayName: string
   role: 'admin' | 'user'
   forbiddenPages: string[]
+  pagePermissions: Record<string, PagePermission>
   memberId?: string
 }
 
@@ -47,6 +75,58 @@ declare global {
       teamId?: string
     }
   }
+}
+
+// ─── computePagePermissions ───────────────────────────────────────────────────
+// Resolves effective permissions by union-ing all assigned permission groups.
+// If the user has no groups, falls back to forbidden_pages (those = 'none').
+export function computePagePermissions(
+  userId: string,
+  forbiddenPages: string[],
+): Record<string, PagePermission> {
+  const result: Record<string, PagePermission> = {}
+
+  const groupRows = dbAll<{ permissions: string }>(
+    `SELECT pg.permissions
+     FROM user_groups ug
+     JOIN permission_groups pg ON pg.id = ug.group_id
+     WHERE ug.user_id = ?`,
+    [userId],
+  )
+
+  if (groupRows.length === 0) {
+    // Backward compat: forbidden_pages entries become 'none', rest 'write'
+    for (const page of ALL_PAGE_KEYS) {
+      result[page] = forbiddenPages.includes(page) ? 'none' : 'write'
+    }
+    return result
+  }
+
+  // Start all pages at 'none', then raise to the highest group permission.
+  // kompetenzen-matrix starts at 'read' because 'none' is not a valid UI choice
+  // (block the whole section via kompetenzen = none instead).
+  for (const page of ALL_PAGE_KEYS) {
+    result[page] = page === 'kompetenzen-matrix' ? 'read' : 'none'
+  }
+
+  for (const row of groupRows) {
+    let perms: Record<string, string> = {}
+    try { perms = JSON.parse(row.permissions) } catch { /* skip malformed */ }
+
+    for (const page of ALL_PAGE_KEYS) {
+      // Groups created before kompetenzen-matrix was introduced lack that key;
+      // inherit from kompetenzen so existing write-access isn't silently lost.
+      const storedPerm = page === 'kompetenzen-matrix' && !(page in perms)
+        ? (perms['kompetenzen'] ?? 'none')
+        : (perms[page] ?? 'none')
+      const groupPerm = storedPerm as PagePermission
+      if (PERM_RANK[groupPerm] > PERM_RANK[result[page]]) {
+        result[page] = groupPerm
+      }
+    }
+  }
+
+  return result
 }
 
 // ─── requireAuth ─────────────────────────────────────────────────────────────
@@ -61,6 +141,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   try {
     const payload = jwt.verify(token, JWT_SECRET) as AuthUser
+    // Ensure pagePermissions exists for tokens issued before this feature
+    if (!payload.pagePermissions) {
+      payload.pagePermissions = {}
+      for (const page of ALL_PAGE_KEYS) {
+        payload.pagePermissions[page] = payload.forbiddenPages?.includes(page) ? 'none' : 'write'
+      }
+    }
     req.user = payload
     next()
   } catch {
@@ -78,8 +165,6 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 // ─── requireTeam ─────────────────────────────────────────────────────────────
-// Validates the X-Team-ID header and attaches teamId to req.
-// Must be used after requireAuth.
 export function requireTeam(req: Request, res: Response, next: NextFunction): void {
   const teamId = req.headers['x-team-id'] as string | undefined
   if (!teamId) {
@@ -96,10 +181,11 @@ export function requireTeam(req: Request, res: Response, next: NextFunction): vo
 }
 
 // ─── requirePageAccess ────────────────────────────────────────────────────────
-// Blocks write operations (POST/PUT/PATCH/DELETE) on locked sections.
-// GET requests are always allowed because reference data (e.g. member names)
-// is needed across sections (Dashboard, Sprints, Rotation, etc.).
-// Admins always have full access.
+// Enforces page-level permissions:
+//   'none'  → all requests blocked (403)
+//   'read'  → only GET/HEAD/OPTIONS allowed, writes return 403
+//   'write' → all requests allowed
+// Admins bypass all page access checks.
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 export function requirePageAccess(req: Request, res: Response, next: NextFunction): void {
@@ -108,26 +194,41 @@ export function requirePageAccess(req: Request, res: Response, next: NextFunctio
     res.status(401).json({ error: 'Not authenticated' })
     return
   }
-  if (user.role === 'admin' || user.forbiddenPages.length === 0) {
-    next()
-    return
-  }
-
-  // Read access (GET, HEAD, OPTIONS) is always allowed
-  if (!WRITE_METHODS.has(req.method)) {
+  if (user.role === 'admin') {
     next()
     return
   }
 
   const requestedPath = req.baseUrl + req.path
 
-  for (const page of user.forbiddenPages) {
-    const prefixes = PAGE_TO_API[page] ?? []
+  for (const [page, prefixes] of Object.entries(PAGE_TO_API)) {
     for (const prefix of prefixes) {
-      if (requestedPath.startsWith(prefix)) {
+      if (!requestedPath.startsWith(prefix)) continue
+
+      const perm: PagePermission = user.pagePermissions?.[page] ?? 'write'
+
+      if (perm === 'none') {
         res.status(403).json({ error: `No access to section "${page}"` })
         return
       }
+      if (perm === 'read' && WRITE_METHODS.has(req.method)) {
+        res.status(403).json({ error: `Read-only access to section "${page}"` })
+        return
+      }
+      if (perm === 'write-own' && WRITE_METHODS.has(req.method)) {
+        // For kompetenzen-matrix: only allow writes to the user's own member record
+        if (page === 'kompetenzen-matrix') {
+          const requestedMemberId = req.body?.memberId
+          if (!requestedMemberId || requestedMemberId !== req.user?.memberId) {
+            res.status(403).json({ error: 'Can only update your own skill levels' })
+            return
+          }
+        }
+        next()
+        return
+      }
+      next()
+      return
     }
   }
 

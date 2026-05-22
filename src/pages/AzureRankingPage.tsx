@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
+import { usePagePermission } from '@/hooks/usePagePermission'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -377,6 +379,8 @@ function SetupModal({ onClose, showCancel, onSaved }: { onClose: () => void; sho
 
 export default function AzureRankingPage() {
   const { t } = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('azure-ranking')
+
   const [days, setDays]               = useState<number>(30)
   const [category, setCategory]       = useState<CategoryKey>('points')
   const [data, setData]               = useState<PeriodData | null>(null)
@@ -450,7 +454,7 @@ export default function AzureRankingPage() {
         setConfigStatus(cfg)
         setCacheStatus(cache)
 
-        if (!cfg.configured) { setShowSetup(true); return }
+        if (!cfg.configured) { if (canWrite) setShowSetup(true); else setSetupDismissed(true); return }
         if (cache.loading) { startPolling(); return }
         if (cache.hasData) await loadStatsRef.current()
       } catch (e: unknown) { setLoadError(t('azureRanking.serverUnreachable') + (e as Error).message) }
@@ -498,6 +502,8 @@ export default function AzureRankingPage() {
 
   return (
     <div style={{ background: 'var(--az-bg)', minHeight: '100vh', color: 'var(--az-text)', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+
+      {isReadOnly && <ReadOnlyBanner />}
 
       {/* Setup Modal */}
       {showSetup && (
@@ -563,16 +569,20 @@ export default function AzureRankingPage() {
           </div>
 
           {/* Load button */}
-          <button onClick={triggerLoad} disabled={cacheStatus?.loading} style={{
-            background: 'var(--az-green)', color: 'var(--az-green-on)', border: 'none', borderRadius: 8,
-            padding: '.4rem .9rem', fontSize: '.88rem', fontWeight: 600, cursor: cacheStatus?.loading ? 'not-allowed' : 'pointer',
-            display: 'flex', alignItems: 'center', gap: '.35rem', opacity: cacheStatus?.loading ? .5 : 1, whiteSpace: 'nowrap',
-          }}>
-            {cacheStatus?.loading ? t('azureRanking.loading') : (cacheStatus?.hasData ? t('azureRanking.refresh') : t('azureRanking.loadData'))}
-          </button>
+          {canWrite && (
+            <button onClick={triggerLoad} disabled={cacheStatus?.loading} style={{
+              background: 'var(--az-green)', color: 'var(--az-green-on)', border: 'none', borderRadius: 8,
+              padding: '.4rem .9rem', fontSize: '.88rem', fontWeight: 600, cursor: cacheStatus?.loading ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '.35rem', opacity: cacheStatus?.loading ? .5 : 1, whiteSpace: 'nowrap',
+            }}>
+              {cacheStatus?.loading ? t('azureRanking.loading') : (cacheStatus?.hasData ? t('azureRanking.refresh') : t('azureRanking.loadData'))}
+            </button>
+          )}
 
           {/* Settings */}
-          <button onClick={() => setShowSetup(true)} title={t('azureRanking.settings')} style={{ background: 'var(--az-surface2)', border: '1px solid var(--az-border)', borderRadius: 8, width: 38, height: 38, fontSize: '1rem', cursor: 'pointer', color: 'var(--az-text)' }}>⚙️</button>
+          {canWrite && (
+            <button onClick={() => setShowSetup(true)} title={t('azureRanking.settings')} style={{ background: 'var(--az-surface2)', border: '1px solid var(--az-border)', borderRadius: 8, width: 38, height: 38, fontSize: '1rem', cursor: 'pointer', color: 'var(--az-text)' }}>⚙️</button>
+          )}
         </div>
       </header>
 
@@ -588,9 +598,11 @@ export default function AzureRankingPage() {
       {!configStatus?.configured && setupDismissed && (
         <div style={{ background: 'rgba(210,153,34,.12)', border: '1px solid rgba(210,153,34,.35)', borderRadius: 10, color: '#d29922', padding: '.75rem 1rem', margin: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
           <span>⚙️ {t('azureRanking.noConfigHint')}</span>
-          <button onClick={() => setShowSetup(true)} style={{ background: 'rgba(210,153,34,.2)', border: '1px solid rgba(210,153,34,.5)', color: '#d29922', borderRadius: 6, padding: '.3rem .75rem', fontSize: '.85rem', fontWeight: 600, cursor: 'pointer' }}>
-            {t('azureRanking.configure')}
-          </button>
+          {canWrite && (
+            <button onClick={() => setShowSetup(true)} style={{ background: 'rgba(210,153,34,.2)', border: '1px solid rgba(210,153,34,.5)', color: '#d29922', borderRadius: 6, padding: '.3rem .75rem', fontSize: '.85rem', fontWeight: 600, cursor: 'pointer' }}>
+              {t('azureRanking.configure')}
+            </button>
+          )}
         </div>
       )}
 

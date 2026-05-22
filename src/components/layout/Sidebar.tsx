@@ -42,7 +42,7 @@ export default function Sidebar({ onClose, onOpenSearch }: SidebarProps) {
     onClose?.()
   }
 
-  const navGroups = [
+  const allNavGroups = [
     {
       items: [
         { to: '/dashboard',     icon: LayoutDashboard, label: t('nav.dashboard'),     page: 'dashboard' },
@@ -70,6 +70,11 @@ export default function Sidebar({ onClose, onOpenSearch }: SidebarProps) {
       ],
     },
   ]
+
+  // Filter out pages with 'none' permission so they are completely hidden
+  const navGroups = allNavGroups
+    .map((g) => ({ items: g.items.filter((item) => isAllowed(item.page)) }))
+    .filter((g) => g.items.length > 0)
 
   function handleLogout() {
     logout()
