@@ -121,7 +121,7 @@ export default function App() {
   useEffect(() => {
     if (token && !user) {
       authApi.me()
-        .then((me) => login(token, me))
+        .then(({ token: newToken, user: me }) => login(newToken, me))
         .catch(() => logout())
     }
   }, [token, user, login, logout])

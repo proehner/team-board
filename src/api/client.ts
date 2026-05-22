@@ -5,7 +5,7 @@ import type {
   ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig,
   Retrospective, RetroItemType, RetroItem,
   PulseCheck,
-  AppUser, AdminUser,
+  AppUser, AdminUser, PermissionGroup, PagePermission,
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment, KnownErrorComment,
   Team,
   Meeting, MeetingRecurrence, MeetingTopic, MeetingTopicStatus, TopicComment, TopicAttachment,
@@ -177,7 +177,7 @@ export const retrosApi = {
 export const authApi = {
   login:          (username: string, password: string) =>
     request<{ token: string; user: AppUser }>('POST', '/auth/login', { username, password }),
-  me:             () => request<AppUser>('GET', '/auth/me'),
+  me:             () => request<{ token: string; user: AppUser }>('GET', '/auth/me'),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<{ ok: boolean }>('POST', '/auth/change-password', { currentPassword, newPassword }),
 }
@@ -185,11 +185,21 @@ export const authApi = {
 // ─── Admin – User Management ──────────────────────────────────────────────────
 export const adminApi = {
   listUsers:  () => request<AdminUser[]>('GET', '/admin/users'),
-  createUser: (data: { username: string; password: string; displayName: string; role: 'admin' | 'user'; forbiddenPages: string[]; memberId?: string | null }) =>
+  createUser: (data: { username: string; password: string; displayName: string; role: 'admin' | 'user'; groupIds?: string[]; memberId?: string | null }) =>
     request<AdminUser>('POST', '/admin/users', data),
-  updateUser: (id: string, data: { displayName?: string; role?: 'admin' | 'user'; forbiddenPages?: string[]; isActive?: boolean; password?: string; memberId?: string | null }) =>
+  updateUser: (id: string, data: { displayName?: string; role?: 'admin' | 'user'; groupIds?: string[]; isActive?: boolean; password?: string; memberId?: string | null }) =>
     request<AdminUser>('PATCH', `/admin/users/${id}`, data),
   deleteUser: (id: string) => request<void>('DELETE', `/admin/users/${id}`),
+}
+
+// ─── Admin – Permission Groups ────────────────────────────────────────────────
+export const groupsApi = {
+  list:   () => request<PermissionGroup[]>('GET', '/admin/groups'),
+  create: (data: { name: string; description?: string; permissions: Record<string, PagePermission>; isDefault?: boolean }) =>
+    request<PermissionGroup>('POST', '/admin/groups', data),
+  update: (id: string, data: { name?: string; description?: string; permissions?: Record<string, PagePermission>; isDefault?: boolean }) =>
+    request<PermissionGroup>('PATCH', `/admin/groups/${id}`, data),
+  delete: (id: string) => request<void>('DELETE', `/admin/groups/${id}`),
 }
 
 // ─── Software ─────────────────────────────────────────────────────────────────

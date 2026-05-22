@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { CalendarClock, Plus, Search, Pencil, Trash2, RefreshCw, ChevronRight, Globe } from 'lucide-react'
 import { useStore } from '@/store'
 import type { Meeting, MeetingRecurrence } from '@/types'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { usePagePermission } from '@/hooks/usePagePermission'
 
 const RECURRENCE_OPTIONS: MeetingRecurrence[] = ['daily', 'weekly', 'biweekly', 'monthly', 'custom']
 
@@ -44,6 +46,7 @@ const EMPTY_FORM: FormState = {
 
 export default function MeetingsPage() {
   const { t } = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('meetings')
   const navigate = useNavigate()
   const meetings      = useStore((s) => s.meetings)
   const addMeeting    = useStore((s) => s.addMeeting)
@@ -137,14 +140,17 @@ export default function MeetingsPage() {
             <p className="text-xs text-slate-500">{t('meetings.subtitle')}</p>
           </div>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          {t('meetings.newMeeting')}
-        </button>
+        {canWrite && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {t('meetings.newMeeting')}
+          </button>
+        )}
       </div>
+      {isReadOnly && <ReadOnlyBanner />}
 
       {/* Search */}
       <div className="relative">

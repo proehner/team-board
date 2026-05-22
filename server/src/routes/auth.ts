@@ -2,7 +2,7 @@ import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { dbGet, dbRun } from '../db'
-import { JWT_SECRET, JWT_EXPIRES_IN, requireAuth, type AuthUser } from '../middleware/auth'
+import { JWT_SECRET, JWT_EXPIRES_IN, requireAuth, computePagePermissions, type AuthUser } from '../middleware/auth'
 import crypto from 'crypto'
 
 const router = Router()
@@ -16,6 +16,23 @@ interface UserRow {
   forbidden_pages: string
   is_active: number
   member_id?: string
+}
+
+function buildPayload(user: UserRow): AuthUser {
+  const forbiddenPages: string[] = JSON.parse(user.forbidden_pages ?? '[]')
+  const pagePermissions = user.role === 'admin'
+    ? {}
+    : computePagePermissions(user.id, forbiddenPages)
+
+  return {
+    id: user.id,
+    username: user.username,
+    displayName: user.display_name,
+    role: user.role,
+    forbiddenPages,
+    pagePermissions,
+    memberId: user.member_id ?? undefined,
+  }
 }
 
 // POST /api/auth/login
@@ -37,35 +54,21 @@ router.post('/login', (req, res) => {
     return
   }
 
-  const payload: AuthUser = {
-    id: user.id,
-    username: user.username,
-    displayName: user.display_name,
-    role: user.role,
-    forbiddenPages: JSON.parse(user.forbidden_pages ?? '[]'),
-    memberId: user.member_id ?? undefined,
-  }
-
+  const payload = buildPayload(user)
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
   res.json({ token, user: payload })
 })
 
-// GET /api/auth/me  – returns fresh user data (token is sent along)
+// GET /api/auth/me  – returns fresh user data + new token (re-computes permissions)
 router.get('/me', requireAuth, (req, res) => {
   const user = dbGet<UserRow>('SELECT * FROM users WHERE id = ? AND is_active = 1', [req.user!.id])
   if (!user) {
     res.status(401).json({ error: 'User not found' })
     return
   }
-  const payload: AuthUser = {
-    id: user.id,
-    username: user.username,
-    displayName: user.display_name,
-    role: user.role,
-    forbiddenPages: JSON.parse(user.forbidden_pages ?? '[]'),
-    memberId: user.member_id ?? undefined,
-  }
-  res.json(payload)
+  const payload = buildPayload(user)
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
+  res.json({ token, user: payload })
 })
 
 // POST /api/auth/change-password  – change password (own account)

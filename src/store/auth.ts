@@ -1,19 +1,26 @@
 import { create } from 'zustand'
-import type { AppUser, Team } from '@/types'
+import type { AppUser, PagePermission, Team } from '@/types'
 
 const TOKEN_KEY   = 'teamlead_token'
 const TEAM_ID_KEY = 'teamlead_team_id'
 
 interface AuthState {
-  user:          AppUser | null
-  token:         string | null
-  teams:         Team[]
-  currentTeamId: string | null
-  login:         (token: string, user: AppUser) => void
-  logout:        () => void
-  isAllowed:     (page: string) => boolean
-  setTeams:      (teams: Team[]) => void
-  selectTeam:    (teamId: string) => void
+  user:             AppUser | null
+  token:            string | null
+  teams:            Team[]
+  currentTeamId:    string | null
+  login:            (token: string, user: AppUser) => void
+  logout:           () => void
+  /** Returns true if the user can navigate to and view the page (permission !== 'none'). */
+  isAllowed:        (page: string) => boolean
+  /** Returns true if the user can perform write operations on the page. */
+  canWrite:         (page: string) => boolean
+  /** Returns true if the user can write at least their own data on the page (write or write-own). */
+  canWriteOwn:      (page: string) => boolean
+  /** Returns the effective permission level for a page. */
+  pagePermission:   (page: string) => PagePermission
+  setTeams:         (teams: Team[]) => void
+  selectTeam:       (teamId: string) => void
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -24,27 +31,37 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   login(token, user) {
     localStorage.setItem(TOKEN_KEY, token)
-    // Restore the last selected team (survives logout so the user isn't asked every time)
     const restoredTeamId = localStorage.getItem(TEAM_ID_KEY)
     set({ token, user, currentTeamId: restoredTeamId })
   },
 
   logout() {
     localStorage.removeItem(TOKEN_KEY)
-    // Intentionally keep TEAM_ID_KEY so it is restored on the next login
     set({ token: null, user: null, teams: [], currentTeamId: null })
   },
 
-  isAllowed(page) {
+  pagePermission(page): PagePermission {
     const { user } = get()
-    if (!user) return false
-    if (user.role === 'admin') return true
-    return !user.forbiddenPages.includes(page)
+    if (!user) return 'none'
+    if (user.role === 'admin') return 'write'
+    return user.pagePermissions?.[page] ?? 'write'
+  },
+
+  isAllowed(page) {
+    return get().pagePermission(page) !== 'none'
+  },
+
+  canWrite(page) {
+    return get().pagePermission(page) === 'write'
+  },
+
+  canWriteOwn(page) {
+    const perm = get().pagePermission(page)
+    return perm === 'write' || perm === 'write-own'
   },
 
   setTeams(teams) {
     set({ teams })
-    // If stored team is no longer valid, clear it
     const { currentTeamId } = get()
     if (currentTeamId && !teams.find((t) => t.id === currentTeamId)) {
       localStorage.removeItem(TEAM_ID_KEY)

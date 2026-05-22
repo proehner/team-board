@@ -5,6 +5,9 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { usePagePermission } from '@/hooks/usePagePermission'
+import { useAuthStore } from '@/store/auth'
 import { Plus, Star, Edit2, Trash2, Info, Search, Settings, ChevronRight, X, Check } from 'lucide-react'
 import type { Skill, SkillArea, SkillAreaCategory, SkillLevel, TeamMember, MemberSkill } from '@/types'
 
@@ -157,6 +160,9 @@ function CoverageSummary({
 
 export default function CompetencyPage() {
   const { t } = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('kompetenzen')
+  const { canWrite: canWriteMatrix, canWriteOwn: canWriteOwnMatrix } = usePagePermission('kompetenzen-matrix')
+  const currentMemberId = useAuthStore((s) => s.user?.memberId)
   const members        = useStore((s) => s.members).filter((m) => m.isActive)
   const skills         = useStore((s) => s.skills)
   const memberSkills   = useStore((s) => s.memberSkills)
@@ -180,6 +186,7 @@ export default function CompetencyPage() {
   const [deleteSkillTarget, setDeleteSkillTarget] = useState<Skill | null>(null)
   const [skillForm, setSkillForm] = useState<{ name: string; categoryId: string | null; description: string }>({ name: '', categoryId: null, description: '' })
 
+  const [saveError, setSaveError] = useState('')
   const [showAreasModal, setShowAreasModal] = useState(false)
   const [newAreaName, setNewAreaName] = useState('')
   const [newCatName, setNewCatName] = useState<Record<string, string>>({})
@@ -261,6 +268,7 @@ export default function CompetencyPage() {
 
   async function handleSkillSubmit() {
     if (!skillForm.name.trim()) return
+    setSaveError('')
     try {
       if (editSkill) {
         await updateSkill(editSkill.id, { name: skillForm.name, categoryId: skillForm.categoryId, description: skillForm.description })
@@ -268,8 +276,8 @@ export default function CompetencyPage() {
         await addSkill({ name: skillForm.name, categoryId: skillForm.categoryId, description: skillForm.description })
       }
       setShowSkillModal(false)
-    } catch {
-      alert(t('competencies.saveError'))
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t('common.saveError'))
     }
   }
 
@@ -294,15 +302,23 @@ export default function CompetencyPage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('competencies.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('competencies.subtitle', { count: members.length })}</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" icon={<Settings className="w-4 h-4" />} onClick={() => setShowAreasModal(true)}>
-            {t('competencies.manageAreas')}
-          </Button>
-          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAddSkill}>
-            {t('competencies.addSkill')}
-          </Button>
-        </div>
+        {canWrite && (
+          <div className="flex gap-2">
+            <Button variant="secondary" icon={<Settings className="w-4 h-4" />} onClick={() => setShowAreasModal(true)}>
+              {t('competencies.manageAreas')}
+            </Button>
+            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAddSkill}>
+              {t('competencies.addSkill')}
+            </Button>
+          </div>
+        )}
       </div>
+      {isReadOnly && (
+        <ReadOnlyBanner note={
+          canWriteMatrix ? t('common.readOnlyMatrixEditable') :
+          canWriteOwnMatrix ? t('common.readOnlyOwnMatrixEditable') : undefined
+        } />
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 w-fit">
@@ -373,6 +389,9 @@ export default function CompetencyPage() {
             setActiveCell={setActiveCell}
             setMemberSkillLevel={setMemberSkillLevel}
             popoverRef={popoverRef}
+            canWrite={canWriteMatrix}
+            canWriteOwn={canWriteOwnMatrix}
+            currentMemberId={currentMemberId}
           />
         ) : (
           <CatalogTab
@@ -383,6 +402,7 @@ export default function CompetencyPage() {
             getSkillRisk={getSkillRisk}
             onEdit={openEditSkill}
             onDelete={(sk) => setDeleteSkillTarget(sk)}
+            canWrite={canWrite}
           />
         )}
       </div>
@@ -394,6 +414,7 @@ export default function CompetencyPage() {
         title={editSkill ? t('competencies.editSkill') : t('competencies.newSkill')}
         footer={
           <>
+            {saveError && <p className="flex-1 text-sm text-red-600">{saveError}</p>}
             <Button variant="secondary" onClick={() => setShowSkillModal(false)}>{t('common.cancel')}</Button>
             <Button variant="primary" onClick={handleSkillSubmit}>{editSkill ? t('common.save') : t('common.add')}</Button>
           </>
@@ -588,9 +609,12 @@ interface MatrixTabProps {
   setActiveCell: (cell: { memberId: string; skillId: string } | null) => void
   setMemberSkillLevel: (memberId: string, skillId: string, level: SkillLevel) => void
   popoverRef: React.RefObject<HTMLDivElement>
+  canWrite: boolean
+  canWriteOwn: boolean
+  currentMemberId: string | undefined
 }
 
-function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, activeCell, setActiveCell, setMemberSkillLevel, popoverRef }: MatrixTabProps) {
+function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, activeCell, setActiveCell, setMemberSkillLevel, popoverRef, canWrite, canWriteOwn, currentMemberId }: MatrixTabProps) {
   const { t } = useTranslation()
   const [hovered, setHovered] = useState<{ row: string | null; col: string | null }>({ row: null, col: null })
   const [hiddenMemberIds, setHiddenMemberIds] = useState<Set<string>>(new Set())
@@ -651,6 +675,7 @@ function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, ac
           const isActive = activeCell?.memberId === m.id && activeCell?.skillId === skill.id
           const colActive = hovered.col === m.id
           const isIntersection = rowActive && colActive
+          const canEditCell = canWrite || (canWriteOwn && m.id === currentMemberId)
           return (
             <td
               key={m.id}
@@ -666,8 +691,9 @@ function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, ac
               onMouseEnter={() => setHovered({ row: skill.id, col: m.id })}
             >
               <button
-                onClick={() => setActiveCell(isActive ? null : { memberId: m.id, skillId: skill.id })}
-                className={`w-16 h-8 rounded-lg text-xs font-semibold transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${LEVEL_BG[level]}`}
+                onClick={() => canEditCell && setActiveCell(isActive ? null : { memberId: m.id, skillId: skill.id })}
+                disabled={!canEditCell}
+                className={`w-16 h-8 rounded-lg text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-indigo-400 ${LEVEL_BG[level]} ${canEditCell ? 'hover:scale-110' : 'cursor-default'}`}
                 title={t(`skillLevel.${level}`)}
               >
                 {level === 0 ? '—' : level}
@@ -680,7 +706,7 @@ function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, ac
                   {([0, 1, 2, 3, 4, 5] as SkillLevel[]).map((l) => (
                     <button
                       key={l}
-                      onClick={() => { setMemberSkillLevel(m.id, skill.id, l); setActiveCell(null) }}
+                      onClick={() => { setActiveCell(null); setMemberSkillLevel(m.id, skill.id, l) }}
                       title={t(`skillLevel.${l}`)}
                       className={`w-8 h-8 rounded-lg text-xs font-semibold transition-all hover:scale-110 ${LEVEL_BG[l]} ${level === l ? 'ring-2 ring-indigo-500' : ''}`}
                     >
@@ -894,11 +920,12 @@ interface CatalogTabProps {
   getSkillRisk: (skillId: string) => 'red' | 'orange' | 'yellow' | 'none'
   onEdit: (sk: Skill) => void
   onDelete: (sk: Skill) => void
+  canWrite: boolean
 }
 
 const MAX_VISIBLE_DOTS = 9
 
-function CatalogTab({ grouped, uncategorised, memberSkills, members, getSkillRisk, onEdit, onDelete }: CatalogTabProps) {
+function CatalogTab({ grouped, uncategorised, memberSkills, members, getSkillRisk, onEdit, onDelete, canWrite }: CatalogTabProps) {
   const { t } = useTranslation()
   const [sortKey, setSortKey] = useState<CatalogSortKey>('name')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
@@ -1027,22 +1054,24 @@ function CatalogTab({ grouped, uncategorised, memberSkills, members, getSkillRis
           </div>
 
           {/* Hover actions */}
-          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit(sk) }}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              title={t('competencies.editSkill')}
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete(sk) }}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-              title={t('competencies.removeSkill')}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          {canWrite && (
+            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <button
+                onClick={(e) => { e.stopPropagation(); onEdit(sk) }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                title={t('competencies.editSkill')}
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(sk) }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                title={t('competencies.removeSkill')}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Expand chevron */}
           <ChevronRight className={`w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />

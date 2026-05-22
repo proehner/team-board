@@ -11,6 +11,8 @@ import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import MarkdownEditor from '@/components/ui/MarkdownEditor'
 import { format } from 'date-fns'
 
@@ -82,6 +84,7 @@ const labelCls = 'block text-xs font-medium text-slate-700 dark:text-slate-300 m
 
 export default function KnownErrorDBPage() {
   const { t } = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('known-errors')
   const navigate = useNavigate()
 
   const knownErrors      = useStore((s) => s.knownErrors)
@@ -184,11 +187,14 @@ export default function KnownErrorDBPage() {
             {t('knownErrors.count', { count: knownErrors.length })}
           </p>
         </div>
-        <Button variant="primary" onClick={openCreate} size="sm">
-          <Plus className="w-4 h-4" />
-          {t('knownErrors.newEntry')}
-        </Button>
+        {canWrite && (
+          <Button variant="primary" onClick={openCreate} size="sm">
+            <Plus className="w-4 h-4" />
+            {t('knownErrors.newEntry')}
+          </Button>
+        )}
       </div>
+      {isReadOnly && <ReadOnlyBanner className="mt-1" />}
 
       {/* Search & Filters */}
       <div className="flex flex-wrap gap-3">

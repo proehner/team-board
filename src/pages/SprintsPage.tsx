@@ -7,9 +7,11 @@ import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import SprintLineChart from '@/components/ui/SprintLineChart'
 import type { SprintChartSeries } from '@/components/ui/SprintLineChart'
 import { formatDate } from '@/utils/date'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import { Plus, Zap, Calendar, Target, ChevronRight, Edit2, Trash2, Play, CheckCircle, X, TrendingUp, BarChart2 } from 'lucide-react'
 import type { Sprint, SprintStatus, SprintGoalMet } from '@/types'
 
@@ -45,6 +47,7 @@ const CHART_SERIES_ALL: SprintChartSeries[] = [
 export default function SprintsPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { canWrite, isReadOnly } = usePagePermission('sprints')
   const sprints = useStore((s) => s.sprints)
   const addSprint = useStore((s) => s.addSprint)
   const updateSprint = useStore((s) => s.updateSprint)
@@ -57,6 +60,7 @@ export default function SprintsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Sprint | null>(null)
   const [form, setForm] = useState<SprintFormData>(defaultForm())
   const [errors, setErrors] = useState<Partial<SprintFormData>>({})
+  const [saveError, setSaveError] = useState('')
   const [activeSeriesKeys, setActiveSeriesKeys] = useState<Set<string>>(
     new Set(CHART_SERIES_ALL.map((s) => s.key)),
   )
@@ -135,6 +139,7 @@ export default function SprintsPage() {
 
   async function handleSubmit() {
     if (!validate()) return
+    setSaveError('')
     try {
       if (editTarget) {
         await updateSprint(editTarget.id, form)
@@ -143,8 +148,8 @@ export default function SprintsPage() {
         navigate(`/sprints/${id}`)
       }
       setShowModal(false)
-    } catch {
-      alert(t('competencies.saveError'))
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t('common.saveError'))
     }
   }
 
@@ -155,10 +160,11 @@ export default function SprintsPage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('sprints.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('sprints.count', { count: sprints.length })}</p>
         </div>
-        <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>
+        <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd} disabled={!canWrite}>
           {t('sprints.newSprint')}
         </Button>
       </div>
+      {isReadOnly && <ReadOnlyBanner />}
 
       {/* Tabs */}
       <div className="flex gap-1 flex-wrap">
@@ -324,7 +330,7 @@ export default function SprintsPage() {
             icon={<Zap className="w-12 h-12" />}
             title={t('sprints.noSprints')}
             description={t('sprints.noSprintsSubtitle')}
-            action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>{t('sprints.newSprint')}</Button>}
+            action={canWrite ? <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>{t('sprints.newSprint')}</Button> : undefined}
           />
         ) : (
           <div className="space-y-3">
@@ -332,6 +338,7 @@ export default function SprintsPage() {
               <SprintCard
                 key={sp.id}
                 sprint={sp}
+                canWrite={canWrite}
                 onEdit={() => openEdit(sp)}
                 onDelete={() => setDeleteTarget(sp)}
                 onStatusChange={(status) => setSprintStatus(sp.id, status)}
@@ -349,6 +356,7 @@ export default function SprintsPage() {
         title={editTarget ? t('sprints.editSprint') : t('sprints.newSprint')}
         footer={
           <>
+            {saveError && <p className="flex-1 text-sm text-red-600">{saveError}</p>}
             <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
             <Button variant="primary" onClick={handleSubmit}>{editTarget ? t('common.save') : t('common.create')}</Button>
           </>
@@ -426,13 +434,14 @@ function GoalMetBadge({ value }: { value: SprintGoalMet }) {
 
 interface SprintCardProps {
   sprint: Sprint
+  canWrite: boolean
   onEdit: () => void
   onDelete: () => void
   onStatusChange: (status: SprintStatus) => void
   onClick: () => void
 }
 
-function SprintCard({ sprint, onEdit, onDelete, onStatusChange, onClick }: SprintCardProps) {
+function SprintCard({ sprint, canWrite, onEdit, onDelete, onStatusChange, onClick }: SprintCardProps) {
   const { t } = useTranslation()
 
   return (
@@ -468,29 +477,31 @@ function SprintCard({ sprint, onEdit, onDelete, onStatusChange, onClick }: Sprin
         </div>
       </button>
 
-      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-        {sprint.status === 'Geplant' && (
-          <button onClick={() => onStatusChange('Aktiv')} className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors">
-            <Play className="w-4 h-4" />
+      {canWrite && (
+        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {sprint.status === 'Geplant' && (
+            <button onClick={() => onStatusChange('Aktiv')} className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors">
+              <Play className="w-4 h-4" />
+            </button>
+          )}
+          {sprint.status === 'Aktiv' && (
+            <button onClick={() => onStatusChange('Abgeschlossen')} className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors">
+              <CheckCircle className="w-4 h-4" />
+            </button>
+          )}
+          {sprint.status === 'Aktiv' && (
+            <button onClick={() => onStatusChange('Abgebrochen')} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+          <button onClick={onEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">
+            <Edit2 className="w-4 h-4" />
           </button>
-        )}
-        {sprint.status === 'Aktiv' && (
-          <button onClick={() => onStatusChange('Abgeschlossen')} className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors">
-            <CheckCircle className="w-4 h-4" />
+          <button onClick={onDelete} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+            <Trash2 className="w-4 h-4" />
           </button>
-        )}
-        {sprint.status === 'Aktiv' && (
-          <button onClick={() => onStatusChange('Abgebrochen')} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-        )}
-        <button onClick={onEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">
-          <Edit2 className="w-4 h-4" />
-        </button>
-        <button onClick={onDelete} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

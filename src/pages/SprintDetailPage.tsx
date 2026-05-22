@@ -4,7 +4,9 @@ import { useStore } from '@/store'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import { formatDate, sprintDurationDays } from '@/utils/date'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import { ArrowLeft, Calendar, Target, Edit2, TrendingUp, CheckCircle, Star, AlertTriangle, StickyNote, Flame, Clock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { SprintStatus, SprintGoalMet } from '@/types'
@@ -19,12 +21,14 @@ export default function SprintDetailPage() {
   const { t } = useTranslation()
   const { sprintId } = useParams<{ sprintId: string }>()
   const navigate = useNavigate()
+  const { canWrite, isReadOnly } = usePagePermission('sprints')
   const sprints = useStore((s) => s.sprints)
   const updateSprint = useStore((s) => s.updateSprint)
   const setSprintStatus = useStore((s) => s.setSprintStatus)
 
   const [showEditModal, setShowEditModal] = useState(false)
   const [editForm, setEditForm] = useState({ name: '', goal: '', startDate: '', endDate: '' })
+  const [saveError, setSaveError] = useState('')
 
   const sprint = sprints.find((s) => s.id === sprintId)
 
@@ -48,20 +52,19 @@ export default function SprintDetailPage() {
   }
 
   async function handleEditSave() {
+    setSaveError('')
     try {
       await updateSprint(sp.id, editForm)
       setShowEditModal(false)
-    } catch {
-      alert(t('competencies.saveError'))
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t('common.saveError'))
     }
   }
 
   async function update(field: string, value: unknown) {
     try {
       await updateSprint(sp.id, { [field]: value } as Parameters<typeof updateSprint>[1])
-    } catch {
-      alert(t('competencies.saveError'))
-    }
+    } catch { /* silent – UI shows stale value */ }
   }
 
   return (
@@ -69,6 +72,7 @@ export default function SprintDetailPage() {
       <Link to="/sprints" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition-colors">
         <ArrowLeft className="w-4 h-4" /> {t('sprints.title')}
       </Link>
+      {isReadOnly && <ReadOnlyBanner />}
 
       {/* Sprint header */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
@@ -90,17 +94,20 @@ export default function SprintDetailPage() {
               value={sp.status}
               onChange={(e) => setSprintStatus(sp.id, e.target.value as SprintStatus)}
               className="form-input w-auto text-sm"
+              disabled={!canWrite}
             >
               {(['Geplant', 'Aktiv', 'Abgeschlossen', 'Abgebrochen'] as SprintStatus[]).map((s) => (
                 <option key={s} value={s}>{t(`sprintStatus.${s}`)}</option>
               ))}
             </select>
-            <button
-              onClick={openEdit}
-              className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
-            >
-              <Edit2 className="w-4 h-4" />
-            </button>
+            {canWrite && (
+              <button
+                onClick={openEdit}
+                className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
         <div className="mt-3 flex items-start gap-2">
@@ -133,8 +140,9 @@ export default function SprintDetailPage() {
               return (
                 <button
                   key={v}
-                  onClick={() => update('goalMet', sp.goalMet === v ? null : v)}
-                  className={`px-3.5 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
+                  onClick={() => canWrite && update('goalMet', sp.goalMet === v ? null : v)}
+                  disabled={!canWrite}
+                  className={`px-3.5 py-1.5 text-sm font-medium rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     active
                       ? activeClass
                       : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -213,7 +221,7 @@ export default function SprintDetailPage() {
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">
             {t('sprintDetail.teamSatisfaction')}
           </p>
-          <StarRating value={sp.teamSatisfaction} onChange={(v) => update('teamSatisfaction', v)} />
+          <StarRating value={sp.teamSatisfaction} onChange={(v) => canWrite && update('teamSatisfaction', v)} readOnly={!canWrite} />
         </div>
       </div>
 
@@ -224,6 +232,7 @@ export default function SprintDetailPage() {
         value={sp.impediments}
         onSave={(v) => update('impediments', v)}
         placeholder={t('sprintDetail.impedimentsPlaceholder')}
+        readOnly={!canWrite}
       />
 
       {/* Notes */}
@@ -233,6 +242,7 @@ export default function SprintDetailPage() {
         value={sp.notes}
         onSave={(v) => update('notes', v)}
         placeholder={t('sprints.notesPlaceholder')}
+        readOnly={!canWrite}
       />
 
       {/* Edit Modal */}
@@ -242,6 +252,7 @@ export default function SprintDetailPage() {
         title={t('sprints.editSprint')}
         footer={
           <>
+            {saveError && <p className="flex-1 text-sm text-red-600">{saveError}</p>}
             <Button variant="secondary" onClick={() => setShowEditModal(false)}>{t('common.cancel')}</Button>
             <Button variant="primary" onClick={handleEditSave}>{t('common.save')}</Button>
           </>
@@ -292,18 +303,20 @@ export default function SprintDetailPage() {
 // ─── MetricBox ────────────────────────────────────────────────────────────────
 
 function MetricBox({
-  label, value, icon, onSave, decimal = false,
+  label, value, icon, onSave, decimal = false, readOnly = false,
 }: {
   label: string
   value?: number
   icon: React.ReactNode
   onSave: (v: number | null) => void
   decimal?: boolean
+  readOnly?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [input, setInput] = useState('')
 
   function startEdit() {
+    if (readOnly) return
     setInput(value?.toString() ?? '')
     setEditing(true)
   }
@@ -336,7 +349,8 @@ function MetricBox({
         <button
           onClick={startEdit}
           title={label}
-          className="text-2xl font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-left w-full"
+          disabled={readOnly}
+          className={`text-2xl font-bold text-slate-900 dark:text-slate-100 transition-colors text-left w-full ${readOnly ? 'cursor-default' : 'hover:text-indigo-600 dark:hover:text-indigo-400'}`}
         >
           {value !== undefined && value !== null
             ? value
@@ -350,18 +364,21 @@ function MetricBox({
 
 // ─── StarRating ───────────────────────────────────────────────────────────────
 
-function StarRating({ value, onChange }: { value?: number; onChange: (v: number | null) => void }) {
+function StarRating({ value, onChange, readOnly = false }: { value?: number; onChange: (v: number | null) => void; readOnly?: boolean }) {
   return (
     <div className="flex gap-1">
       {[1, 2, 3, 4, 5].map((star) => (
         <button
           key={star}
-          onClick={() => onChange(value === star ? null : star)}
+          onClick={() => !readOnly && onChange(value === star ? null : star)}
+          disabled={readOnly}
           className={`transition-colors ${
             star <= (value ?? 0)
               ? 'text-amber-400'
-              : 'text-slate-200 dark:text-slate-700 hover:text-amber-300'
-          }`}
+              : readOnly
+                ? 'text-slate-200 dark:text-slate-700'
+                : 'text-slate-200 dark:text-slate-700 hover:text-amber-300'
+          } ${readOnly ? 'cursor-default' : ''}`}
         >
           <Star className="w-7 h-7" fill={star <= (value ?? 0) ? 'currentColor' : 'none'} />
         </button>
@@ -373,13 +390,14 @@ function StarRating({ value, onChange }: { value?: number; onChange: (v: number 
 // ─── InlineTextSection ────────────────────────────────────────────────────────
 
 function InlineTextSection({
-  label, icon, value, onSave, placeholder,
+  label, icon, value, onSave, placeholder, readOnly = false,
 }: {
   label: string
   icon?: React.ReactNode
   value: string
   onSave: (v: string) => void
   placeholder?: string
+  readOnly?: boolean
 }) {
   const [text, setText] = useState(value)
   const focusedRef = useRef(false)
@@ -396,15 +414,16 @@ function InlineTextSection({
       </div>
       <textarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => !readOnly && setText(e.target.value)}
         onFocus={() => { focusedRef.current = true }}
         onBlur={() => {
           focusedRef.current = false
-          if (text !== value) onSave(text)
+          if (!readOnly && text !== value) onSave(text)
         }}
         rows={3}
-        className="form-textarea w-full"
-        placeholder={placeholder}
+        readOnly={readOnly}
+        className={`form-textarea w-full ${readOnly ? 'opacity-70 cursor-default' : ''}`}
+        placeholder={readOnly ? undefined : placeholder}
       />
     </div>
   )

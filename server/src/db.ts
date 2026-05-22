@@ -394,6 +394,23 @@ try {
     FOREIGN KEY (ticketId) REFERENCES tickets(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS permission_groups (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    permissions TEXT NOT NULL DEFAULT '{}',
+    is_default  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS user_groups (
+    user_id  TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    PRIMARY KEY (user_id, group_id),
+    FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES permission_groups(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS dashboard_tiles (
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL,

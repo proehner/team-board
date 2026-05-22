@@ -7,6 +7,8 @@ import Modal from '@/components/ui/Modal'
 import Avatar from '@/components/ui/Avatar'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import { formatDate, todayISO } from '@/utils/date'
 import { Plus, MessageSquare, Trash2, ChevronRight, CheckCircle, Lock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -20,6 +22,7 @@ interface RetroFormData {
 
 export default function RetroPage() {
   const { t } = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('retro')
   const navigate = useNavigate()
   const members = useStore((s) => s.members)
   const sprints = useStore((s) => s.sprints)
@@ -31,6 +34,7 @@ export default function RetroPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [filterSprint, setFilterSprint] = useState('')
   const [form, setForm] = useState<RetroFormData>(defaultForm())
+  const [saveError, setSaveError] = useState('')
 
   function defaultForm(): RetroFormData {
     const activeSprint = sprints.find((s) => s.status === 'Aktiv')
@@ -44,6 +48,7 @@ export default function RetroPage() {
 
   async function handleSubmit() {
     if (!form.title.trim()) return
+    setSaveError('')
     try {
       const id = await addRetrospective({
         title: form.title,
@@ -54,8 +59,8 @@ export default function RetroPage() {
       })
       setShowModal(false)
       navigate(`/retro/${id}`)
-    } catch {
-      alert(t('competencies.saveError'))
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t('common.saveError'))
     }
   }
 
@@ -70,10 +75,13 @@ export default function RetroPage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('retro.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('retro.count', { count: retrospectives.length })}</p>
         </div>
-        <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => { setForm(defaultForm()); setShowModal(true) }}>
-          {t('retro.newRetro')}
-        </Button>
+        {canWrite && (
+          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => { setForm(defaultForm()); setShowModal(true) }}>
+            {t('retro.newRetro')}
+          </Button>
+        )}
       </div>
+      {isReadOnly && <ReadOnlyBanner />}
 
       {/* Sprint filter */}
       {sprints.length > 0 && (
@@ -96,7 +104,7 @@ export default function RetroPage() {
           icon={<MessageSquare className="w-12 h-12" />}
           title={t('retro.noRetros')}
           description={t('retro.noRetrosSubtitle')}
-          action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => { setForm(defaultForm()); setShowModal(true) }}>{t('retro.newRetro')}</Button>}
+          action={canWrite ? <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => { setForm(defaultForm()); setShowModal(true) }}>{t('retro.newRetro')}</Button> : undefined}
         />
       ) : (
         <div className="space-y-3">
@@ -150,12 +158,14 @@ export default function RetroPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(retro.id) }}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {canWrite && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(retro.id) }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                   <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-indigo-500 transition-colors" />
                 </div>
               </div>
@@ -171,6 +181,7 @@ export default function RetroPage() {
         title={t('retro.newRetro')}
         footer={
           <>
+            {saveError && <p className="flex-1 text-sm text-red-600">{saveError}</p>}
             <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
             <Button variant="primary" onClick={handleSubmit}>{t('common.create')}</Button>
           </>

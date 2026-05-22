@@ -9,6 +9,8 @@ import { ticketsApi, ticketCategoriesApi } from '@/api/client'
 import type { Ticket, TicketStatus, TicketPriority, TeamMember, TicketCategory } from '@/types'
 import { useStore } from '@/store'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import TicketDetailModal from '@/components/tickets/TicketDetailModal'
 import { PRIORITY_BADGE } from '@/components/tickets/TicketDetailModal'
 
@@ -24,6 +26,7 @@ const COLUMNS: { status: TicketStatus; headerCls: string }[] = [
 
 export default function TicketsPage() {
   const { t }      = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('tickets')
   const members    = useStore((s) => s.members)
   const allMembers = useStore((s) => s.allMembers)
 
@@ -157,7 +160,7 @@ export default function TicketsPage() {
             <Archive className="w-4 h-4" />
             {t('tickets.archive')}
           </button>
-          {!showArchived && (
+          {!showArchived && canWrite && (
             <button
               onClick={() => setShowCreate(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
@@ -168,6 +171,8 @@ export default function TicketsPage() {
           )}
         </div>
       </div>
+
+      {isReadOnly && <ReadOnlyBanner />}
 
       {/* Filter bar */}
       <div className="flex items-center gap-3 flex-wrap">

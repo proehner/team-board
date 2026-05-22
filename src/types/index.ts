@@ -380,17 +380,31 @@ export interface DashboardTile {
 
 // ─── Auth / Users ─────────────────────────────────────────────────────────────
 
+export type PagePermission = 'none' | 'read' | 'write-own' | 'write'
+
 export interface AppUser {
   id: string
   username: string
   displayName: string
   role: 'admin' | 'user'
   forbiddenPages: string[]
+  pagePermissions: Record<string, PagePermission>
   memberId?: string
 }
 
 export interface AdminUser extends AppUser {
   isActive: boolean
+  createdAt: string
+  groupIds: string[]
+}
+
+export interface PermissionGroup {
+  id: string
+  name: string
+  description: string
+  permissions: Record<string, PagePermission>
+  isDefault: boolean
+  memberCount: number
   createdAt: string
 }
 

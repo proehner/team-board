@@ -9,6 +9,8 @@ import {
 } from 'lucide-react'
 import { useStore } from '@/store'
 import type { RoadmapFeature, RoadmapStatus, RoadmapPriority, RoadmapTicketArea, RoadmapQuarter } from '@/types'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { usePagePermission } from '@/hooks/usePagePermission'
 
 // ─── Shared config ────────────────────────────────────────────────────────────
 
@@ -1179,6 +1181,7 @@ const selectCls = 'px-3 py-2 text-sm rounded-lg border border-slate-200 dark:bor
 
 export default function RoadmapPage() {
   const { t } = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('roadmap')
   const navigate = useNavigate()
   const features = useStore((s) => s.roadmapFeatures)
 
@@ -1198,6 +1201,7 @@ export default function RoadmapPage() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (
+        canWrite &&
         e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey &&
         !(e.target instanceof HTMLInputElement) &&
         !(e.target instanceof HTMLTextAreaElement) &&
@@ -1296,13 +1300,16 @@ export default function RoadmapPage() {
               <p className="text-xs text-slate-500">{t('roadmap.subtitle')}</p>
             </div>
           </div>
-          <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-            title="N">
-            <Plus className="w-4 h-4" />
-            {t('roadmap.newFeature')}
-          </button>
+          {canWrite && (
+            <button onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+              title="N">
+              <Plus className="w-4 h-4" />
+              {t('roadmap.newFeature')}
+            </button>
+          )}
         </div>
+        {isReadOnly && <ReadOnlyBanner className="mt-3" />}
 
         {/* Stats row */}
         <div className="flex items-center gap-3 mt-4 flex-wrap">

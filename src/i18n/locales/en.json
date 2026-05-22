@@ -39,7 +39,12 @@
     "details": "Details",
     "confirm": "Confirm",
     "average": "Average",
-    "close": "Close"
+    "close": "Close",
+    "page": "Page",
+    "readOnlyMode": "Read-only mode",
+    "readOnlyMatrixEditable": "Entries in the competency matrix can still be edited.",
+    "readOnlyOwnMatrixEditable": "Your own entries in the competency matrix can still be edited.",
+    "saveError": "Error saving"
   },
   "teams": {
     "selectTitle": "Select Team",
@@ -502,8 +507,38 @@
     "pageSubtitle": "Manage users and master data.",
     "tab": {
       "users": "Users",
+      "groups": "Permission Groups",
       "software": "Software",
       "ticketCategories": "Ticket Categories"
+    },
+    "groups": {
+      "new": "New Group",
+      "edit": "Edit Group",
+      "delete": "Delete Group",
+      "deleteConfirm": "Are you sure you want to delete the group \"{{name}}\"? Members of this group will lose these permissions.",
+      "empty": "No permission groups defined yet. Create a group to assign permissions to users.",
+      "nameRequired": "Group name is required.",
+      "noGroupAssigned": "No group assigned",
+      "noGroupsYet": "No permission groups exist yet. Create a group first.",
+      "default": "Default",
+      "setDefault": "Default group",
+      "setDefaultHint": "auto-assigned to new users",
+      "description": "Description",
+      "namePlaceholder": "e.g. Developer, Viewer, Product Owner",
+      "descriptionPlaceholder": "Brief description…",
+      "permissions": "Permissions per Page",
+      "memberCount": "{{count}} member(s)",
+      "matrixPermLabel": "↳ Competency Matrix",
+      "perm": {
+        "write": "Write",
+        "writeHint": "full access",
+        "write-own": "Own",
+        "write-ownHint": "can only edit own entries",
+        "read": "Read",
+        "readHint": "view only",
+        "none": "None",
+        "noneHint": "no access"
+      }
     },
     "ticketCategories": {
       "new": "New Category",

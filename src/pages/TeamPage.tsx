@@ -7,6 +7,8 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import { formatDate } from '@/utils/date'
 import { Plus, Search, Edit2, Trash2, Users, Mail, Calendar } from 'lucide-react'
 import type { TeamMember, MemberRole } from '@/types'
@@ -33,6 +35,7 @@ const defaultForm: MemberFormData = { name: '', email: '', roles: ['Developer'],
 
 export default function TeamPage() {
   const { t } = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('team')
   const members = useStore((s) => s.members)
   const memberSkills = useStore((s) => s.memberSkills)
   const addMember = useStore((s) => s.addMember)
@@ -45,6 +48,7 @@ export default function TeamPage() {
   const [deleteTarget, setDeleteTarget] = useState<TeamMember | null>(null)
   const [form, setForm] = useState<MemberFormData>(defaultForm)
   const [errors, setErrors] = useState<MemberFormErrors>({})
+  const [saveError, setSaveError] = useState('')
 
   const filtered = members.filter(
     (m) =>
@@ -87,6 +91,7 @@ export default function TeamPage() {
 
   async function handleSubmit() {
     if (!validate()) return
+    setSaveError('')
     try {
       if (editTarget) {
         await updateMember(editTarget.id, form)
@@ -94,8 +99,8 @@ export default function TeamPage() {
         await addMember(form)
       }
       setShowModal(false)
-    } catch {
-      alert(t('competencies.saveError'))
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t('common.saveError'))
     }
   }
 
@@ -116,10 +121,13 @@ export default function TeamPage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('team.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('team.activeMembers', { count: members.filter((m) => m.isActive).length })}</p>
         </div>
-        <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>
-          {t('team.addMember')}
-        </Button>
+        {canWrite && (
+          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>
+            {t('team.addMember')}
+          </Button>
+        )}
       </div>
+      {isReadOnly && <ReadOnlyBanner />}
 
       {/* Search */}
       <div className="relative max-w-sm">
@@ -139,7 +147,7 @@ export default function TeamPage() {
           icon={<Users className="w-12 h-12" />}
           title={t('team.noMembersFound')}
           description={t('team.noMembersSubtitle')}
-          action={<Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>{t('team.addMember')}</Button>}
+          action={canWrite ? <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>{t('team.addMember')}</Button> : undefined}
         />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -149,6 +157,7 @@ export default function TeamPage() {
               member={m}
               skillCount={skillCount(m.id)}
               avgLevel={avgLevel(m.id)}
+              canWrite={canWrite}
               onEdit={() => openEdit(m)}
               onDelete={() => setDeleteTarget(m)}
               onToggle={() => updateMember(m.id, { isActive: !m.isActive })}
@@ -164,6 +173,7 @@ export default function TeamPage() {
         title={editTarget ? t('team.editMember') : t('team.newMember')}
         footer={
           <>
+            {saveError && <p className="flex-1 text-sm text-red-600">{saveError}</p>}
             <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
             <Button variant="primary" onClick={handleSubmit}>{editTarget ? t('common.save') : t('common.add')}</Button>
           </>
@@ -232,12 +242,13 @@ interface MemberCardProps {
   member: TeamMember
   skillCount: number
   avgLevel: number
+  canWrite: boolean
   onEdit: () => void
   onDelete: () => void
   onToggle: () => void
 }
 
-function MemberCard({ member, skillCount, avgLevel, onEdit, onDelete, onToggle }: MemberCardProps) {
+function MemberCard({ member, skillCount, avgLevel, canWrite, onEdit, onDelete, onToggle }: MemberCardProps) {
   const { t } = useTranslation()
   return (
     <div className={`bg-white dark:bg-slate-900 rounded-xl border shadow-sm p-5 space-y-4 transition-opacity ${member.isActive ? 'border-slate-200 dark:border-slate-700' : 'border-slate-100 dark:border-slate-800 opacity-60'}`}>
@@ -251,14 +262,16 @@ function MemberCard({ member, skillCount, avgLevel, onEdit, onDelete, onToggle }
             </div>
           </div>
         </div>
-        <div className="flex gap-1 shrink-0">
-          <button onClick={onEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button onClick={onDelete} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+        {canWrite && (
+          <div className="flex gap-1 shrink-0">
+            <button onClick={onEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">
+              <Edit2 className="w-4 h-4" />
+            </button>
+            <button onClick={onDelete} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
@@ -278,12 +291,13 @@ function MemberCard({ member, skillCount, avgLevel, onEdit, onDelete, onToggle }
           {avgLevel > 0 && <span>Ø <span className="font-semibold text-slate-700 dark:text-slate-300">{avgLevel}</span></span>}
         </div>
         <button
-          onClick={onToggle}
+          onClick={canWrite ? onToggle : undefined}
+          disabled={!canWrite}
           className={`text-xs px-2 py-1 rounded-full font-medium transition-colors ${
             member.isActive
-              ? 'bg-green-50 text-green-600 hover:bg-green-100'
-              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-          }`}
+              ? 'bg-green-50 text-green-600' + (canWrite ? ' hover:bg-green-100' : '')
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400' + (canWrite ? ' hover:bg-slate-200 dark:hover:bg-slate-700' : '')
+          } ${!canWrite ? 'cursor-default' : ''}`}
         >
           {member.isActive ? t('common.active') : t('common.inactive')}
         </button>

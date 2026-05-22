@@ -6,6 +6,8 @@ import Avatar from '@/components/ui/Avatar'
 import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import { formatDate } from '@/utils/date'
 import {
   ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Lock, Unlock,
@@ -25,6 +27,7 @@ const STATUS_VARIANTS: Record<RetroItemStatus, 'default' | 'warning' | 'success'
 
 export default function RetroDetailPage() {
   const { t } = useTranslation()
+  const { canWrite, isReadOnly } = usePagePermission('retro')
 
   const COLUMNS: { type: RetroItemType; label: string; color: string; bg: string; border: string }[] = [
     { type: 'GutGelaufen',  label: t('retroDetail.wentWell'),    color: 'text-green-700', bg: 'bg-green-50',  border: 'border-green-200' },
@@ -80,7 +83,7 @@ export default function RetroDetailPage() {
       await addRetroItem(retro!.id, type, text)
       setNewTexts((t) => ({ ...t, [type]: '' }))
     } catch {
-      alert(t('competencies.saveError'))
+      /* errors are surfaced by the API layer */
     }
   }
 
@@ -90,6 +93,7 @@ export default function RetroDetailPage() {
       <Link to="/retro" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 transition-colors">
         <ArrowLeft className="w-4 h-4" /> {t('retroDetail.allRetros')}
       </Link>
+      {isReadOnly && <ReadOnlyBanner />}
 
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
@@ -114,14 +118,16 @@ export default function RetroDetailPage() {
               )}
             </div>
           </div>
-          <Button
-            variant={retro.isFinalized ? 'secondary' : 'primary'}
-            size="sm"
-            icon={retro.isFinalized ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-            onClick={() => updateRetrospective(retro.id, { isFinalized: !retro.isFinalized })}
-          >
-            {retro.isFinalized ? t('retroDetail.unlock') : t('retroDetail.finalize')}
-          </Button>
+          {canWrite && (
+            <Button
+              variant={retro.isFinalized ? 'secondary' : 'primary'}
+              size="sm"
+              icon={retro.isFinalized ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+              onClick={() => updateRetrospective(retro.id, { isFinalized: !retro.isFinalized })}
+            >
+              {retro.isFinalized ? t('retroDetail.unlock') : t('retroDetail.finalize')}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -149,7 +155,7 @@ export default function RetroDetailPage() {
                     key={item.id}
                     item={item}
                     members={members}
-                    isFinalized={retro.isFinalized}
+                    isFinalized={retro.isFinalized || !canWrite}
                     onUpdate={(data) => updateRetroItem(retro.id, item.id, data)}
                     onDelete={() => setDeleteTarget(item.id)}
                     onVote={(delta) => voteRetroItem(retro.id, item.id, delta)}
@@ -160,7 +166,7 @@ export default function RetroDetailPage() {
               </div>
 
               {/* Add item */}
-              {!retro.isFinalized && (
+              {!retro.isFinalized && canWrite && (
                 <div className={`p-3 border-t ${col.border}`}>
                   <div className="flex gap-2">
                     <input
@@ -194,7 +200,7 @@ export default function RetroDetailPage() {
         <RetroItemDialog
           item={dialogItem}
           members={members}
-          isFinalized={retro.isFinalized}
+          isFinalized={retro.isFinalized || !canWrite}
           onUpdate={(data) => updateRetroItem(retro.id, dialogItem.id, data)}
           onClose={closeDialog}
         />

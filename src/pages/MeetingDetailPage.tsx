@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { usePagePermission } from '@/hooks/usePagePermission'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import {
   CalendarClock, ArrowLeft, Plus, Archive,
   ChevronRight, Trash2, RefreshCw, MapPin, Clock,
@@ -28,6 +30,8 @@ export default function MeetingDetailPage() {
   const meetings        = useStore((s) => s.meetings)
   const members         = useStore((s) => s.members)
   const allMembers      = useStore((s) => s.allMembers)
+
+  const { canWrite, isReadOnly } = usePagePermission('meetings')
 
   const meeting = meetings.find((m) => m.id === meetingId)
 
@@ -123,6 +127,7 @@ export default function MeetingDetailPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
+      {isReadOnly && <ReadOnlyBanner />}
       {/* Back + Header */}
       <div className="space-y-3">
         <button
@@ -189,13 +194,15 @@ export default function MeetingDetailPage() {
               </span>
             )}
           </button>
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            {t('meetings.addTopic')}
-          </button>
+          {canWrite && (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {t('meetings.addTopic')}
+            </button>
+          )}
         </div>
       </div>
 
@@ -245,6 +252,7 @@ export default function MeetingDetailPage() {
               members={meeting.isGlobal ? allMembers : members}
               isFirst={idx === 0}
               isLast={idx === activeTopics.length - 1}
+              canWrite={canWrite}
               onStatusChange={handleStatusChange}
               onMove={handleMove}
               onDelete={() => setDeleteTarget(topic)}
@@ -271,6 +279,7 @@ export default function MeetingDetailPage() {
                   members={meeting.isGlobal ? allMembers : members}
                   isFirst={false}
                   isLast={false}
+                  canWrite={canWrite}
                   onStatusChange={handleStatusChange}
                   onMove={() => {/* no sorting in archive */}}
                   onDelete={() => setDeleteTarget(topic)}
@@ -312,6 +321,7 @@ interface TopicRowProps {
   members: TeamMember[]
   isFirst: boolean
   isLast: boolean
+  canWrite: boolean
   onStatusChange: (topic: MeetingTopic, status: MeetingTopicStatus) => void
   onMove: (topic: MeetingTopic, dir: 'up' | 'down') => void
   onDelete: () => void
@@ -319,7 +329,7 @@ interface TopicRowProps {
   t: (key: string, opts?: Record<string, unknown>) => string
 }
 
-function TopicRow({ topic, members, isFirst, isLast, onStatusChange, onMove, onDelete, onNavigate, t }: TopicRowProps) {
+function TopicRow({ topic, members, isFirst, isLast, canWrite, onStatusChange, onMove, onDelete, onNavigate, t }: TopicRowProps) {
   const isDone    = topic.status === 'done'
   const assignees = members.filter((m) => topic.assigneeIds?.includes(m.id))
   const cfg       = STATUS_CONFIG[topic.status]
@@ -335,8 +345,8 @@ function TopicRow({ topic, members, isFirst, isLast, onStatusChange, onMove, onD
           : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-sm'
       }`}
     >
-      {/* Sort arrows (only for active topics) */}
-      {!isDone && (
+      {/* Sort arrows (only for active topics with write permission) */}
+      {!isDone && canWrite && (
         <div className="flex flex-col gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => { e.stopPropagation(); onMove(topic, 'up') }}
@@ -354,14 +364,15 @@ function TopicRow({ topic, members, isFirst, isLast, onStatusChange, onMove, onD
           </button>
         </div>
       )}
-      {isDone && <div className="w-5 shrink-0" />}
+      {(isDone || !canWrite) && <div className="w-5 shrink-0" />}
 
       {/* Status badge (clickable dropdown) */}
       <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
         <select
           value={topic.status}
           onChange={(e) => onStatusChange(topic, e.target.value as MeetingTopicStatus)}
-          className={`text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-violet-500 ${cfg.className}`}
+          disabled={!canWrite}
+          className={`text-xs font-medium px-2 py-1 rounded-full border-0 ${canWrite ? 'cursor-pointer' : 'cursor-default'} appearance-none focus:outline-none focus:ring-2 focus:ring-violet-500 ${cfg.className}`}
         >
           {STATUSES.map((s) => (
             <option key={s} value={s}>{t(`meetings.status.${s}`)}</option>
@@ -408,14 +419,16 @@ function TopicRow({ topic, members, isFirst, isLast, onStatusChange, onMove, onD
       )}
 
       {/* Actions */}
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete() }}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
-      </div>
+      {canWrite && (
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0 group-hover:text-violet-400 transition-colors" />
     </div>
   )
