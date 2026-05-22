@@ -13,7 +13,7 @@ import {
   ChevronRight, ChevronUp, Users,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig } from '@/types'
+import type { ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig, Sprint } from '@/types'
 import { assignmentsApi } from '@/api/client'
 import { differenceInDays, parseISO, addDays, format } from 'date-fns'
 import { de } from 'date-fns/locale'
@@ -278,7 +278,9 @@ export default function RotationPage() {
       const sa = getStatus(a), sb = getStatus(b)
       const order: Record<AssignmentStatus, number> = { active: 0, upcoming: 1, ended: 2 }
       if (order[sa] !== order[sb]) return order[sa] - order[sb]
-      return b.startDate.localeCompare(a.startDate)
+      if (sa === 'upcoming') return a.startDate.localeCompare(b.startDate)
+      if (sa === 'active')   return a.endDate.localeCompare(b.endDate)
+      return b.endDate.localeCompare(a.endDate)
     }),
   [visibleAssignments])
 
@@ -470,6 +472,7 @@ export default function RotationPage() {
           responsibilityTypes={responsibilityTypes}
           assignments={visibleAssignments}
           allMembers={allMembers}
+          sprints={sprints}
           t={t}
         />
       )}
@@ -936,7 +939,9 @@ function GroupedView({
             const order: Record<AssignmentStatus, number> = { active: 0, upcoming: 1, ended: 2 }
             const sa = getStatus(a), sb = getStatus(b)
             if (order[sa] !== order[sb]) return order[sa] - order[sb]
-            return b.startDate.localeCompare(a.startDate)
+            if (sa === 'upcoming') return a.startDate.localeCompare(b.startDate)
+            if (sa === 'active')   return a.endDate.localeCompare(b.endDate)
+            return b.endDate.localeCompare(a.endDate)
           })
         const collapsed = collapsedGroups.has(rt.name)
         const activeCount = group.filter((a) => getStatus(a) === 'active').length
@@ -1004,29 +1009,68 @@ function GroupedView({
 }
 
 // ─── Timeline (Gantt) View ────────────────────────────────────────────────────
-const TIMELINE_WEEKS_BACK  = 2
-const TIMELINE_WEEKS_AHEAD = 6
+const RANGE_PRESETS = [
+  { label: '4W',  weeksBack: 1, weeksAhead:  3 },
+  { label: '8W',  weeksBack: 2, weeksAhead:  6 },
+  { label: '12W', weeksBack: 2, weeksAhead: 10 },
+  { label: '6M',  weeksBack: 4, weeksAhead: 22 },
+] as const
+
+const BAR_H     = 22  // px height per bar
+const BAR_GAP   =  3  // px gap between stacked bars in the same row
+const BAR_PAD_V =  5  // px vertical padding above/below all bars
+
+function layoutBars(
+  assignments: ResponsibilityAssignment[],
+  timelineStart: Date,
+  totalDays: number,
+): { a: ResponsibilityAssignment; row: number }[] {
+  const visible = assignments.filter((a) => {
+    const s = differenceInDays(parseISO(a.startDate), timelineStart)
+    const e = differenceInDays(parseISO(a.endDate), timelineStart)
+    return e >= 0 && s < totalDays
+  })
+  const sorted = [...visible].sort((x, y) => x.startDate.localeCompare(y.startDate))
+  const trackEnds: number[] = []
+  return sorted.map((a) => {
+    const startDay = differenceInDays(parseISO(a.startDate), timelineStart)
+    const endDay   = differenceInDays(parseISO(a.endDate), timelineStart)
+    // track is free only if it ended strictly before this bar starts (same-day = overlap)
+    let idx = trackEnds.findIndex((e) => e < startDay)
+    if (idx === -1) { idx = trackEnds.length; trackEnds.push(endDay) }
+    else trackEnds[idx] = endDay
+    return { a, row: idx }
+  })
+}
+
+function sprintColors(status: string) {
+  if (status === 'Aktiv')         return { bg: 'rgba(99,102,241,0.15)',  border: 'rgba(99,102,241,0.40)',  color: '#6366f1' }
+  if (status === 'Abgeschlossen') return { bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.30)',  color: '#10b981' }
+  if (status === 'Abgebrochen')   return { bg: 'rgba(239,68,68,0.10)',   border: 'rgba(239,68,68,0.25)',   color: '#ef4444' }
+  return                                 { bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.30)', color: '#64748b' }
+}
 
 function TimelineView({
-  responsibilityTypes, assignments, allMembers, t,
+  responsibilityTypes, assignments, allMembers, sprints, t,
 }: {
   responsibilityTypes: ResponsibilityTypeConfig[]
   assignments: ResponsibilityAssignment[]
   allMembers: MemberLike[]
+  sprints: Sprint[]
   t: (key: string) => string
 }) {
+  const [rangePreset, setRangePreset] = useState(1)
+  const { weeksBack, weeksAhead } = RANGE_PRESETS[rangePreset]
+
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  // Build week columns
   const timelineStart = new Date(today)
-  timelineStart.setDate(today.getDate() - TIMELINE_WEEKS_BACK * 7)
-  // Snap to Monday
-  const dayOfWeek = timelineStart.getDay()
-  const diff = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek)
-  timelineStart.setDate(timelineStart.getDate() + diff)
+  timelineStart.setDate(today.getDate() - weeksBack * 7)
+  const dow = timelineStart.getDay()
+  timelineStart.setDate(timelineStart.getDate() + (dow === 0 ? -6 : 1 - dow))
 
-  const totalWeeks = TIMELINE_WEEKS_BACK + TIMELINE_WEEKS_AHEAD
+  const totalWeeks = weeksBack + weeksAhead
   const totalDays  = totalWeeks * 7
 
   const weeks = Array.from({ length: totalWeeks }, (_, i) => {
@@ -1052,103 +1096,174 @@ function TimelineView({
     return { left: `${left}%`, width: `${Math.max(width, 0.5)}%`, backgroundColor: color }
   }
 
-  if (responsibilityTypes.length === 0) {
-    return (
-      <div className="text-center py-12 text-sm text-slate-400">{t('rotation.noTypes')}</div>
-    )
+  function sprintPos(startISO: string, endISO: string) {
+    const startDay = Math.max(0, differenceInDays(parseISO(startISO), timelineStart))
+    const endDay   = Math.min(totalDays - 1, differenceInDays(parseISO(endISO), timelineStart))
+    if (endDay < 0 || startDay >= totalDays) return null
+    return {
+      left:  `${(startDay / totalDays) * 100}%`,
+      width: `${Math.max((endDay - startDay + 1) / totalDays * 100, 0.5)}%`,
+    }
   }
+
+  const visibleSprints = sprints.filter((s) => sprintPos(s.startDate, s.endDate) !== null)
+
+  if (responsibilityTypes.length === 0) {
+    return <div className="text-center py-12 text-sm text-slate-400">{t('rotation.noTypes')}</div>
+  }
+
+  const WEEK_MIN_PX = 52
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-      {/* Week header */}
-      <div className="flex border-b border-slate-200 dark:border-slate-700">
-        <div className="w-36 shrink-0 px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-slate-700">
-          {t('rotation.responsibility')}
-        </div>
-        <div className="flex-1 relative overflow-hidden">
-          <div className="flex">
-            {weeks.map((w, i) => (
-              <div
-                key={i}
-                className={`flex-1 px-1 py-2 text-[10px] text-center font-medium border-r border-slate-100 dark:border-slate-800 last:border-r-0 ${
-                  w.isCurrentWeek ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'
-                }`}
-              >
-                {w.label}
-              </div>
-            ))}
-          </div>
+      {/* Range selector */}
+      <div className="flex items-center justify-end px-4 py-2 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 gap-0.5">
+          {RANGE_PRESETS.map((p, i) => (
+            <button
+              key={p.label}
+              onClick={() => setRangePreset(i)}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                rangePreset === i
+                  ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Rows */}
-      {responsibilityTypes.map((rt) => {
-        const rowAssignments = assignments.filter((a) => a.type === rt.name)
-        return (
-          <div key={rt.id} className="flex border-b border-slate-100 dark:border-slate-800 last:border-b-0 group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
-            <div className="w-36 shrink-0 flex items-center gap-2 px-3 py-3 border-r border-slate-100 dark:border-slate-800">
-              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: rt.color }} />
-              <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">{rt.name}</span>
+      {/* Scrollable chart */}
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: `${144 + totalWeeks * WEEK_MIN_PX}px` }}>
+
+          {/* Week header */}
+          <div className="flex border-b border-slate-200 dark:border-slate-700">
+            <div className="w-36 shrink-0 px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-slate-700">
+              {t('rotation.responsibility')}
             </div>
-            <div className="flex-1 relative py-2 min-h-[2.5rem]">
-              {/* Week grid lines */}
-              <div className="absolute inset-0 flex pointer-events-none">
-                {weeks.map((w, i) => (
-                  <div
-                    key={i}
-                    className={`flex-1 border-r border-slate-100 dark:border-slate-800 last:border-r-0 ${
-                      w.isCurrentWeek ? 'bg-indigo-50/40 dark:bg-indigo-900/10' : ''
-                    }`}
-                  />
-                ))}
-              </div>
-
-              {/* Today line */}
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-red-400 dark:bg-red-500 z-10 pointer-events-none"
-                style={{ left: `${todayPct}%` }}
-              />
-
-              {/* Assignment bars */}
-              {rowAssignments.map((a) => {
-                const bs = barStyle(a.startDate, a.endDate, rt.color)
-                if (!bs) return null
-                const member = allMembers.find((m) => m.id === a.memberId)
-                const status = getStatus(a)
-                return (
-                  <div
-                    key={a.id}
-                    className="absolute top-1.5 h-7 rounded flex items-center px-2 overflow-hidden"
-                    style={{
-                      ...bs,
-                      opacity: status === 'ended' ? 0.45 : 1,
-                      filter: status === 'active' ? 'none' : undefined,
-                    }}
-                    title={`${a.type}: ${member?.name} (${formatDate(a.startDate)} – ${formatDate(a.endDate)})`}
-                  >
-                    {member && (
-                      <span className="text-[10px] font-semibold text-white truncate drop-shadow-sm">
-                        {member.name}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-
-              {rowAssignments.length === 0 && (
-                <div className="absolute inset-0 flex items-center px-3">
-                  <span className="text-xs text-slate-300 dark:text-slate-600 italic">—</span>
+            <div className="flex flex-1">
+              {weeks.map((w, i) => (
+                <div
+                  key={i}
+                  className={`flex-1 min-w-0 px-1 py-2 text-[10px] text-center font-medium border-r border-slate-100 dark:border-slate-800 last:border-r-0 ${
+                    w.isCurrentWeek ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'
+                  }`}
+                >
+                  {w.label}
                 </div>
-              )}
+              ))}
             </div>
           </div>
-        )
-      })}
 
-      {/* Today legend */}
-      <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 text-xs text-slate-400">
-        <div className="w-3 h-0.5 bg-red-400" />
-        {t('rotation.today')} ({format(today, 'd. MMM yyyy', { locale: de })})
+          {/* Sprint band */}
+          {visibleSprints.length > 0 && (
+            <div className="flex border-b border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/20">
+              <div className="w-36 shrink-0 flex items-center px-3 border-r border-slate-100 dark:border-slate-800">
+                <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Sprints</span>
+              </div>
+              <div className="flex-1 relative h-8">
+                <div className="absolute inset-0 flex pointer-events-none">
+                  {weeks.map((w, i) => (
+                    <div key={i} className={`flex-1 border-r border-slate-100 dark:border-slate-800 last:border-r-0 ${w.isCurrentWeek ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`} />
+                  ))}
+                </div>
+                <div className="absolute top-0 bottom-0 w-0.5 bg-red-400/40 dark:bg-red-500/40 z-10 pointer-events-none" style={{ left: `${todayPct}%` }} />
+                {visibleSprints.map((s) => {
+                  const pos = sprintPos(s.startDate, s.endDate)
+                  if (!pos) return null
+                  const c = sprintColors(s.status)
+                  return (
+                    <div
+                      key={s.id}
+                      className="absolute top-1 bottom-1 rounded flex items-center px-1.5 overflow-hidden"
+                      style={{ left: pos.left, width: pos.width, backgroundColor: c.bg, border: `1px solid ${c.border}` }}
+                      title={`${s.name} (${formatDate(s.startDate)} – ${formatDate(s.endDate)})`}
+                    >
+                      <span className="text-[9px] font-semibold truncate" style={{ color: c.color }}>{s.name}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Rows */}
+          {responsibilityTypes.map((rt) => {
+            const layout    = layoutBars(assignments.filter((a) => a.type === rt.name), timelineStart, totalDays)
+            const numSubRows = layout.length > 0 ? Math.max(...layout.map((l) => l.row)) + 1 : 0
+            const rowMinH   = BAR_PAD_V * 2 + Math.max(1, numSubRows) * BAR_H + Math.max(0, numSubRows - 1) * BAR_GAP
+
+            return (
+              <div
+                key={rt.id}
+                className="flex border-b border-slate-100 dark:border-slate-800 last:border-b-0 group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors"
+                style={{ minHeight: rowMinH }}
+              >
+                <div className="w-36 shrink-0 flex items-start gap-2 px-3 pt-[7px] border-r border-slate-100 dark:border-slate-800">
+                  <div className="w-2 h-2 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: rt.color }} />
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">{rt.name}</span>
+                </div>
+                <div className="flex-1 relative" style={{ minHeight: rowMinH }}>
+                  {/* Week grid lines */}
+                  <div className="absolute inset-0 flex pointer-events-none">
+                    {weeks.map((w, i) => (
+                      <div
+                        key={i}
+                        className={`flex-1 border-r border-slate-100 dark:border-slate-800 last:border-r-0 ${
+                          w.isCurrentWeek ? 'bg-indigo-50/40 dark:bg-indigo-900/10' : ''
+                        }`}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Today line */}
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-red-400 dark:bg-red-500 z-10 pointer-events-none"
+                    style={{ left: `${todayPct}%` }}
+                  />
+
+                  {/* Assignment bars (stacked to avoid overlap) */}
+                  {layout.map(({ a, row }) => {
+                    const bs = barStyle(a.startDate, a.endDate, rt.color)
+                    if (!bs) return null
+                    const member = allMembers.find((m) => m.id === a.memberId)
+                    const status = getStatus(a)
+                    const topPx  = BAR_PAD_V + row * (BAR_H + BAR_GAP)
+                    return (
+                      <div
+                        key={a.id}
+                        className="absolute rounded flex items-center px-2 overflow-hidden"
+                        style={{ ...bs, top: topPx, height: BAR_H, opacity: status === 'ended' ? 0.45 : 1 }}
+                        title={`${a.type}: ${member?.name} (${formatDate(a.startDate)} – ${formatDate(a.endDate)})`}
+                      >
+                        {member && (
+                          <span className="text-[10px] font-semibold text-white truncate drop-shadow-sm">
+                            {member.name}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {layout.length === 0 && (
+                    <div className="absolute inset-0 flex items-center px-3">
+                      <span className="text-xs text-slate-300 dark:text-slate-600 italic">—</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Today legend */}
+          <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 text-xs text-slate-400">
+            <div className="w-3 h-0.5 bg-red-400" />
+            {t('rotation.today')} ({format(today, 'd. MMM yyyy', { locale: de })})
+          </div>
+        </div>
       </div>
     </div>
   )
