@@ -636,6 +636,17 @@ if (!skillColsNew.some((c) => c.name === 'categoryId')) {
   }
 }
 
+// ─── roadmap_features: add startYear + startQuarter (Gantt) ──────────────────
+{
+  const cols = db.prepare('PRAGMA table_info(roadmap_features)').all([]) as Array<{ name: string }>
+  if (cols.length > 0 && !cols.some((c) => c.name === 'startYear')) {
+    db.exec('ALTER TABLE roadmap_features ADD COLUMN startYear INTEGER')
+  }
+  if (cols.length > 0 && !cols.some((c) => c.name === 'startQuarter')) {
+    db.exec('ALTER TABLE roadmap_features ADD COLUMN startQuarter INTEGER')
+  }
+}
+
 export default db
 
 // ─── Typed query helpers ──────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -283,9 +284,10 @@ export default function MeetingDetailPage() {
       )}
 
       {/* Delete confirm */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
+      {deleteTarget && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
+          <div className="relative bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">{t('meetings.deleteTopicTitle')}</h2>
             <p className="text-sm text-slate-500">{t('meetings.deleteTopicConfirm', { title: deleteTarget.title })}</p>
             <div className="flex justify-end gap-2">
@@ -297,7 +299,8 @@ export default function MeetingDetailPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

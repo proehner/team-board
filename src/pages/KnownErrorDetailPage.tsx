@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import {
   ArrowLeft, Bug, Pencil, Trash2, Tag, Monitor, Ticket,
   AlertTriangle, AlertCircle, Info, CheckCircle2, Wrench, Save, X,
@@ -365,6 +366,7 @@ export default function KnownErrorDetailPage() {
   const [editing,       setEditing]       = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving,        setSaving]        = useState(false)
+  const { isBlocked, confirmLeave, cancelLeave, guardedNavigate } = useUnsavedChanges(editing)
   const [attachRefresh, setAttachRefresh] = useState(0)
   const [saveError,     setSaveError]     = useState('')
 
@@ -457,7 +459,7 @@ export default function KnownErrorDetailPage() {
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
       {/* Back */}
       <button
-        onClick={() => navigate('/known-errors')}
+        onClick={() => guardedNavigate('/known-errors')}
         className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
@@ -695,6 +697,17 @@ export default function KnownErrorDetailPage() {
         onConfirm={handleDelete}
         onClose={() => setConfirmDelete(false)}
         variant="danger"
+      />
+
+      <ConfirmDialog
+        isOpen={isBlocked}
+        onClose={cancelLeave}
+        onConfirm={confirmLeave}
+        title={t('confirmDialog.unsavedTitle')}
+        message={t('confirmDialog.unsavedMessage')}
+        confirmLabel={t('confirmDialog.unsavedLeave')}
+        cancelLabel={t('confirmDialog.unsavedStay')}
+        variant="warning"
       />
     </div>
   )

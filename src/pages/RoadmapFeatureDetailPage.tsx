@@ -1,6 +1,8 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import {
   ArrowLeft, Save, Trash2, Plus, Map, Calendar, Tag, Layers,
   Lightbulb, Clock, Circle, CheckCircle2, XCircle,
@@ -99,15 +101,27 @@ interface SectionProps {
   onChange: (v: string) => void
   rows?: number
   hint?: string
+  isExpanded?: boolean
+  onToggle?: () => void
 }
 
-function MarkdownSection({ icon: Icon, title, value, placeholder, onChange, rows = 6, hint }: SectionProps) {
-  const [expanded, setExpanded] = useState(true)
+function MarkdownSection({ icon: Icon, title, value, placeholder, onChange, rows = 6, hint, isExpanded, onToggle }: SectionProps) {
+  const [localExpanded, setLocalExpanded] = useState(true)
+  const expanded = isExpanded !== undefined ? isExpanded : localExpanded
+
+  function handleToggle() {
+    if (onToggle) {
+      onToggle()
+    } else {
+      setLocalExpanded((e) => !e)
+    }
+  }
+
   return (
     <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
       <button
         type="button"
-        onClick={() => setExpanded((e) => !e)}
+        onClick={handleToggle}
         className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
       >
         <div className="flex items-center gap-2">
@@ -954,10 +968,21 @@ export default function RoadmapFeatureDetailPage() {
   const [form, setForm] = useState<Partial<RoadmapFeature>>({})
   const [dirty, setDirty]         = useState(false)
   const [saving, setSaving]       = useState(false)
+  const { isBlocked, confirmLeave, cancelLeave, guardedNavigate } = useUnsavedChanges(dirty)
   const [showDelete, setShowDelete] = useState(false)
-  const [showAddTicket, setShowAddTicket]   = useState(false)
-  const [ticketAreaFilter, setTicketAreaFilter] = useState<RoadmapTicketArea | 'all'>('all')
-  const [blueprintOpen, setBlueprintOpen]   = useState(false)
+  const [showAddTicket, setShowAddTicket]     = useState(false)
+  const [ticketAreaFilter, setTicketAreaFilter]   = useState<RoadmapTicketArea | 'all'>('all')
+  const [ticketTypeFilter, setTicketTypeFilter]   = useState<RoadmapTicketType | 'all'>('all')
+  const [blueprintOpen, setBlueprintOpen]     = useState(false)
+
+  // Planning sections expand/collapse (true = expanded, default)
+  const [sectionsState, setSectionsState] = useState<Partial<Record<string, boolean>>>({})
+  const isSectionExpanded = (key: string) => sectionsState[key] ?? true
+  const toggleSection = (key: string) => setSectionsState((s) => ({ ...s, [key]: !(s[key] ?? true) }))
+  const expandAllSections  = () => setSectionsState(Object.fromEntries(PLANNING_SECTIONS.map((s) => [s.key, true])))
+  const collapseAllSections = () => setSectionsState(Object.fromEntries(PLANNING_SECTIONS.map((s) => [s.key, false])))
+
+  const [savedFeedback, setSavedFeedback] = useState(false)
   const [showAddEndpoint, setShowAddEndpoint] = useState(false)
   const [showAddScreen,   setShowAddScreen]   = useState(false)
 
@@ -983,6 +1008,8 @@ export default function RoadmapFeatureDetailPage() {
         targetVersion:      feature.targetVersion ?? '',
         targetYear:         feature.targetYear,
         targetQuarter:      feature.targetQuarter,
+        startYear:          feature.startYear,
+        startQuarter:       feature.startQuarter,
         category:           feature.category ?? '',
         tags:               feature.tags,
         goals:              feature.goals,
@@ -1000,6 +1027,9 @@ export default function RoadmapFeatureDetailPage() {
     setForm((f) => ({ ...f, [key]: value }))
     setDirty(true)
   }, [])
+
+  // Ctrl+S shortcut — use ref to always call the latest handleSave
+  const handleSaveRef = useRef<() => void>(() => {})
 
   async function generateTicketsFromBlueprint() {
     if (!featureId || !endpoints || !screens) return
@@ -1076,19 +1106,40 @@ export default function RoadmapFeatureDetailPage() {
       await updateRoadmapFeature(featureId, {
         ...form,
         targetVersion:  (form.targetVersion as string)?.trim() || undefined,
+        // Send null explicitly so JSON.stringify includes them and the backend clears the column
+        targetYear:     (form.targetYear ?? null) as unknown as number,
+        targetQuarter:  (form.targetQuarter ?? null) as unknown as 1,
+        startYear:      (form.startYear ?? null) as unknown as number,
+        startQuarter:   (form.startQuarter ?? null) as unknown as 1,
         category:       (form.category as string)?.trim() || undefined,
         tags:           form.tags ?? [],
       })
       setDirty(false)
+      setSavedFeedback(true)
+      setTimeout(() => setSavedFeedback(false), 2000)
     } finally {
       setSaving(false)
     }
   }
 
+  // Keep ref in sync so Ctrl+S always calls the current closure
+  handleSaveRef.current = handleSave
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        handleSaveRef.current()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   async function handleDelete() {
     if (!featureId) return
     await deleteRoadmapFeature(featureId)
-    navigate('/roadmap')
+    navigate('/roadmap')  // intentional hard nav after delete — no "back" target exists
   }
 
   const [exportCopied, setExportCopied] = useState(false)
@@ -1155,7 +1206,9 @@ export default function RoadmapFeatureDetailPage() {
 
   function copyAllTickets() {
     const tks = tickets ?? []
-    const filtered = ticketAreaFilter === 'all' ? tks : tks.filter((t) => t.area === ticketAreaFilter)
+    const filtered = tks
+      .filter((t) => ticketAreaFilter === 'all' || t.area === ticketAreaFilter)
+      .filter((t) => ticketTypeFilter === 'all' || t.type === ticketTypeFilter)
     const text = filtered.map((tk) => [
       `## ${tk.title}`,
       `**Typ:** ${TICKET_TYPE_CONFIG[tk.type].label}  |  **Bereich:** ${TICKET_AREA_CONFIG[tk.area].label}  |  **Priorität:** ${PRIORITY_CONFIG[tk.priority].label}${tk.storyPoints ? `  |  **SP:** ${tk.storyPoints}` : ''}${tk.assignedTeam ? `  |  **Team:** ${tk.assignedTeam}` : ''}`,
@@ -1171,7 +1224,7 @@ export default function RoadmapFeatureDetailPage() {
         <div className="text-center space-y-2">
           <Map className="w-10 h-10 text-slate-300 mx-auto" />
           <p className="text-sm text-slate-500">{t('roadmap.featureNotFound')}</p>
-          <button onClick={() => navigate('/roadmap')} className="text-sm text-indigo-600 hover:underline">{t('roadmap.backToRoadmap')}</button>
+          <button onClick={() => navigate(-1)} className="text-sm text-indigo-600 hover:underline">{t('roadmap.backToRoadmap')}</button>
         </div>
       </div>
     )
@@ -1180,7 +1233,11 @@ export default function RoadmapFeatureDetailPage() {
   const sc = STATUS_CONFIG[form.status ?? feature.status]
   const pc = PRIORITY_CONFIG[form.priority ?? feature.priority]
   const StatusIcon = sc.icon
-  const filteredTickets = tickets ? (ticketAreaFilter === 'all' ? tickets : tickets.filter((t) => t.area === ticketAreaFilter)) : []
+  const filteredTickets = tickets
+    ? tickets
+        .filter((t) => ticketAreaFilter === 'all' || t.area === ticketAreaFilter)
+        .filter((t) => ticketTypeFilter === 'all' || t.type === ticketTypeFilter)
+    : []
 
   // Story points sum per area
   const spByArea = TICKET_AREAS.reduce<Record<RoadmapTicketArea, number>>((acc, a) => {
@@ -1194,7 +1251,7 @@ export default function RoadmapFeatureDetailPage() {
       {/* Top Bar */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/roadmap')}
+          <button onClick={() => guardedNavigate(-1)}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -1204,6 +1261,11 @@ export default function RoadmapFeatureDetailPage() {
           <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate max-w-xs">{feature.title}</span>
         </div>
         <div className="flex items-center gap-2">
+          {savedFeedback && !dirty && (
+            <span className="hidden sm:flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+              <Check className="w-3 h-3" /> {t('roadmap.savedConfirm')}
+            </span>
+          )}
           {dirty && (
             <span className="text-xs text-amber-600 dark:text-amber-400 hidden sm:block">{t('roadmap.unsavedChanges')}</span>
           )}
@@ -1273,26 +1335,45 @@ export default function RoadmapFeatureDetailPage() {
               </div>
             </div>
 
-            {/* Year / Quarter / Tags */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">
-                  <Calendar className="w-3 h-3 inline mr-1" />{t('roadmap.targetYear')}
-                </label>
-                <input type="number" min={2024} max={2035} value={form.targetYear ?? ''}
-                  onChange={(e) => updateField('targetYear', e.target.value ? Number(e.target.value) : undefined as unknown as number)}
-                  placeholder="2025"
-                  className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            {/* Start / Target Year+Quarter / Tags */}
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    <Calendar className="w-3 h-3 inline mr-1" />{t('roadmap.startYear')}
+                  </label>
+                  <input type="number" min={2024} max={2035} value={form.startYear ?? ''}
+                    onChange={(e) => updateField('startYear', e.target.value ? Number(e.target.value) : undefined as unknown as number)}
+                    placeholder="2025"
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.startQuarter')}</label>
+                  <select value={form.startQuarter ?? ''} onChange={(e) => updateField('startQuarter', e.target.value ? Number(e.target.value) as 1 | 2 | 3 | 4 : undefined as unknown as 1)}
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">{t('roadmap.quarterNotSet')}</option>
+                    {QUARTERS.map((q) => <option key={q} value={q}>Q{q}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    <Calendar className="w-3 h-3 inline mr-1" />{t('roadmap.targetYear')}
+                  </label>
+                  <input type="number" min={2024} max={2035} value={form.targetYear ?? ''}
+                    onChange={(e) => updateField('targetYear', e.target.value ? Number(e.target.value) : undefined as unknown as number)}
+                    placeholder="2025"
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.targetQuarter')}</label>
+                  <select value={form.targetQuarter ?? ''} onChange={(e) => updateField('targetQuarter', e.target.value ? Number(e.target.value) as 1 | 2 | 3 | 4 : undefined as unknown as 1)}
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">{t('roadmap.quarterNotSet')}</option>
+                    {QUARTERS.map((q) => <option key={q} value={q}>Q{q}</option>)}
+                  </select>
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.targetQuarter')}</label>
-                <select value={form.targetQuarter ?? ''} onChange={(e) => updateField('targetQuarter', e.target.value ? Number(e.target.value) as 1 | 2 | 3 | 4 : undefined as unknown as 1)}
-                  className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="">{t('common.none')}</option>
-                  {QUARTERS.map((q) => <option key={q} value={q}>Q{q}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-500 mb-1">
                   <Tag className="w-3 h-3 inline mr-1" />{t('roadmap.tags')} <span className="text-slate-400">({t('roadmap.tagsSeparator')})</span>
                 </label>
@@ -1341,7 +1422,20 @@ export default function RoadmapFeatureDetailPage() {
 
           {/* ── Planning Sections ── */}
           <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide px-1">{t('roadmap.planningDetails')}</h2>
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">{t('roadmap.planningDetails')}</h2>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={expandAllSections}
+                  className="text-xs text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  {t('roadmap.expandAll')}
+                </button>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                <button type="button" onClick={collapseAllSections}
+                  className="text-xs text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  {t('roadmap.collapseAll')}
+                </button>
+              </div>
+            </div>
             <MarkdownSection
               icon={Lightbulb}
               title={t('roadmap.goals')}
@@ -1350,6 +1444,8 @@ export default function RoadmapFeatureDetailPage() {
               placeholder={t('roadmap.goalsPlaceholder')}
               hint={t('roadmap.goalsHint')}
               rows={5}
+              isExpanded={isSectionExpanded('goals')}
+              onToggle={() => toggleSection('goals')}
             />
             <MarkdownSection
               icon={CheckCircle2}
@@ -1359,6 +1455,8 @@ export default function RoadmapFeatureDetailPage() {
               placeholder={t('roadmap.acceptanceCriteriaFeaturePlaceholder')}
               hint={t('roadmap.acceptanceCriteriaHint')}
               rows={5}
+              isExpanded={isSectionExpanded('acceptanceCriteria')}
+              onToggle={() => toggleSection('acceptanceCriteria')}
             />
             <MarkdownSection
               icon={LayoutTemplate}
@@ -1368,6 +1466,8 @@ export default function RoadmapFeatureDetailPage() {
               placeholder={t('roadmap.uiNotesPlaceholder')}
               hint={t('roadmap.uiNotesHint')}
               rows={6}
+              isExpanded={isSectionExpanded('uiNotes')}
+              onToggle={() => toggleSection('uiNotes')}
             />
             <MarkdownSection
               icon={Server}
@@ -1377,6 +1477,8 @@ export default function RoadmapFeatureDetailPage() {
               placeholder={t('roadmap.backendNotesPlaceholder')}
               hint={t('roadmap.backendNotesHint')}
               rows={6}
+              isExpanded={isSectionExpanded('backendNotes')}
+              onToggle={() => toggleSection('backendNotes')}
             />
             <MarkdownSection
               icon={Cpu}
@@ -1386,6 +1488,8 @@ export default function RoadmapFeatureDetailPage() {
               placeholder={t('roadmap.technicalNotesPlaceholder')}
               hint={t('roadmap.technicalNotesHint')}
               rows={5}
+              isExpanded={isSectionExpanded('technicalNotes')}
+              onToggle={() => toggleSection('technicalNotes')}
             />
             <MarkdownSection
               icon={AlertTriangle}
@@ -1395,6 +1499,8 @@ export default function RoadmapFeatureDetailPage() {
               placeholder={t('roadmap.risksPlaceholder')}
               hint={t('roadmap.risksHint')}
               rows={4}
+              isExpanded={isSectionExpanded('risks')}
+              onToggle={() => toggleSection('risks')}
             />
           </div>
 
@@ -1543,29 +1649,65 @@ export default function RoadmapFeatureDetailPage() {
               </div>
             </div>
 
-            {/* SP Summary per area */}
+            {/* Area + type filter chips + SP coverage */}
             {tickets && tickets.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {TICKET_AREAS.map((area) => {
-                  const count = (tickets ?? []).filter((t) => t.area === area).length
-                  if (count === 0) return null
-                  const ac = TICKET_AREA_CONFIG[area]
-                  const AreaIcon = ac.icon
-                  return (
+              <div className="space-y-2">
+                {/* Area filters */}
+                <div className="flex flex-wrap gap-2">
+                  {TICKET_AREAS.map((area) => {
+                    const count = (tickets ?? []).filter((t) => t.area === area).length
+                    if (count === 0) return null
+                    const ac = TICKET_AREA_CONFIG[area]
+                    const AreaIcon = ac.icon
+                    return (
+                      <button
+                        key={area}
+                        onClick={() => setTicketAreaFilter(ticketAreaFilter === area ? 'all' : area)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                          ticketAreaFilter === area
+                            ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                            : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-300'
+                        }`}
+                      >
+                        <AreaIcon className="w-3 h-3" />
+                        {ac.label} ({count}{spByArea[area] > 0 ? ` · ${spByArea[area]} SP` : ''})
+                      </button>
+                    )
+                  })}
+                </div>
+                {/* Type filters */}
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <span className="text-xs text-slate-400">{t('roadmap.ticketType')}:</span>
+                  {([
+                    { key: 'all' as const, label: t('roadmap.allTicketTypes') },
+                    ...TICKET_TYPES.map((tp) => ({ key: tp, label: TICKET_TYPE_CONFIG[tp].label })),
+                  ]).map(({ key, label }) => (
                     <button
-                      key={area}
-                      onClick={() => setTicketAreaFilter(ticketAreaFilter === area ? 'all' : area)}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                        ticketAreaFilter === area
+                      key={key}
+                      onClick={() => setTicketTypeFilter(key as RoadmapTicketType | 'all')}
+                      className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
+                        ticketTypeFilter === key
                           ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                          : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-300'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-indigo-300'
                       }`}
                     >
-                      <AreaIcon className="w-3 h-3" />
-                      {ac.label} ({count}{spByArea[area] > 0 ? ` · ${spByArea[area]} SP` : ''})
+                      {label}
                     </button>
-                  )
-                })}
+                  ))}
+                  {/* SP estimation coverage */}
+                  {(() => {
+                    const withSP = tickets.filter((tk) => tk.storyPoints !== undefined).length
+                    return withSP < tickets.length ? (
+                      <span className="ml-auto text-xs text-slate-400">
+                        {t('roadmap.spEstimated', { n: withSP, total: tickets.length })}
+                      </span>
+                    ) : (
+                      <span className="ml-auto text-xs text-green-600 dark:text-green-400">
+                        {t('roadmap.spEstimated', { n: withSP, total: tickets.length })}
+                      </span>
+                    )
+                  })()}
+                </div>
               </div>
             )}
 
@@ -1621,6 +1763,17 @@ export default function RoadmapFeatureDetailPage() {
           onCancel={() => setShowDelete(false)}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={isBlocked}
+        onClose={cancelLeave}
+        onConfirm={confirmLeave}
+        title={t('confirmDialog.unsavedTitle')}
+        message={t('confirmDialog.unsavedMessage')}
+        confirmLabel={t('confirmDialog.unsavedLeave')}
+        cancelLabel={t('confirmDialog.unsavedStay')}
+        variant="warning"
+      />
     </div>
   )
 }

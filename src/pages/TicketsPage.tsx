@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
   Ticket as TicketIcon, Plus, Trash2, ChevronRight, ChevronLeft,
@@ -344,9 +345,10 @@ export default function TicketsPage() {
       )}
 
       {/* Create modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
+      {showCreate && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowCreate(false)} />
+          <div className="relative bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <TicketIcon className="w-4 h-4 text-indigo-500" />
               {t('tickets.newTicket')}
@@ -419,7 +421,8 @@ export default function TicketsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       <ConfirmDialog

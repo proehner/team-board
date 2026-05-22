@@ -287,6 +287,8 @@ export interface RoadmapFeature {
   targetVersion?: string
   targetYear?: number
   targetQuarter?: RoadmapQuarter
+  startYear?: number
+  startQuarter?: RoadmapQuarter
   category?: string
   tags: string[]
   goals: string
