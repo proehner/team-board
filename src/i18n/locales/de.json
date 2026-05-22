@@ -171,7 +171,17 @@
     "deleteCategoryConfirm": "Möchtest du die Kategorie \"{{name}}\" wirklich löschen? Die zugewiesenen Fähigkeiten werden nicht mehr kategorisiert.",
     "clearCategory": "Kategorie entfernen",
     "noCategoryShort": "Nicht zugeordnet",
-    "uncategorised": "Nicht zugeordnet"
+    "uncategorised": "Nicht zugeordnet",
+    "totalSkillsLabel": "Fähigkeiten",
+    "atRiskLabel": "mit Risiko",
+    "coverageLabel": "Abdeckung:",
+    "teamAvgLabel": "Team-Ø:",
+    "sortBy": "Sortieren:",
+    "sortName": "Name",
+    "sortAvg": "Ø-Level",
+    "sortCoverage": "Abdeckung",
+    "filterMembers": "Mitglieder:",
+    "showAllMembers": "Alle zeigen"
   },
   "sprints": {
     "title": "Sprints",

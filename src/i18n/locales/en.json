@@ -171,7 +171,17 @@
     "deleteCategoryConfirm": "Do you really want to delete the category \"{{name}}\"? Assigned skills will become uncategorised.",
     "clearCategory": "Remove category",
     "noCategoryShort": "Uncategorised",
-    "uncategorised": "Uncategorised"
+    "uncategorised": "Uncategorised",
+    "totalSkillsLabel": "Skills",
+    "atRiskLabel": "at risk",
+    "coverageLabel": "Coverage:",
+    "teamAvgLabel": "Team avg.:",
+    "sortBy": "Sort:",
+    "sortName": "Name",
+    "sortAvg": "Avg. Level",
+    "sortCoverage": "Coverage",
+    "filterMembers": "Members:",
+    "showAllMembers": "Show all"
   },
   "sprints": {
     "title": "Sprints",

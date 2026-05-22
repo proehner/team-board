@@ -17,6 +17,16 @@ const LEVEL_BG: Record<SkillLevel, string> = {
   5: 'bg-indigo-700 text-white',
 }
 
+// Colored member-initial dots used in the catalog list
+const CATALOG_DOT_BG: Record<SkillLevel, string> = {
+  0: 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500',
+  1: 'bg-blue-50 text-blue-500 border border-blue-200',
+  2: 'bg-blue-100 text-blue-700 border border-blue-300',
+  3: 'bg-indigo-200 text-indigo-700 border border-indigo-300',
+  4: 'bg-indigo-400 text-white',
+  5: 'bg-indigo-700 text-white',
+}
+
 const RISK_DOT: Record<'red' | 'orange' | 'yellow', string> = {
   red: 'bg-red-500',
   orange: 'bg-orange-400',
@@ -24,6 +34,7 @@ const RISK_DOT: Record<'red' | 'orange' | 'yellow', string> = {
 }
 
 type Tab = 'matrix' | 'katalog'
+type CatalogSortKey = 'name' | 'avg' | 'coverage'
 
 // ─── Inline editable label ────────────────────────────────────────────────────
 function InlineEdit({ value, onSave, className = '' }: { value: string; onSave: (v: string) => void; className?: string }) {
@@ -58,6 +69,91 @@ function InlineEdit({ value, onSave, className = '' }: { value: string; onSave: 
     </span>
   )
 }
+
+// ─── Coverage Summary ─────────────────────────────────────────────────────────
+
+function CoverageSummary({
+  skills,
+  memberSkills,
+  members,
+  getSkillRisk,
+}: {
+  skills: Skill[]
+  memberSkills: MemberSkill[]
+  members: TeamMember[]
+  getSkillRisk: (id: string) => 'red' | 'orange' | 'yellow' | 'none'
+}) {
+  const { t } = useTranslation()
+  if (skills.length === 0 || members.length === 0) return null
+
+  const red    = skills.filter((sk) => getSkillRisk(sk.id) === 'red').length
+  const orange = skills.filter((sk) => getSkillRisk(sk.id) === 'orange').length
+  const yellow = skills.filter((sk) => getSkillRisk(sk.id) === 'yellow').length
+
+  const totalPairs = skills.length * members.length
+  const ratedPairs = memberSkills.filter((ms) => ms.level > 0 && skills.some((s) => s.id === ms.skillId)).length
+  const coveragePct = totalPairs > 0 ? Math.round((ratedPairs / totalPairs) * 100) : 0
+
+  const ratedLevels = memberSkills.filter((ms) => ms.level > 0 && skills.some((s) => s.id === ms.skillId))
+  const teamAvg = ratedLevels.length > 0
+    ? (ratedLevels.reduce((s, ms) => s + ms.level, 0) / ratedLevels.length).toFixed(1)
+    : null
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 text-sm">
+      <span className="text-slate-500 dark:text-slate-400">
+        <span className="font-semibold text-slate-700 dark:text-slate-200">{skills.length}</span>{' '}
+        {t('competencies.totalSkillsLabel')}
+      </span>
+
+      {(red > 0 || orange > 0 || yellow > 0) && (
+        <span className="flex items-center gap-3 text-xs">
+          {red > 0 && (
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+              <span className="font-semibold text-red-600 dark:text-red-400">{red}</span>
+            </span>
+          )}
+          {orange > 0 && (
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+              <span className="font-semibold text-orange-500 dark:text-orange-400">{orange}</span>
+            </span>
+          )}
+          {yellow > 0 && (
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+              <span className="font-semibold text-amber-500 dark:text-amber-400">{yellow}</span>
+            </span>
+          )}
+          <span className="text-slate-400 dark:text-slate-500">{t('competencies.atRiskLabel')}</span>
+        </span>
+      )}
+
+      <span className="text-slate-500 dark:text-slate-400">
+        {t('competencies.coverageLabel')}{' '}
+        <span className={`font-semibold ${
+          coveragePct >= 70
+            ? 'text-green-600 dark:text-green-400'
+            : coveragePct >= 40
+              ? 'text-amber-600 dark:text-amber-400'
+              : 'text-red-600 dark:text-red-400'
+        }`}>
+          {coveragePct}%
+        </span>
+      </span>
+
+      {teamAvg && (
+        <span className="text-slate-500 dark:text-slate-400">
+          {t('competencies.teamAvgLabel')}{' '}
+          <span className="font-semibold text-indigo-600 dark:text-indigo-400">{teamAvg}</span>
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ─── Main Page Component ──────────────────────────────────────────────────────
 
 export default function CompetencyPage() {
   const { t } = useTranslation()
@@ -116,7 +212,7 @@ export default function CompetencyPage() {
   }
 
   // Build lookup maps
-  const catById = new Map<string, SkillAreaCategory>()
+  const catById  = new Map<string, SkillAreaCategory>()
   const areaById = new Map<string, SkillArea>()
   for (const area of skillAreas) {
     areaById.set(area.id, area)
@@ -125,7 +221,7 @@ export default function CompetencyPage() {
 
   function getCategoryLabel(categoryId: string | null): string {
     if (!categoryId) return t('competencies.noCategoryShort')
-    const cat = catById.get(categoryId)
+    const cat  = catById.get(categoryId)
     const area = cat ? areaById.get(cat.areaId) : undefined
     return cat && area ? `${area.name} · ${cat.name}` : t('competencies.noCategoryShort')
   }
@@ -138,7 +234,6 @@ export default function CompetencyPage() {
     })
     .filter((s) => !filterText.trim() || s.name.toLowerCase().includes(filterText.toLowerCase()))
 
-  // Group: areaId → categoryId → Skill[]  (sorted)
   type Grouped = { area: SkillArea; cats: { cat: SkillAreaCategory; skills: Skill[] }[] }[]
   const grouped: Grouped = []
   for (const area of [...skillAreas].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))) {
@@ -149,8 +244,9 @@ export default function CompetencyPage() {
     }
     if (cats.length > 0) grouped.push({ area, cats })
   }
-  // Uncategorised skills
-  const uncategorised = filteredSkills.filter((s) => !s.categoryId || !catById.has(s.categoryId)).sort((a, b) => a.name.localeCompare(b.name))
+  const uncategorised = filteredSkills
+    .filter((s) => !s.categoryId || !catById.has(s.categoryId))
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   function openAddSkill() {
     setEditSkill(null)
@@ -192,7 +288,7 @@ export default function CompetencyPage() {
   }
 
   return (
-    <div className="h-full flex flex-col p-4 sm:p-6 gap-5">
+    <div className="h-full flex flex-col p-4 sm:p-6 gap-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('competencies.title')}</h1>
@@ -237,7 +333,7 @@ export default function CompetencyPage() {
         </div>
       </div>
       {skillAreas.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 -mt-1">
           {(['Alle', ...skillAreas.map((a) => a.id)] as (string | 'Alle')[]).map((areaId) => {
             const label = areaId === 'Alle' ? t('common.all') : (areaById.get(areaId)?.name ?? areaId)
             return (
@@ -256,6 +352,14 @@ export default function CompetencyPage() {
           })}
         </div>
       )}
+
+      {/* Coverage summary strip */}
+      <CoverageSummary
+        skills={filteredSkills}
+        memberSkills={memberSkills}
+        members={members}
+        getSkillRisk={getSkillRisk}
+      />
 
       <div className="flex-1 min-h-0">
         {tab === 'matrix' ? (
@@ -283,7 +387,7 @@ export default function CompetencyPage() {
         )}
       </div>
 
-      {/* ── Skill Modal ─────────────────────────────────────────────────────── */}
+      {/* ── Skill Modal ──────────────────────────────────────────────────────── */}
       <Modal
         isOpen={showSkillModal}
         onClose={() => setShowSkillModal(false)}
@@ -362,7 +466,7 @@ export default function CompetencyPage() {
         </div>
       </Modal>
 
-      {/* ── Areas Management Modal ──────────────────────────────────────────── */}
+      {/* ── Areas Management Modal ───────────────────────────────────────────── */}
       <Modal
         isOpen={showAreasModal}
         onClose={() => setShowAreasModal(false)}
@@ -489,6 +593,17 @@ interface MatrixTabProps {
 function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, activeCell, setActiveCell, setMemberSkillLevel, popoverRef }: MatrixTabProps) {
   const { t } = useTranslation()
   const [hovered, setHovered] = useState<{ row: string | null; col: string | null }>({ row: null, col: null })
+  const [hiddenMemberIds, setHiddenMemberIds] = useState<Set<string>>(new Set())
+  const [collapsedAreaIds, setCollapsedAreaIds] = useState<Set<string>>(new Set())
+
+  function toggleArea(id: string) {
+    setCollapsedAreaIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
+      return next
+    })
+  }
+
   const hasData = members.length > 0 && (grouped.length > 0 || uncategorised.length > 0)
 
   if (!hasData) {
@@ -501,7 +616,16 @@ function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, ac
     )
   }
 
+  const visibleMembers = members.filter((m) => !hiddenMemberIds.has(m.id))
   const allSkills = [...grouped.flatMap((g) => g.cats.flatMap((c) => c.skills)), ...uncategorised]
+
+  function toggleMember(id: string) {
+    setHiddenMemberIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
+      return next
+    })
+  }
 
   function renderSkillRow(skill: Skill) {
     const risk = getSkillRisk(skill.id)
@@ -522,7 +646,7 @@ function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, ac
             {skill.name}
           </div>
         </td>
-        {members.map((m) => {
+        {visibleMembers.map((m) => {
           const level = getLevel(m.id, skill.id)
           const isActive = activeCell?.memberId === m.id && activeCell?.skillId === skill.id
           const colActive = hovered.col === m.id
@@ -573,90 +697,144 @@ function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, ac
   }
 
   return (
-    <div
-      className="overflow-auto h-full scrollbar-thin rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
-      onMouseLeave={() => setHovered({ row: null, col: null })}
-    >
-      <table className="text-sm min-w-full">
-        <thead>
-          <tr className="bg-slate-50 dark:bg-slate-800">
-            <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide w-52 sticky left-0 top-0 bg-slate-50 dark:bg-slate-800 z-30 border-b border-slate-200 dark:border-slate-700">
-              {t('competencies.skillColumn')}
-            </th>
-            {members.map((m) => {
-              const colActive = hovered.col === m.id
-              return (
-              <th
-                key={m.id}
-                className={`px-3 py-3 text-center text-xs font-medium min-w-[90px] transition-colors sticky top-0 z-20 border-b border-slate-200 dark:border-slate-700 ${colActive ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300' : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
+    <div className="h-full flex flex-col gap-2">
+      {/* Member filter chips */}
+      {members.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-400 dark:text-slate-500 mr-0.5">{t('competencies.filterMembers')}</span>
+          {members.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => toggleMember(m.id)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border transition-all ${
+                hiddenMemberIds.has(m.id)
+                  ? 'opacity-40 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 line-through'
+                  : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 shadow-sm hover:border-indigo-400'
+              }`}
+            >
+              <div
+                className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[8px] font-semibold shrink-0"
+                style={{ backgroundColor: m.avatarColor }}
               >
-                <div className="flex flex-col items-center gap-1">
-                  <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold transition-transform ${colActive ? 'scale-115 ring-2 ring-indigo-400 ring-offset-1' : ''}`}
-                    style={{ backgroundColor: m.avatarColor }}
-                  >
-                    {m.name.split(' ').map((p) => p[0]).join('').substring(0, 2)}
-                  </div>
-                  <span className="truncate max-w-[80px]">{m.name.split(' ')[0]}</span>
-                </div>
-              </th>
-              )
-            })}
-          </tr>
-        </thead>
-        <tbody onMouseLeave={() => setHovered((h) => ({ ...h, row: null }))}>
-          {grouped.map(({ area, cats }) => (
-            <React.Fragment key={`area-${area.id}`}>
-              {/* Area header */}
-              <tr className="bg-indigo-50 dark:bg-indigo-950/30">
-                <td
-                  colSpan={members.length + 1}
-                  className="px-4 py-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest sticky left-0"
-                >
-                  {area.name}
-                </td>
-              </tr>
-              {cats.map(({ cat, skills }) => (
-                <React.Fragment key={`cat-${cat.id}`}>
-                  {/* Category sub-header */}
-                  <tr className="bg-slate-50 dark:bg-slate-800">
-                    <td
-                      colSpan={members.length + 1}
-                      className="pl-8 pr-4 py-1 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider sticky left-0"
+                {m.name.split(' ').map((p) => p[0]).join('').substring(0, 2)}
+              </div>
+              {m.name.split(' ')[0]}
+            </button>
+          ))}
+          {hiddenMemberIds.size > 0 && (
+            <button
+              onClick={() => setHiddenMemberIds(new Set())}
+              className="flex items-center gap-1 px-2 py-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+            >
+              <X className="w-3 h-3" />
+              {t('competencies.showAllMembers')}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Scrollable matrix */}
+      <div
+        className="flex-1 min-h-0 overflow-auto scrollbar-thin rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+        onMouseLeave={() => setHovered({ row: null, col: null })}
+      >
+        {visibleMembers.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-sm text-slate-400 dark:text-slate-500 p-8">
+            {t('competencies.showAllMembers')}
+          </div>
+        ) : (
+          <table className="text-sm min-w-full">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-800">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide w-52 sticky left-0 top-0 bg-slate-50 dark:bg-slate-800 z-30 border-b border-slate-200 dark:border-slate-700">
+                  {t('competencies.skillColumn')}
+                </th>
+                {visibleMembers.map((m) => {
+                  const colActive = hovered.col === m.id
+                  return (
+                    <th
+                      key={m.id}
+                      className={`px-3 py-3 text-center text-xs font-medium min-w-[90px] transition-colors sticky top-0 z-20 border-b border-slate-200 dark:border-slate-700 ${colActive ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300' : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
                     >
-                      {cat.name}
+                      <div className="flex flex-col items-center gap-1">
+                        <div
+                          className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold transition-transform ${colActive ? 'scale-115 ring-2 ring-indigo-400 ring-offset-1' : ''}`}
+                          style={{ backgroundColor: m.avatarColor }}
+                        >
+                          {m.name.split(' ').map((p) => p[0]).join('').substring(0, 2)}
+                        </div>
+                        <span className="truncate max-w-[80px]">{m.name.split(' ')[0]}</span>
+                      </div>
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody onMouseLeave={() => setHovered({ row: null, col: null })}>
+              {grouped.map(({ area, cats }) => {
+                const isCollapsed = collapsedAreaIds.has(area.id)
+                const skillCount = cats.reduce((s, c) => s + c.skills.length, 0)
+                return (
+                <React.Fragment key={`area-${area.id}`}>
+                  <tr
+                    className="bg-indigo-50 dark:bg-indigo-950/30 cursor-pointer select-none group hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors"
+                    onClick={() => toggleArea(area.id)}
+                  >
+                    <td
+                      colSpan={visibleMembers.length + 1}
+                      className="px-3 py-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest sticky left-0 bg-indigo-50 dark:bg-indigo-950/30 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/30 transition-colors"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`} />
+                        {area.name}
+                        <span className="font-normal text-indigo-400 dark:text-indigo-500">({skillCount})</span>
+                      </div>
                     </td>
                   </tr>
-                  {skills.map(renderSkillRow)}
+                  {!isCollapsed && cats.map(({ cat, skills }) => (
+                    <React.Fragment key={`cat-${cat.id}`}>
+                      <tr className="bg-slate-50 dark:bg-slate-800">
+                        <td
+                          colSpan={visibleMembers.length + 1}
+                          className="pl-8 pr-4 py-1 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider sticky left-0"
+                        >
+                          {cat.name}
+                        </td>
+                      </tr>
+                      {skills.map(renderSkillRow)}
+                    </React.Fragment>
+                  ))}
                 </React.Fragment>
-              ))}
-            </React.Fragment>
-          ))}
-          {uncategorised.length > 0 && (
-            <React.Fragment>
-              <tr className="bg-slate-50 dark:bg-slate-800">
-                <td
-                  colSpan={members.length + 1}
-                  className="px-4 py-1.5 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider sticky left-0"
-                >
-                  {t('competencies.uncategorised')}
-                </td>
-              </tr>
-              {uncategorised.map(renderSkillRow)}
-            </React.Fragment>
-          )}
-        </tbody>
-        <MemberTotalsFooter members={members} allSkills={allSkills} getLevel={getLevel} />
-      </table>
-      <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
-        {([0, 1, 2, 3, 4, 5] as SkillLevel[]).map((l) => (
-          <div key={l} className="flex items-center gap-1.5">
-            <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-semibold ${LEVEL_BG[l]}`}>
-              {l === 0 ? '—' : l}
+              )
+              })}
+
+              {uncategorised.length > 0 && (
+                <React.Fragment>
+                  <tr className="bg-slate-50 dark:bg-slate-800">
+                    <td
+                      colSpan={visibleMembers.length + 1}
+                      className="px-4 py-1.5 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider sticky left-0"
+                    >
+                      {t('competencies.uncategorised')}
+                    </td>
+                  </tr>
+                  {uncategorised.map(renderSkillRow)}
+                </React.Fragment>
+              )}
+            </tbody>
+            <MemberTotalsFooter members={visibleMembers} allSkills={allSkills} getLevel={getLevel} />
+          </table>
+        )}
+        <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
+          {([0, 1, 2, 3, 4, 5] as SkillLevel[]).map((l) => (
+            <div key={l} className="flex items-center gap-1.5">
+              <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-semibold ${LEVEL_BG[l]}`}>
+                {l === 0 ? '—' : l}
+              </div>
+              <span>{t(`skillLevel.${l}`)}</span>
             </div>
-            <span>{t(`skillLevel.${l}`)}</span>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -718,8 +896,14 @@ interface CatalogTabProps {
   onDelete: (sk: Skill) => void
 }
 
+const MAX_VISIBLE_DOTS = 9
+
 function CatalogTab({ grouped, uncategorised, memberSkills, members, getSkillRisk, onEdit, onDelete }: CatalogTabProps) {
   const { t } = useTranslation()
+  const [sortKey, setSortKey] = useState<CatalogSortKey>('name')
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [collapsedAreaIds, setCollapsedAreaIds] = useState<Set<string>>(new Set())
+
   const isEmpty = grouped.length === 0 && uncategorised.length === 0
   if (isEmpty) {
     return (
@@ -731,70 +915,257 @@ function CatalogTab({ grouped, uncategorised, memberSkills, members, getSkillRis
     )
   }
 
-  function SkillCard({ sk }: { sk: Skill }) {
-    const levels = memberSkills.filter((ms) => ms.skillId === sk.id && ms.level > 0)
-    const expertCount = levels.filter((ms) => ms.level >= 4).length
-    const avgLevel = levels.length > 0 ? Math.round(levels.reduce((s, ms) => s + ms.level, 0) / levels.length * 10) / 10 : 0
+  function getStats(skillId: string) {
+    const ratings = memberSkills.filter((ms) => ms.skillId === skillId && ms.level > 0)
+    const avgLevel = ratings.length > 0 ? ratings.reduce((s, ms) => s + ms.level, 0) / ratings.length : 0
+    const expertCount = ratings.filter((ms) => ms.level >= 4).length
+    return { ratedCount: ratings.length, avgLevel, expertCount }
+  }
+
+  function sortSkills(skills: Skill[]): Skill[] {
+    return [...skills].sort((a, b) => {
+      if (sortKey === 'name') return a.name.localeCompare(b.name)
+      const sa = getStats(a.id)
+      const sb = getStats(b.id)
+      if (sortKey === 'avg') return sb.avgLevel - sa.avgLevel || a.name.localeCompare(b.name)
+      if (sortKey === 'coverage') return sb.ratedCount - sa.ratedCount || a.name.localeCompare(b.name)
+      return 0
+    })
+  }
+
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
+      return next
+    })
+  }
+
+  function toggleArea(id: string) {
+    setCollapsedAreaIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
+      return next
+    })
+  }
+
+  function SkillRow({ sk }: { sk: Skill }) {
     const risk = getSkillRisk(sk.id)
-    const riskBorder = risk === 'red' ? 'border-l-4 border-l-red-500' : risk === 'orange' ? 'border-l-4 border-l-orange-400' : risk === 'yellow' ? 'border-l-4 border-l-amber-400' : ''
+    const { ratedCount, avgLevel, expertCount } = getStats(sk.id)
+    const isExpanded = expandedIds.has(sk.id)
+
+    const riskBorderColor = risk === 'red'
+      ? 'border-l-red-500'
+      : risk === 'orange'
+        ? 'border-l-orange-400'
+        : risk === 'yellow'
+          ? 'border-l-amber-400'
+          : 'border-l-transparent'
+
+    const memberLevelData = members
+      .map((m) => ({
+        member: m,
+        level: (memberSkills.find((ms) => ms.memberId === m.id && ms.skillId === sk.id)?.level ?? 0) as SkillLevel,
+      }))
+      .sort((a, b) => a.member.name.localeCompare(b.member.name))
+
+    const visibleDots = memberLevelData.slice(0, MAX_VISIBLE_DOTS)
+    const hiddenCount = memberLevelData.length - MAX_VISIBLE_DOTS
+
     return (
-      <div className={`bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 ${riskBorder}`}>
-        <div className="flex items-start justify-between mb-2">
-          <p className="font-semibold text-slate-900 dark:text-slate-100">{sk.name}</p>
-          <div className="flex gap-1 shrink-0 ml-2">
-            <button onClick={() => onEdit(sk)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">
+      <React.Fragment>
+        <div
+          className={`flex items-center gap-3 px-3 py-2.5 border-l-[3px] ${riskBorderColor} hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer group transition-colors`}
+          onClick={() => toggleExpand(sk.id)}
+        >
+          {/* Risk dot – always occupies space */}
+          <span className={`w-2 h-2 rounded-full shrink-0 ${risk !== 'none' ? RISK_DOT[risk] : 'opacity-0'}`} />
+
+          {/* Skill name + description tooltip */}
+          <div className="flex items-center gap-1.5 min-w-0 w-40 shrink-0">
+            <span className="font-medium text-sm text-slate-900 dark:text-slate-100 truncate">{sk.name}</span>
+            {sk.description && (
+              <button onClick={(e) => e.stopPropagation()} title={sk.description} className="shrink-0">
+                <Info className="w-3.5 h-3.5 text-slate-300 hover:text-slate-500 dark:hover:text-slate-400 transition-colors" />
+              </button>
+            )}
+          </div>
+
+          {/* Member level dots */}
+          <div className="flex items-center gap-[3px] flex-1 overflow-hidden">
+            {visibleDots.map(({ member, level }) => (
+              <div
+                key={member.id}
+                className={`w-[22px] h-[22px] rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 select-none ${CATALOG_DOT_BG[level]}`}
+                title={`${member.name}: ${t(`skillLevel.${level}`)}`}
+              >
+                {member.name.split(' ').map((p) => p[0]).join('').substring(0, 2)}
+              </div>
+            ))}
+            {hiddenCount > 0 && (
+              <span className="text-[11px] text-slate-400 dark:text-slate-500 ml-0.5 shrink-0">+{hiddenCount}</span>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="hidden sm:flex items-center gap-3 text-xs shrink-0">
+            <span className="text-slate-400 dark:text-slate-500 tabular-nums w-8 text-right">{ratedCount}/{members.length}</span>
+            {avgLevel > 0 ? (
+              <span className={`font-semibold tabular-nums w-8 text-right ${avgLevel >= 4 ? 'text-indigo-600 dark:text-indigo-400' : avgLevel >= 2 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                Ø {avgLevel.toFixed(1)}
+              </span>
+            ) : (
+              <span className="w-8 text-right" />
+            )}
+            {expertCount > 0 ? (
+              <span className="flex items-center gap-0.5 font-medium text-indigo-500 dark:text-indigo-400 w-8">
+                <Star className="w-3 h-3 shrink-0" /> {expertCount}
+              </span>
+            ) : (
+              <span className="w-8" />
+            )}
+          </div>
+
+          {/* Hover actions */}
+          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(sk) }}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              title={t('competencies.editSkill')}
+            >
               <Edit2 className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => onDelete(sk)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(sk) }}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              title={t('competencies.removeSkill')}
+            >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
-        </div>
-        {sk.description && <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">{sk.description}</p>}
-        <div className="flex gap-4 text-xs text-slate-500 dark:text-slate-400">
-          <span>{t('competencies.membersRated', { rated: levels.length, total: members.length })}</span>
-          {avgLevel > 0 && <span>{t('competencies.avgLevel', { level: avgLevel })}</span>}
-          {expertCount > 0 && <span><span className="font-semibold text-slate-700 dark:text-slate-300">{expertCount}</span> {t('competencies.experts')}</span>}
-        </div>
-      </div>
-    )
-  }
 
-  function CatSection({ catName, skills }: { catName: string; skills: Skill[] }) {
-    return (
-      <div className="space-y-3">
-        <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pl-1">{catName}</h4>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {skills.map((sk) => <SkillCard key={sk.id} sk={sk} />)}
+          {/* Expand chevron */}
+          <ChevronRight className={`w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
         </div>
-      </div>
+
+        {/* Expanded member detail */}
+        {isExpanded && (
+          <div className="px-4 py-3 bg-slate-50/70 dark:bg-slate-800/30 border-l-[3px] border-l-transparent border-t border-slate-100 dark:border-slate-800">
+            {sk.description && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 italic">{sk.description}</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {memberLevelData.map(({ member, level }) => (
+                <div
+                  key={member.id}
+                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs transition-opacity ${
+                    level === 0
+                      ? 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 opacity-40'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                  }`}
+                >
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-semibold shrink-0"
+                    style={{ backgroundColor: member.avatarColor }}
+                  >
+                    {member.name.split(' ').map((p) => p[0]).join('').substring(0, 2)}
+                  </div>
+                  <span className="text-slate-700 dark:text-slate-300">{member.name.split(' ')[0]}</span>
+                  <div className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold ${LEVEL_BG[level]}`}>
+                    {level === 0 ? '—' : level}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </React.Fragment>
     )
   }
 
   return (
-    <div className="h-full overflow-y-auto scrollbar-thin space-y-8 pb-2">
-      {grouped.map(({ area, cats }) => (
-        <div key={area.id} className="space-y-5">
-          <div className="flex items-center gap-3">
-            <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{area.name}</h3>
-            <div className="flex-1 h-px bg-indigo-100 dark:bg-indigo-900/40" />
+    <div className="h-full overflow-y-auto scrollbar-thin pb-4">
+      {/* Sort controls */}
+      <div className="flex items-center gap-1 mb-3 text-xs">
+        <span className="text-slate-400 dark:text-slate-500 mr-1">{t('competencies.sortBy')}</span>
+        {([
+          ['name', t('competencies.sortName')],
+          ['avg', t('competencies.sortAvg')],
+          ['coverage', t('competencies.sortCoverage')],
+        ] as [CatalogSortKey, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setSortKey(key)}
+            className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+              sortKey === key
+                ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
+                : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Grouped areas */}
+      {grouped.map(({ area, cats }) => {
+        const isCollapsed = collapsedAreaIds.has(area.id)
+        const skillCount = cats.reduce((s, c) => s + c.skills.length, 0)
+        return (
+          <div key={area.id} className="mb-5">
+            <button
+              onClick={() => toggleArea(area.id)}
+              className="flex items-center gap-2 w-full mb-1.5 group"
+            >
+              <ChevronRight className={`w-3.5 h-3.5 text-indigo-400 dark:text-indigo-500 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`} />
+              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{area.name}</span>
+              <span className="text-xs text-indigo-400 dark:text-indigo-500 font-normal">({skillCount})</span>
+              <div className="flex-1 h-px bg-indigo-100 dark:bg-indigo-900/40" />
+            </button>
+
+            {!isCollapsed && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                {cats.map(({ cat, skills }, catIdx) => (
+                  <React.Fragment key={cat.id}>
+                    <div className={`flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-800 border-y border-slate-200 dark:border-slate-700 ${catIdx === 0 ? 'border-t-0' : ''}`}>
+                      <span className="w-1 h-4 rounded-full bg-indigo-300 dark:bg-indigo-600 shrink-0" />
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{cat.name}</span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">({skills.length})</span>
+                    </div>
+                    {sortSkills(skills).map((sk) => <SkillRow key={sk.id} sk={sk} />)}
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
           </div>
-          {cats.map(({ cat, skills }) => (
-            <CatSection key={cat.id} catName={cat.name} skills={skills} />
-          ))}
-        </div>
-      ))}
+        )
+      })}
+
+      {/* Uncategorised */}
       {uncategorised.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <h3 className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t('competencies.uncategorised')}</h3>
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t('competencies.uncategorised')}</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">({uncategorised.length})</span>
             <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {uncategorised.map((sk) => <SkillCard key={sk.id} sk={sk} />)}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            {sortSkills(uncategorised).map((sk) => <SkillRow key={sk.id} sk={sk} />)}
           </div>
         </div>
       )}
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3 text-xs text-slate-400 dark:text-slate-500 mt-2">
+        {([0, 1, 2, 3, 4, 5] as SkillLevel[]).map((l) => (
+          <div key={l} className="flex items-center gap-1.5">
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold ${CATALOG_DOT_BG[l]}`}>
+              {l === 0 ? '—' : l}
+            </div>
+            <span>{t(`skillLevel.${l}`)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
