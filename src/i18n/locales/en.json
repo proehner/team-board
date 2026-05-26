@@ -955,6 +955,19 @@
     "unsavedLeave": "Leave page",
     "unsavedStay": "Stay on page"
   },
+  "changePassword": {
+    "title": "Change Password",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm New Password",
+    "submit": "Change Password",
+    "minLengthHint": "At least 6 characters",
+    "errorMinLength": "The new password must be at least 6 characters long.",
+    "errorMismatch": "The passwords do not match.",
+    "errorGeneric": "Error changing password. Please try again.",
+    "successTitle": "Password changed successfully",
+    "successMessage": "Your password has been updated. Use the new password to sign in from now on."
+  },
   "search": {
     "placeholder": "Search…",
     "hint": "Type at least 2 characters",

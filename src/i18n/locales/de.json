@@ -955,6 +955,19 @@
       "deleteConfirm": "Kommentar wirklich löschen?"
     }
   },
+  "changePassword": {
+    "title": "Passwort ändern",
+    "currentPassword": "Aktuelles Passwort",
+    "newPassword": "Neues Passwort",
+    "confirmPassword": "Neues Passwort bestätigen",
+    "submit": "Passwort ändern",
+    "minLengthHint": "Mindestens 6 Zeichen",
+    "errorMinLength": "Das neue Passwort muss mindestens 6 Zeichen lang sein.",
+    "errorMismatch": "Die Passwörter stimmen nicht überein.",
+    "errorGeneric": "Fehler beim Ändern des Passworts. Bitte versuche es erneut.",
+    "successTitle": "Passwort erfolgreich geändert",
+    "successMessage": "Dein Passwort wurde aktualisiert. Verwende ab sofort das neue Passwort zum Anmelden."
+  },
   "search": {
     "placeholder": "Suchen…",
     "hint": "Mindestens 2 Zeichen eingeben",
