@@ -22,21 +22,22 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 | --- | --- |
 | **Dashboard** | Customizable overview tiles – active sprint, open action items, team metrics, custom URLs |
 | **Team** | Member management with roles, avatar upload, and active/inactive status |
-| **Competencies** | Competency matrix and hierarchical skill catalogue (areas → categories → skills) with rating levels 0–5 |
+| **Competencies** | Competency matrix and hierarchical skill catalogue (areas → categories → skills) with rating levels 0–5; separate read / write-own / write permissions for the matrix |
 | **Sprints** | Sprint planning, per-member capacity management, velocity tracking, and sprint detail view |
-| **Rotation** | Assignment and rotation of configurable team responsibilities (e.g. on-call, Scrum Master) with color coding |
+| **Rotation** | Assignment and rotation of configurable team responsibilities (e.g. on-call, Scrum Master) with color coding; list, grouped, and timeline views; automatic archiving of past assignments |
 | **Retrospectives** | Structured retro boards with voting, status tracking, and action item assignment |
 | **Team Health** | Bus factor analysis, workload distribution, and absence simulation |
-| **Pulse Check** | Anonymous satisfaction surveys within the team |
-| **Meetings** | Recurring meeting management with topics, comments, file attachments, and ticket links |
-| **Tickets** | Lightweight ticket tracking with status, priority, multiple assignees, and global/team scoping |
-| **Roadmap** | Feature planning with sub-tickets, API endpoint definitions, UI screens, and per-feature detail views |
+| **Pulse Check** | Anonymous satisfaction surveys within the team (session-based duplicate prevention) |
+| **Meetings** | Recurring meeting management with topics (incl. `Fixed` status), comments, file attachments, and ticket links |
+| **Tickets** | Lightweight ticket tracking with status, priority, categories, multiple assignees, team transfer, archiving, and global/team scoping |
+| **Roadmap** | Feature planning with sub-tickets, API endpoint definitions, UI screens, per-feature detail views, and interactive Gantt chart |
 | **Known Errors** | Error database with severity, solutions, workarounds, comments, and file attachments |
 | **Software** | Registry for tracking vendor software versions used by the team |
 | **Stakeholder** | Sprint progress and goal achievement overview for external communication |
 | **Azure Rankings** | Gamified developer ranking based on Azure DevOps metrics |
 | **Global Search** | Cross-module search across members, skills, tickets, topics, errors, and roadmap features |
 | **Multi-Team** | Full tenant isolation – each team has its own members, sprints, assignments, and settings |
+| **Permission Groups** | Role-based access control with named groups; per-page permissions (`none` / `read` / `write-own` / `write`); union model – users may belong to multiple groups |
 | **Dark / Light Mode** | Toggleable via the sidebar button, persisted across sessions |
 
 ---
@@ -145,12 +146,35 @@ Also update `APP_BASE_PATH` in `web.config` to match.
 
 ## 5. User Login & Roles
 
-The application uses JWT-based authentication.
+The application uses JWT-based authentication. Every user session is valid for 8 hours; re-login is required afterwards.
 
 | Role | Permissions |
 | --- | --- |
-| `admin` | Full access to all areas including user management |
-| `user` | Access to permitted pages (configurable per user in Admin → User Management) |
+| `admin` | Full access to all areas including user management; bypasses all page-level permission checks |
+| `user` | Access controlled via **Permission Groups** (see below) |
+
+### Permission Groups
+
+Users are assigned to one or more named **Permission Groups**. Each group stores a permission level per page:
+
+| Level | Meaning |
+| --- | --- |
+| `write` | Full read and write access |
+| `write-own` | Write access limited to the user's own data (currently: Competency Matrix → own skill levels only) |
+| `read` | Read-only; all write operations (POST/PUT/PATCH/DELETE) are blocked with HTTP 403 |
+| `none` | Page is hidden from the sidebar and all API calls return HTTP 403 |
+
+Permissions are resolved by the **union model**: if a user belongs to multiple groups, the highest permission level per page wins. For users without any group assignment, the legacy `forbidden_pages` list is used as a fallback (forbidden = `none`, everything else = `write`).
+
+Groups are managed under **Administration → Permission Groups**. The `isDefault` flag marks groups that are pre-selected when creating new users.
+
+### User–Member Association
+
+Each user account can be linked to a **Team Member** record (`member_id`). This association is required for the `write-own` permission level on the Competency Matrix (the user may only update their own skill ratings).
+
+### Password Management
+
+Every user can change their own password via the **sidebar → user menu → Change Password** dialog. Admins can reset passwords through User Management.
 
 **Default admin after first start:**
 
@@ -159,9 +183,9 @@ Username: admin
 Password: admin
 ```
 
-Change the password immediately after the first login under **Administration → User Management**.
+Change the password immediately after the first login.
 
-Additional users can be created at `/admin` and configured with restricted page access.
+Additional users can be created at `/admin` and configured with permission groups and optional member association.
 
 ---
 
@@ -194,8 +218,13 @@ team-board/
 ├── src/                          # React frontend (TypeScript)
 │   ├── api/                      # API client (fetch wrapper)
 │   ├── components/
-│   │   ├── layout/               # Sidebar, Layout wrapper
-│   │   └── ui/                   # Reusable UI components (Button, Card, Modal, …)
+│   │   ├── layout/               # Sidebar (incl. Change Password), Layout wrapper
+│   │   ├── tickets/              # TicketDetailModal
+│   │   └── ui/                   # Reusable UI components (Button, Card, Modal,
+│   │                             #   ReadOnlyBanner, ChangePasswordDialog, …)
+│   ├── hooks/
+│   │   ├── usePagePermission.ts  # Resolves effective permission for the current page
+│   │   └── useUnsavedChanges.ts  # Navigation guard for forms with unsaved changes
 │   ├── i18n/                     # i18next setup + locale files (en/de)
 │   ├── pages/                    # Page components (one per module)
 │   ├── store/                    # Zustand stores (app, auth, theme)
@@ -204,12 +233,14 @@ team-board/
 ├── server/                       # Express backend (TypeScript)
 │   ├── src/
 │   │   ├── index.ts              # Entry point, middleware, route registration
-│   │   ├── db.ts                 # SQLite initialisation (30 tables)
+│   │   ├── db.ts                 # SQLite initialisation (33 tables) + migrations
 │   │   ├── seed.ts               # Demo data seeding
 │   │   ├── email.ts              # Email notification helpers
 │   │   ├── middleware/
-│   │   │   └── auth.ts           # JWT validation & page access control
+│   │   │   └── auth.ts           # JWT validation, page access control,
+│   │   │                         #   permission group resolution
 │   │   └── routes/               # REST API endpoints (one file per module)
+│   │       └── ticketCategories.ts  # /api/ticket-categories
 │   └── data/
 │       └── teamlead.db           # SQLite database (created automatically)
 ├── docker/                       # Docker deployment

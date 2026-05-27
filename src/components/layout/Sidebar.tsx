@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Star, Zap, RefreshCw, MessageSquare, Shield,
   HeartPulse, Activity, Eye, Trophy, Settings, LogOut, ChevronDown,
   Sun, Moon, Bug, X, ChevronRight, CalendarClock, Map, Search,
-  Ticket,
+  Ticket, KeyRound,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -11,6 +11,7 @@ import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { useStore } from '@/store'
 import i18n from '@/i18n'
+import ChangePasswordDialog from '@/components/ui/ChangePasswordDialog'
 
 interface SidebarProps {
   onClose?: () => void
@@ -30,7 +31,8 @@ export default function Sidebar({ onClose, onOpenSearch }: SidebarProps) {
   const toggle        = useThemeStore((s) => s.toggle)
   const loadAll       = useStore((s) => s.loadAll)
 
-  const [teamMenuOpen, setTeamMenuOpen] = useState(false)
+  const [teamMenuOpen, setTeamMenuOpen]         = useState(false)
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
 
   const currentTeam = teams.find((t) => t.id === currentTeamId)
 
@@ -197,31 +199,42 @@ export default function Sidebar({ onClose, onOpenSearch }: SidebarProps) {
       {/* User + controls */}
       <div className="px-3 py-3 border-t border-slate-800">
         {user && (
-          <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
-            <div className="w-7 h-7 rounded-full bg-indigo-500 flex items-center justify-center text-white text-xs font-semibold shrink-0">
+          <div className="flex items-start gap-2 px-2 py-1.5 mb-1">
+            <div className="w-7 h-7 rounded-full bg-indigo-500 flex items-center justify-center text-white text-xs font-semibold shrink-0 mt-0.5">
               {user.displayName.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-white truncate">{user.displayName}</p>
-              <p className="text-xs text-slate-500 truncate">
-                {user.role === 'admin' ? t('sidebar.administrator') : t('sidebar.user')}
-              </p>
+              <p className="text-xs font-medium text-white truncate leading-tight">{user.displayName}</p>
+              {/* Role label + controls on one line */}
+              <div className="flex items-center justify-between mt-0.5">
+                <p className="text-xs text-slate-500 truncate">
+                  {user.role === 'admin' ? t('sidebar.administrator') : t('sidebar.user')}
+                </p>
+                <div className="flex items-center gap-0.5 shrink-0 ml-1">
+                  <button
+                    onClick={toggle}
+                    title={isDark ? t('sidebar.enableLightMode') : t('sidebar.enableDarkMode')}
+                    className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  >
+                    {isDark ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
+                  </button>
+                  <button
+                    onClick={() => i18n.changeLanguage(i18n.language === 'de' ? 'en' : 'de')}
+                    title={t('sidebar.switchLanguage')}
+                    className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors text-[10px] font-medium leading-none"
+                  >
+                    {i18n.language === 'de' ? 'EN' : 'DE'}
+                  </button>
+                  <button
+                    onClick={() => setChangePasswordOpen(true)}
+                    title={t('changePassword.title')}
+                    className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  >
+                    <KeyRound className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
             </div>
-            {/* Theme + Language as icon buttons */}
-            <button
-              onClick={toggle}
-              title={isDark ? t('sidebar.enableLightMode') : t('sidebar.enableDarkMode')}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-            >
-              {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-            </button>
-            <button
-              onClick={() => i18n.changeLanguage(i18n.language === 'de' ? 'en' : 'de')}
-              title={t('sidebar.switchLanguage')}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs font-medium"
-            >
-              {i18n.language === 'de' ? 'EN' : 'DE'}
-            </button>
           </div>
         )}
         <button
@@ -232,6 +245,11 @@ export default function Sidebar({ onClose, onOpenSearch }: SidebarProps) {
           {t('sidebar.logout')}
         </button>
       </div>
+
+      <ChangePasswordDialog
+        isOpen={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+      />
     </aside>
   )
 }

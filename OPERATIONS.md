@@ -18,8 +18,13 @@ team-board/
 ├── src/                      Frontend (React + TypeScript + Vite)
 │   ├── api/                  API client (fetch wrapper)
 │   ├── components/
-│   │   ├── layout/           Sidebar, Layout wrapper
-│   │   └── ui/               Reusable UI components
+│   │   ├── layout/           Sidebar (incl. Change Password), Layout wrapper
+│   │   ├── tickets/          TicketDetailModal
+│   │   └── ui/               Reusable UI components (incl. ReadOnlyBanner,
+│   │                         ChangePasswordDialog)
+│   ├── hooks/
+│   │   ├── usePagePermission.ts   Resolves effective page permission
+│   │   └── useUnsavedChanges.ts   Navigation guard for unsaved forms
 │   ├── i18n/                 i18next setup + locale files (en/de)
 │   ├── pages/                Page components (one per module)
 │   ├── store/                Zustand stores (app, auth, theme)
@@ -28,12 +33,14 @@ team-board/
 ├── server/
 │   ├── src/
 │   │   ├── index.ts          Server entry point, middleware, route registration
-│   │   ├── db.ts             Database initialisation (30 tables)
+│   │   ├── db.ts             Database initialisation (33 tables) + migrations
 │   │   ├── seed.ts           Demo data seeding
 │   │   ├── email.ts          Email notification helpers
 │   │   ├── middleware/
-│   │   │   └── auth.ts       JWT validation & page access control
+│   │   │   └── auth.ts       JWT validation, page access control,
+│   │   │                     permission group resolution
 │   │   └── routes/           REST API endpoints (one file per module)
+│   │       └── ticketCategories.ts  /api/ticket-categories
 │   └── data/                 SQLite database file (created automatically on first run)
 ├── docker/                   Docker deployment files
 ├── scripts/
@@ -276,34 +283,37 @@ sqlite3 server/data/teamlead.db .schema
 | Table | Description |
 | --- | --- |
 | `teams` | Teams (multi-tenant support) |
-| `users` | Login users with hashed passwords, roles, and page access restrictions |
+| `users` | Login users with hashed passwords, roles, group assignments, and optional member link |
 | `members` | Team members with roles, avatar, and active/inactive status |
-| `skills` | Skill catalogue (global) |
+| `skills` | Skill catalogue (global per team) |
 | `skill_areas` | Hierarchical skill area groupings |
 | `skill_area_categories` | Sub-categories within skill areas |
 | `member_skills` | Competency matrix (member × skill, level 0–5) |
 | `sprints` | Sprints with goal, dates, status, velocity, and capacity metrics |
 | `sprint_capacity` | Per-member capacity per sprint |
-| `assignments` | Rotation assignments with start/end dates |
+| `assignments` | Rotation assignments with start/end dates and archive flag |
 | `responsibility_types` | Configurable rotation types with color coding |
 | `retrospectives` | Retrospective metadata |
 | `retro_items` | Retrospective items (what went well/wrong/improve) with votes, status, assignee |
 | `pulse_checks` | Pulse check survey metadata |
 | `pulse_responses` | Anonymous pulse check ratings |
 | `meetings` | Meeting definitions with recurrence settings |
-| `meeting_topics` | Meeting agenda topics with assignees and status |
+| `meeting_topics` | Meeting agenda topics with assignees and status (`todo` / `in_progress` / `deferred` / `fixed` / `done`) |
 | `topic_comments` | Comments on meeting topics |
 | `topic_attachments` | File attachments on meeting topics |
+| `ticket_categories` | Named categories for tickets with color coding |
+| `tickets` | Tickets with status, priority, category, assignees, team transfer, archive flag, and global/team scope |
 | `topic_ticket_links` | Links between meeting topics and tickets |
-| `tickets` | Tickets with status, priority, assignees, global/team scope |
 | `known_errors` | Error database with severity, solution, and workaround |
 | `known_error_attachments` | File attachments on known errors |
 | `known_error_comments` | Comments on known errors |
-| `roadmap_features` | Roadmap features with status, priority, target version/quarter |
+| `roadmap_features` | Roadmap features with status, priority, target version/quarter, and Gantt start period |
 | `roadmap_tickets` | Sub-tickets within roadmap features |
 | `roadmap_endpoints` | API endpoint definitions per roadmap feature |
 | `roadmap_screens` | UI screen definitions per roadmap feature |
 | `software` | Vendor software versions registry |
+| `permission_groups` | Named permission groups with per-page access levels (`none` / `read` / `write-own` / `write`) |
+| `user_groups` | Many-to-many mapping of users to permission groups |
 | `dashboard_tiles` | Per-user customizable dashboard tiles |
 
 ---
