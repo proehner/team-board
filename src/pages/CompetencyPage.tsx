@@ -93,10 +93,6 @@ function CoverageSummary({
   const orange = skills.filter((sk) => getSkillRisk(sk.id) === 'orange').length
   const yellow = skills.filter((sk) => getSkillRisk(sk.id) === 'yellow').length
 
-  const totalPairs = skills.length * members.length
-  const ratedPairs = memberSkills.filter((ms) => ms.level > 0 && skills.some((s) => s.id === ms.skillId)).length
-  const coveragePct = totalPairs > 0 ? Math.round((ratedPairs / totalPairs) * 100) : 0
-
   const ratedLevels = memberSkills.filter((ms) => ms.level > 0 && skills.some((s) => s.id === ms.skillId))
   const teamAvg = ratedLevels.length > 0
     ? (ratedLevels.reduce((s, ms) => s + ms.level, 0) / ratedLevels.length).toFixed(1)
@@ -133,19 +129,6 @@ function CoverageSummary({
         </span>
       )}
 
-      <span className="text-slate-500 dark:text-slate-400">
-        {t('competencies.coverageLabel')}{' '}
-        <span className={`font-semibold ${
-          coveragePct >= 70
-            ? 'text-green-600 dark:text-green-400'
-            : coveragePct >= 40
-              ? 'text-amber-600 dark:text-amber-400'
-              : 'text-red-600 dark:text-red-400'
-        }`}>
-          {coveragePct}%
-        </span>
-      </span>
-
       {teamAvg && (
         <span className="text-slate-500 dark:text-slate-400">
           {t('competencies.teamAvgLabel')}{' '}
@@ -162,8 +145,9 @@ export default function CompetencyPage() {
   const { t } = useTranslation()
   const { canWrite, isReadOnly } = usePagePermission('kompetenzen')
   const { canWrite: canWriteMatrix, canWriteOwn: canWriteOwnMatrix } = usePagePermission('kompetenzen-matrix')
+  const { isAllowed: canSeeMatrixFooter } = usePagePermission('kompetenzen-matrix-footer')
   const currentMemberId = useAuthStore((s) => s.user?.memberId)
-  const members        = useStore((s) => s.members).filter((m) => m.isActive)
+  const members        = useStore((s) => s.members).filter((m) => m.isActive).sort((a, b) => a.name.localeCompare(b.name))
   const skills         = useStore((s) => s.skills)
   const memberSkills   = useStore((s) => s.memberSkills)
   const skillAreas     = useStore((s) => s.skillAreas)
@@ -392,6 +376,7 @@ export default function CompetencyPage() {
             canWrite={canWriteMatrix}
             canWriteOwn={canWriteOwnMatrix}
             currentMemberId={currentMemberId}
+            canSeeFooter={canSeeMatrixFooter}
           />
         ) : (
           <CatalogTab
@@ -612,9 +597,10 @@ interface MatrixTabProps {
   canWrite: boolean
   canWriteOwn: boolean
   currentMemberId: string | undefined
+  canSeeFooter: boolean
 }
 
-function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, activeCell, setActiveCell, setMemberSkillLevel, popoverRef, canWrite, canWriteOwn, currentMemberId }: MatrixTabProps) {
+function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, activeCell, setActiveCell, setMemberSkillLevel, popoverRef, canWrite, canWriteOwn, currentMemberId, canSeeFooter }: MatrixTabProps) {
   const { t } = useTranslation()
   const [hovered, setHovered] = useState<{ row: string | null; col: string | null }>({ row: null, col: null })
   const [hiddenMemberIds, setHiddenMemberIds] = useState<Set<string>>(new Set())
@@ -848,7 +834,7 @@ function MatrixTab({ members, grouped, uncategorised, getLevel, getSkillRisk, ac
                 </React.Fragment>
               )}
             </tbody>
-            <MemberTotalsFooter members={visibleMembers} allSkills={allSkills} getLevel={getLevel} />
+            {canSeeFooter && <MemberTotalsFooter members={visibleMembers} allSkills={allSkills} getLevel={getLevel} />}
           </table>
         )}
         <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
@@ -872,6 +858,7 @@ function MemberTotalsFooter({ members, allSkills, getLevel }: { members: TeamMem
   const { t } = useTranslation()
   if (allSkills.length === 0 || members.length === 0) return null
   const totals = members.map((m) => allSkills.reduce((sum, sk) => sum + getLevel(m.id, sk.id), 0))
+  const counts = members.map((m) => allSkills.filter((sk) => getLevel(m.id, sk.id) > 0).length)
   const teamAvg = totals.reduce((s, v) => s + v, 0) / members.length
   const teamMax = Math.max(...totals, 1)
   const avgMarkerPct = (teamAvg / teamMax) * 100
@@ -883,6 +870,7 @@ function MemberTotalsFooter({ members, allSkills, getLevel }: { members: TeamMem
         </td>
         {members.map((m, i) => {
           const total = totals[i]
+          const count = counts[i]
           const deviation = total - teamAvg
           const relDev = teamAvg > 0 ? deviation / teamAvg : 0
           const pct = (total / teamMax) * 100
@@ -892,8 +880,9 @@ function MemberTotalsFooter({ members, allSkills, getLevel }: { members: TeamMem
           const deviationLabel = deviation >= 0 ? `+${Math.round(deviation)}` : `${Math.round(deviation)}`
           return (
             <td key={m.id} className="px-2 py-3 text-center min-w-[90px]">
-              <div className="flex flex-col items-center gap-1" title={`${total} Pkt. · ${deviationLabel} vs. Ø`}>
+              <div className="flex flex-col items-center gap-1" title={`${total} Pkt. · ${deviationLabel} vs. Ø · ${count}/${allSkills.length} bewertet`}>
                 <span className={`text-sm font-bold ${textColor}`}>{total}</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 tabular-nums leading-none">{count}/{allSkills.length}</span>
                 <div className="relative w-14 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div className={`absolute inset-y-0 left-0 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
                   {members.length > 1 && (
