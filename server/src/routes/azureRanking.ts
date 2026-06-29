@@ -5,9 +5,11 @@ import fs from 'fs'
 
 const router = Router()
 
-const DATA_DIR   = path.join(__dirname, '..', '..', 'data')
-const CONFIG_FILE = path.join(DATA_DIR, 'azure-ranking.config.json')
-const CACHE_FILE  = path.join(DATA_DIR, 'azure-ranking.cache.json')
+const DATA_DIR    = path.join(__dirname, '..', '..', 'data')
+const CONFIG_FILE  = path.join(DATA_DIR, 'azure-ranking.config.json')
+const CACHE_FILE   = path.join(DATA_DIR, 'azure-ranking.cache.json')
+const HISTORY_FILE = path.join(DATA_DIR, 'azure-ranking.history.json')
+const MAX_SNAPSHOTS = 200
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -73,6 +75,20 @@ interface CacheData {
   periods: Record<number, PeriodData>
 }
 
+interface HistoryDevPoint {
+  displayName: string
+  periods: Partial<Record<number, { points: number; rank: number }>>
+}
+
+interface HistorySnapshot {
+  loadedAt: string
+  devStats: Record<string, HistoryDevPoint>
+}
+
+interface HistoryStore {
+  snapshots: HistorySnapshot[]
+}
+
 interface CacheState {
   loading:    boolean
   lastLoaded: string | null
@@ -128,6 +144,31 @@ function tryRestoreCache() {
 
 // Attempt immediately on server start
 tryRestoreCache()
+
+// ─── History Store ────────────────────────────────────────────────────────────
+
+let historyStore: HistoryStore = { snapshots: [] }
+
+function loadHistory() {
+  if (!fs.existsSync(HISTORY_FILE)) return
+  try {
+    const saved = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')) as HistoryStore
+    historyStore = saved
+    console.log(`📜 Azure ranking history loaded (${historyStore.snapshots.length} snapshots)`)
+  } catch (e: unknown) {
+    console.warn('Azure ranking history could not be read:', (e as Error).message)
+  }
+}
+
+function persistHistory() {
+  try {
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(historyStore))
+  } catch (e: unknown) {
+    console.warn('Azure ranking history could not be saved:', (e as Error).message)
+  }
+}
+
+loadHistory()
 
 function persistCache() {
   try {
@@ -298,7 +339,7 @@ const SCORING = {
   prApproved:        15,
   prRejected:         8,
   commit:             2,
-  workItemCompleted: 12,
+  workItemCompleted:  8,
   ticketCreated:      8,
   ticketComment:      3,
 }
@@ -343,12 +384,53 @@ const BADGES: BadgeDef[] = [
   { id: 'all_rounder',    name: 'All-Rounder',       icon: '🌟', desc: 'Active in all categories',    cond: (s) => s.prsCreated > 0 && s.commits > 0 && s.workItemsCompleted > 0 && s.commentsGiven > 0 },
 ]
 
-function getLevel(points: number): Level {
-  if (points >= 10000) return { name: 'Diamond', icon: '💎', color: '#00BFFF', min: 10000, next: null }
-  if (points >= 5000)  return { name: 'Platinum', icon: '🏆', color: '#E5E4E2', min: 5000,  next: 10000 }
-  if (points >= 2500)  return { name: 'Gold',    icon: '🥇', color: '#FFD700', min: 2500,  next: 5000 }
-  if (points >= 1000)  return { name: 'Silver',  icon: '🥈', color: '#C0C0C0', min: 1000,  next: 2500 }
-  return                      { name: 'Bronze',  icon: '🥉', color: '#CD7F32', min: 0,     next: 1000 }
+// Level thresholds per time period [Diamond, Platinum, Gold, Silver, Bronze]
+// Calibrated so that a top developer (~1000 pts/week, ~38000 pts/year) reaches
+// Platinum in the 7-day view and just enters Diamond in the 365-day view.
+const PERIOD_THRESHOLDS: Record<number, readonly [number, number, number, number, number]> = {
+  7:   [1300,  700,  300,  100,  0],
+  30:  [5500,  3000, 1400, 500,  0],
+  90:  [12000, 6000, 3000, 1100, 0],
+  365: [35000, 18000, 9000, 3500, 0],
+}
+
+const LEVEL_DEFS = [
+  { name: 'Diamond', icon: '💎', color: '#00BFFF' },
+  { name: 'Platinum', icon: '🏆', color: '#E5E4E2' },
+  { name: 'Gold',     icon: '🥇', color: '#FFD700' },
+  { name: 'Silver',   icon: '🥈', color: '#C0C0C0' },
+  { name: 'Bronze',   icon: '🥉', color: '#CD7F32' },
+] as const
+
+function getLevel(points: number, days = 365): Level {
+  const thr = PERIOD_THRESHOLDS[days] ?? PERIOD_THRESHOLDS[365]
+  for (let i = 0; i < LEVEL_DEFS.length; i++) {
+    if (points >= thr[i]) {
+      return {
+        name:  LEVEL_DEFS[i].name,
+        icon:  LEVEL_DEFS[i].icon,
+        color: LEVEL_DEFS[i].color,
+        min:   thr[i],
+        next:  i > 0 ? thr[i - 1] : null,
+      }
+    }
+  }
+  return { name: 'Bronze', icon: '🥉', color: '#CD7F32', min: 0, next: thr[3] }
+}
+
+function buildLevelsForPeriod(days: number): PeriodData['levels'] {
+  const thr = PERIOD_THRESHOLDS[days] ?? PERIOD_THRESHOLDS[365]
+  // ascending order: Bronze first, Diamond last
+  return [...LEVEL_DEFS].reverse().map((def, i) => {
+    const idx = LEVEL_DEFS.length - 1 - i
+    return {
+      name:  def.name,
+      icon:  def.icon,
+      color: def.color,
+      min:   thr[idx],
+      max:   idx > 0 ? thr[idx - 1] - 1 : null,
+    }
+  })
 }
 
 // ─── Developer Tracker ────────────────────────────────────────────────────────
@@ -454,7 +536,7 @@ function aggregateForPeriod(rawDevs: RawDev[], fromTs: number, days: number): Pe
       return {
         ...d, points,
         badges: BADGES.filter((b) => b.cond(d)).map(({ id, name, icon, desc }) => ({ id, name, icon, desc })),
-        level:  getLevel(points),
+        level:  getLevel(points, days),
         rank:   0,
       }
     })
@@ -480,13 +562,7 @@ function aggregateForPeriod(rawDevs: RawDev[], fromTs: number, days: number): Pe
     toDate:   new Date().toISOString(),
     days,
     scoring: SCORING,
-    levels: [
-      { name: 'Bronze',   icon: '🥉', color: '#CD7F32', min: 0,    max: 499  },
-      { name: 'Silver',   icon: '🥈', color: '#C0C0C0', min: 500,  max: 999  },
-      { name: 'Gold',     icon: '🥇', color: '#FFD700', min: 1000, max: 2499 },
-      { name: 'Platinum', icon: '🏆', color: '#E5E4E2', min: 2500, max: 4999 },
-      { name: 'Diamond',  icon: '💎', color: '#00BFFF', min: 5000, max: null },
-    ],
+    levels: buildLevelsForPeriod(days),
   }
 }
 
@@ -644,6 +720,23 @@ async function loadDataFromAzure() {
     cacheState.lastLoaded = new Date().toISOString()
     persistCache()
 
+    // Save history snapshot
+    const snapshot: HistorySnapshot = { loadedAt: cacheState.lastLoaded!, devStats: {} }
+    for (const [p, periodData] of Object.entries(periods)) {
+      for (const dev of periodData.developers) {
+        if (!snapshot.devStats[dev.id]) {
+          snapshot.devStats[dev.id] = { displayName: dev.displayName, periods: {} }
+        }
+        snapshot.devStats[dev.id].periods[Number(p)] = { points: dev.points, rank: dev.rank }
+      }
+    }
+    historyStore.snapshots.push(snapshot)
+    if (historyStore.snapshots.length > MAX_SNAPSHOTS) {
+      historyStore.snapshots = historyStore.snapshots.slice(-MAX_SNAPSHOTS)
+    }
+    persistHistory()
+    console.log(`📜 History snapshot saved (${historyStore.snapshots.length} total)`)
+
     console.log(`✅ Azure ranking cache updated – as of: ${new Date(cacheState.lastLoaded).toLocaleString('en-US')}\n`)
     setProgress('done', 'Done')
 
@@ -704,6 +797,20 @@ router.post('/cache/refresh', (req, res) => {
   res.json({ started: true, message: 'Data load started.' })
 })
 
+router.get('/dev-history', (req, res) => {
+  const devId = String(req.query.devId || '')
+  if (!devId) return res.status(400).json({ error: 'devId is required' })
+
+  const snapshots = historyStore.snapshots
+    .filter((s) => s.devStats[devId])
+    .map((s) => ({
+      loadedAt: s.loadedAt,
+      periods:  s.devStats[devId].periods,
+    }))
+
+  res.json({ snapshots })
+})
+
 router.get('/stats', (req, res) => {
   tryRestoreCache()
   if (!cacheState.data?.periods) {
@@ -723,7 +830,18 @@ router.get('/stats', (req, res) => {
   const data         = cacheState.data.periods[period]
 
   if (!data) return res.status(400).json({ error: `Period ${days} not in cache.` })
-  res.json(data)
+
+  // Always recompute levels from current thresholds so threshold changes
+  // take effect immediately without requiring a full Azure data reload.
+  const response: PeriodData = {
+    ...data,
+    levels: buildLevelsForPeriod(period),
+    developers: data.developers.map((dev) => ({
+      ...dev,
+      level: getLevel(dev.points, period),
+    })),
+  }
+  res.json(response)
 })
 
 export default router

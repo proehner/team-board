@@ -500,7 +500,16 @@
     "statTicketComments": "Ticket-Komm.",
     "serverUnreachable": "Server nicht erreichbar: ",
     "noConfigHint": "Keine Azure DevOps-Konfiguration vorhanden. Bitte richte die Verbindung ein, um Daten zu laden.",
-    "configure": "Konfigurieren"
+    "configure": "Konfigurieren",
+    "devHistory": "Verlauf",
+    "historyLoading": "Verlauf wird geladen…",
+    "historyNoData": "Noch keine Verlaufsdaten – erst nach der nächsten Aktualisierung sichtbar.",
+    "historySnapshots": "Aktualisierungen",
+    "historyOnlyOne": "Noch eine weitere Aktualisierung genügt, um Verbesserungen zu sehen.",
+    "historyNoPeriodData": "Keine Daten für diesen Zeitraum.",
+    "combined": "⚡ Kombiniert",
+    "combinedScore": "Kombi-Score",
+    "selectMetrics": "Metriken für kombinierten Score auswählen:"
   },
   "admin": {
     "pageTitle": "Administration",
