@@ -4,6 +4,10 @@ import type { AppUser, PagePermission, Team } from '@/types'
 const TOKEN_KEY   = 'teamlead_token'
 const TEAM_ID_KEY = 'teamlead_team_id'
 
+// Must mirror NON_BYPASSABLE_SUBS in server/src/middleware/auth.ts.
+// These permissions are checked directly in pagePermissions — never auto-granted to admins.
+const ADMIN_NON_BYPASS_KEYS = new Set(['azure-ranking-refresh'])
+
 interface AuthState {
   user:             AppUser | null
   token:            string | null
@@ -43,7 +47,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   pagePermission(page): PagePermission {
     const { user } = get()
     if (!user) return 'none'
-    if (user.role === 'admin') return 'write'
+    // Non-bypassable sub-permissions are always read from the JWT, even for admins.
+    if (user.role === 'admin' && !ADMIN_NON_BYPASS_KEYS.has(page)) return 'write'
+    // If the key is absent from pagePermissions (old JWT), fall back to 'write' (backward compat).
     return user.pagePermissions?.[page] ?? 'write'
   },
 

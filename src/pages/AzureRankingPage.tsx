@@ -556,7 +556,8 @@ function SetupModal({ onClose, showCancel, onSaved }: { onClose: () => void; sho
 
 export default function AzureRankingPage() {
   const { t } = useTranslation()
-  const { canWrite, isReadOnly } = usePagePermission('azure-ranking')
+  const { canWrite, isReadOnly }  = usePagePermission('azure-ranking')
+  const { isAllowed: canRefresh } = usePagePermission('azure-ranking-refresh')
 
   const [days, setDays]               = useState<number>(30)
   const [category, setCategory]       = useState<CategoryKey>('points')
@@ -752,7 +753,7 @@ export default function AzureRankingPage() {
           </div>
 
           {/* Load button */}
-          {canWrite && (
+          {canWrite && canRefresh && (
             <button onClick={triggerLoad} disabled={cacheStatus?.loading} style={{
               background: 'var(--az-green)', color: 'var(--az-green-on)', border: 'none', borderRadius: 8,
               padding: '.4rem .9rem', fontSize: '.88rem', fontWeight: 600, cursor: cacheStatus?.loading ? 'not-allowed' : 'pointer',

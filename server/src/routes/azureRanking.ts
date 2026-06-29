@@ -788,6 +788,13 @@ router.get('/cache/status', (_req, res) => {
 })
 
 router.post('/cache/refresh', (req, res) => {
+  // Check azure-ranking-refresh sub-permission for every user, including admins.
+  // requirePageAccess bypasses admins, so we enforce this sub-permission here explicitly.
+  const refreshPerm = req.user?.pagePermissions?.['azure-ranking-refresh'] ?? 'write'
+  if (refreshPerm === 'none') {
+    return res.status(403).json({ error: 'No permission to refresh data.' })
+  }
+
   if (!config.organization || !config.project || !config.pat)
     return res.status(400).json({ error: 'Not configured.' })
   if (cacheState.loading)

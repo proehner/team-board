@@ -539,6 +539,7 @@
       "memberCount": "{{count}} member(s)",
       "matrixPermLabel": "↳ Competency Matrix",
       "footerPermLabel": "↳ Matrix Footer (Statistics)",
+      "azureRankingRefreshLabel": "↳ Refresh Data",
       "perm": {
         "write": "Write",
         "writeHint": "full access",
