@@ -986,6 +986,7 @@
     "navigate": "Navigieren",
     "open": "Öffnen",
     "close": "Schließen",
+    "archived": "Erledigt",
     "type": {
       "member": "Mitglied",
       "knownError": "Known Error",
