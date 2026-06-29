@@ -24,6 +24,7 @@ export const ALL_PAGE_KEYS = [
   'team',
   'kompetenzen',
   'kompetenzen-matrix',
+  'kompetenzen-matrix-footer',
   'sprints',
   'rotation',
   'retro',
@@ -114,11 +115,18 @@ export function computePagePermissions(
     try { perms = JSON.parse(row.permissions) } catch { /* skip malformed */ }
 
     for (const page of ALL_PAGE_KEYS) {
-      // Groups created before kompetenzen-matrix was introduced lack that key;
-      // inherit from kompetenzen so existing write-access isn't silently lost.
-      const storedPerm = page === 'kompetenzen-matrix' && !(page in perms)
-        ? (perms['kompetenzen'] ?? 'none')
-        : (perms[page] ?? 'none')
+      let storedPerm: string
+      if (page === 'kompetenzen-matrix' && !(page in perms)) {
+        // Groups created before kompetenzen-matrix was introduced lack that key;
+        // inherit from kompetenzen so existing write-access isn't silently lost.
+        storedPerm = perms['kompetenzen'] ?? 'none'
+      } else if (page === 'kompetenzen-matrix-footer' && !(page in perms)) {
+        // Groups created before kompetenzen-matrix-footer was introduced lack that key;
+        // default to 'read' so existing groups keep showing the footer.
+        storedPerm = 'read'
+      } else {
+        storedPerm = perms[page] ?? 'none'
+      }
       const groupPerm = storedPerm as PagePermission
       if (PERM_RANK[groupPerm] > PERM_RANK[result[page]]) {
         result[page] = groupPerm

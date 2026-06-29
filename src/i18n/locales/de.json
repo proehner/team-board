@@ -529,6 +529,7 @@
       "permissions": "Berechtigungen pro Seite",
       "memberCount": "{{count}} Mitglied(er)",
       "matrixPermLabel": "↳ Kompetenzmatrix",
+      "footerPermLabel": "↳ Matrix-Footer (Auswertung)",
       "perm": {
         "write": "Schreiben",
         "writeHint": "Vollzugriff",

@@ -202,10 +202,13 @@ function groupToPublic(g: GroupRow) {
   let permissions: Record<string, string> = {}
   try { permissions = JSON.parse(g.permissions) } catch { /* use empty */ }
 
-  // Ensure all pages are represented; 'none' on kompetenzen-matrix is not a valid UI choice
+  // Ensure all pages are represented.
+  // Sub-permissions (kompetenzen-matrix, kompetenzen-matrix-footer) default to 'read'.
+  const SUB_READ_DEFAULTS = new Set(['kompetenzen-matrix', 'kompetenzen-matrix-footer'])
   for (const page of ALL_PAGE_KEYS) {
-    if (!(page in permissions)) permissions[page] = 'write'
+    if (!(page in permissions)) permissions[page] = SUB_READ_DEFAULTS.has(page) ? 'read' : 'write'
   }
+  // 'none' is not a valid UI choice for kompetenzen-matrix (block via parent page instead).
   if (permissions['kompetenzen-matrix'] === 'none') permissions['kompetenzen-matrix'] = 'read'
 
   const memberCount = dbGet<{ n: number }>(

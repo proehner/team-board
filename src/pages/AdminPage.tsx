@@ -12,11 +12,12 @@ import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
 
 // ─── Page keys + labels (same order as sidebar) ───────────────────────────────
-const ALL_PAGES: { key: string; labelKey: string; hasWriteOwn?: boolean }[] = [
+const ALL_PAGES: { key: string; labelKey: string; hasWriteOwn?: boolean; isSubReadOnly?: boolean }[] = [
   { key: 'dashboard',          labelKey: 'nav.dashboard' },
   { key: 'team',               labelKey: 'nav.team' },
   { key: 'kompetenzen',        labelKey: 'nav.competencies' },
-  { key: 'kompetenzen-matrix', labelKey: 'admin.groups.matrixPermLabel', hasWriteOwn: true },
+  { key: 'kompetenzen-matrix',        labelKey: 'admin.groups.matrixPermLabel',  hasWriteOwn: true },
+  { key: 'kompetenzen-matrix-footer', labelKey: 'admin.groups.footerPermLabel',  isSubReadOnly: true },
   { key: 'sprints',            labelKey: 'nav.sprints' },
   { key: 'rotation',      labelKey: 'nav.rotation' },
   { key: 'retro',         labelKey: 'nav.retrospectives' },
@@ -41,6 +42,13 @@ const PERM_OPTIONS: { value: PagePermission; icon: React.ReactNode; className: s
 const PERM_OPTIONS_STANDARD = PERM_OPTIONS.filter((o) => o.value !== 'write-own')
 // Matrix options: write-own included, but 'none' excluded (use parent page 'none' to block entirely)
 const PERM_OPTIONS_MATRIX = PERM_OPTIONS.filter((o) => o.value !== 'none')
+// Sub-read-only options: only read/none (visibility toggle, no write semantics)
+const PERM_OPTIONS_READONLY = PERM_OPTIONS.filter((o) => o.value === 'read' || o.value === 'none')
+
+/** Returns the default PagePermission for a page entry (used when the group has no explicit value). */
+function defaultPermFor(page: { isSubReadOnly?: boolean }): PagePermission {
+  return page.isSubReadOnly ? 'read' : 'write'
+}
 
 // ─── Form state types ──────────────────────────────────────────────────────────
 interface UserFormState {
@@ -65,7 +73,7 @@ interface GroupFormState {
 }
 const emptyGroupForm = (): GroupFormState => ({
   name: '', description: '',
-  permissions: Object.fromEntries(ALL_PAGES.map((p) => [p.key, 'write' as PagePermission])),
+  permissions: Object.fromEntries(ALL_PAGES.map((p) => [p.key, defaultPermFor(p)])),
   isDefault: false,
 })
 
@@ -231,7 +239,7 @@ export default function AdminPage() {
     setEditGroup(g)
     setGroupForm({
       name: g.name, description: g.description,
-      permissions: { ...Object.fromEntries(ALL_PAGES.map((p) => [p.key, 'write' as PagePermission])), ...g.permissions },
+      permissions: { ...Object.fromEntries(ALL_PAGES.map((p) => [p.key, defaultPermFor(p)])), ...g.permissions },
       isDefault: g.isDefault,
     })
     setGroupFormError(''); setGroupModal(true)
@@ -563,8 +571,9 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {ALL_PAGES.map(({ key, labelKey }) => {
-                  const perm = (g.permissions[key] ?? 'write') as PagePermission
+                {ALL_PAGES.map((pageEntry) => {
+                  const { key, labelKey } = pageEntry
+                  const perm = (g.permissions[key] ?? defaultPermFor(pageEntry)) as PagePermission
                   return (
                     <div key={key} className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-1.5">
                       <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{t(labelKey)}</span>
@@ -814,7 +823,7 @@ export default function AdminPage() {
                 ))}
               </div>
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {ALL_PAGES.map(({ key, labelKey, hasWriteOwn }) => {
+                {ALL_PAGES.map(({ key, labelKey, hasWriteOwn, isSubReadOnly }) => {
                   if (hasWriteOwn) {
                     // Render the matrix row with write/write-own/read (no 'none' — block via parent page)
                     return (
@@ -822,6 +831,31 @@ export default function AdminPage() {
                         <span className="text-sm text-slate-500 dark:text-slate-400">{t(labelKey)}</span>
                         <div className="flex items-center gap-1.5">
                           {PERM_OPTIONS_MATRIX.map(({ value, icon, className }) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => setGroupPerm(key, value)}
+                              title={t(`admin.groups.perm.${value}Hint`)}
+                              className={`inline-flex items-center gap-1 px-2.5 h-7 rounded-lg border text-xs font-medium transition-all ${
+                                groupForm.permissions[key] === value
+                                  ? className
+                                  : 'bg-white dark:bg-slate-900 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                              }`}
+                            >
+                              {icon} {t(`admin.groups.perm.${value}`)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  }
+                  if (isSubReadOnly) {
+                    // Render as indented sub-row with read/none only (pure visibility toggle)
+                    return (
+                      <div key={key} className="flex items-center justify-between px-4 py-2.5 pl-8 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <span className="text-sm text-slate-500 dark:text-slate-400">{t(labelKey)}</span>
+                        <div className="flex items-center gap-1.5">
+                          {PERM_OPTIONS_READONLY.map(({ value, icon, className }) => (
                             <button
                               key={value}
                               type="button"
