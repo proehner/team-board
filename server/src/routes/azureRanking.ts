@@ -43,10 +43,9 @@ interface DevStats {
   prsCompleted:       number
   commentsGiven:      number
   approvalsGiven:     number
-  rejectionsGiven:    number
-  commits:            number
   workItemsCompleted: number
   ticketsCreated:     number
+  tasksCreated:       number
   ticketComments:     number
   points:             number
   badges:             Badge[]
@@ -58,10 +57,10 @@ interface PeriodData {
   developers:  DevStats[]
   totals: {
     prs:            number
-    commits:        number
     workItems:      number
     comments:       number
     ticketsCreated: number
+    tasksCreated:   number
     ticketComments: number
   }
   fromDate: string
@@ -243,18 +242,6 @@ async function getPRThreads(repoId: string, prId: number) {
   return data.value || []
 }
 
-async function getCommits(repoId: string, fromTs: number) {
-  const dateStr = new Date(fromTs).toISOString().split('T')[0]
-  const url = `${BASE()}/_apis/git/repositories/${repoId}/commits` +
-    `?searchCriteria.fromDate=${dateStr}&$top=10000&api-version=7.0`
-  try {
-    const data = await azGet<{ value: unknown[] }>(url)
-    return data.value || []
-  } catch {
-    return []
-  }
-}
-
 async function getClosedWorkItems(fromTs: number) {
   const dateStr = new Date(fromTs).toISOString().split('T')[0]
   const query =
@@ -294,7 +281,7 @@ async function getCreatedWorkItems(fromTs: number) {
     let all: unknown[] = []
     for (let i = 0; i < ids.length; i += 200) {
       const batch  = ids.slice(i, i + 200).join(',')
-      const fields = 'System.Id,System.CreatedBy,System.CreatedDate'
+      const fields = 'System.Id,System.CreatedBy,System.CreatedDate,System.WorkItemType'
       const data   = await azGet<{ value: unknown[] }>(`${BASE()}/_apis/wit/workitems?ids=${batch}&fields=${fields}&api-version=7.0`)
       all = all.concat(data.value || [])
     }
@@ -334,13 +321,12 @@ async function getWorkItemComments(wiId: number) {
 
 const SCORING = {
   prCreated:         10,
-  prCompleted:       25,
+  prCompleted:       20,
   prComment:          5,
   prApproved:        15,
-  prRejected:         8,
-  commit:             2,
   workItemCompleted:  8,
-  ticketCreated:      8,
+  ticketCreated:      10,
+  taskCreated:        2,
   ticketComment:      3,
 }
 
@@ -357,10 +343,9 @@ interface RawDevStats {
   prsCompleted:       number
   commentsGiven:      number
   approvalsGiven:     number
-  rejectionsGiven:    number
-  commits:            number
   workItemsCompleted: number
   ticketsCreated:     number
+  tasksCreated:       number
   ticketComments:     number
 }
 
@@ -372,16 +357,13 @@ const BADGES: BadgeDef[] = [
   { id: 'reviewer',       name: 'Code Reviewer',     icon: '🔍', desc: '20+ review comments',         cond: (s) => s.commentsGiven >= 20 },
   { id: 'senior_rev',     name: 'Senior Reviewer',   icon: '👁️', desc: '50+ review comments',         cond: (s) => s.commentsGiven >= 50 },
   { id: 'approver',       name: 'Approver',          icon: '✅', desc: '10+ PRs approved',            cond: (s) => s.approvalsGiven >= 10 },
-  { id: 'nitpicker',      name: 'Perfectionist',     icon: '🔎', desc: '5+ PRs rejected',             cond: (s) => s.rejectionsGiven >= 5 },
-  { id: 'committer',      name: 'Active Coder',      icon: '💻', desc: '20+ commits',                 cond: (s) => s.commits >= 20 },
-  { id: 'commit_king',    name: 'Commit King',       icon: '👑', desc: '100+ commits',                cond: (s) => s.commits >= 100 },
   { id: 'worker',         name: 'Work Horse',        icon: '🐴', desc: '10+ tickets completed',       cond: (s) => s.workItemsCompleted >= 10 },
   { id: 'powerworker',    name: 'Power Worker',      icon: '💪', desc: '30+ tickets completed',       cond: (s) => s.workItemsCompleted >= 30 },
   { id: 'ticket_starter', name: 'Ticket Creator',    icon: '📝', desc: '5+ tickets created',          cond: (s) => s.ticketsCreated >= 5 },
   { id: 'ticket_master',  name: 'Ticket Master',     icon: '🎫', desc: '20+ tickets created',         cond: (s) => s.ticketsCreated >= 20 },
   { id: 'commentator',    name: 'Commentator',       icon: '💡', desc: '20+ ticket comments',         cond: (s) => s.ticketComments >= 20 },
   { id: 'disc_king',      name: 'Discussion King',   icon: '🗣️', desc: '50+ ticket comments',         cond: (s) => s.ticketComments >= 50 },
-  { id: 'all_rounder',    name: 'All-Rounder',       icon: '🌟', desc: 'Active in all categories',    cond: (s) => s.prsCreated > 0 && s.commits > 0 && s.workItemsCompleted > 0 && s.commentsGiven > 0 },
+  { id: 'all_rounder',    name: 'All-Rounder',       icon: '🌟', desc: 'Active in all categories',    cond: (s) => s.prsCreated > 0 && s.workItemsCompleted > 0 && s.commentsGiven > 0 },
 ]
 
 // Level thresholds per time period [Diamond, Platinum, Gold, Silver, Bronze]
@@ -443,10 +425,9 @@ interface RawDev {
   prCompletedTs:       number[]
   prCommentTs:         number[]
   prApprovalTs:        number[]
-  prRejectionTs:       number[]
-  commitTs:            number[]
   workItemCompletedTs: number[]
   ticketCreatedTs:     number[]
+  taskCreatedTs:       number[]
   ticketCommentTs:     number[]
   repositories: Set<string>
 }
@@ -465,8 +446,8 @@ class DevTracker {
     return {
       id: key, displayName, uniqueName: key,
       prCreatedTs: [], prCompletedTs: [], prCommentTs: [],
-      prApprovalTs: [], prRejectionTs: [], commitTs: [],
-      workItemCompletedTs: [], ticketCreatedTs: [], ticketCommentTs: [],
+      prApprovalTs: [],
+      workItemCompletedTs: [], ticketCreatedTs: [], taskCreatedTs: [], ticketCommentTs: [],
       repositories: new Set(),
     }
   }
@@ -511,15 +492,14 @@ function aggregateForPeriod(rawDevs: RawDev[], fromTs: number, days: number): Pe
       prsCompleted:       count(d.prCompletedTs),
       commentsGiven:      count(d.prCommentTs),
       approvalsGiven:     count(d.prApprovalTs),
-      rejectionsGiven:    count(d.prRejectionTs),
-      commits:            count(d.commitTs),
       workItemsCompleted: count(d.workItemCompletedTs),
       ticketsCreated:     count(d.ticketCreatedTs),
+      tasksCreated:       count(d.taskCreatedTs),
       ticketComments:     count(d.ticketCommentTs),
     }))
     .filter((d) =>
-      d.prsCreated + d.commits + d.workItemsCompleted +
-      d.commentsGiven + d.ticketsCreated + d.ticketComments > 0
+      d.prsCreated + d.workItemsCompleted +
+      d.commentsGiven + d.ticketsCreated + d.tasksCreated + d.ticketComments > 0
     )
     .map((d) => {
       const points = Math.round(
@@ -527,10 +507,9 @@ function aggregateForPeriod(rawDevs: RawDev[], fromTs: number, days: number): Pe
         d.prsCompleted       * SCORING.prCompleted +
         d.commentsGiven      * SCORING.prComment +
         d.approvalsGiven     * SCORING.prApproved +
-        d.rejectionsGiven    * SCORING.prRejected +
-        d.commits            * SCORING.commit +
         d.workItemsCompleted * SCORING.workItemCompleted +
         d.ticketsCreated     * SCORING.ticketCreated +
+        d.tasksCreated       * SCORING.taskCreated +
         d.ticketComments     * SCORING.ticketComment,
       )
       return {
@@ -546,13 +525,13 @@ function aggregateForPeriod(rawDevs: RawDev[], fromTs: number, days: number): Pe
   const totals = devStats.reduce(
     (acc, d) => ({
       prs:            acc.prs            + d.prsCreated,
-      commits:        acc.commits        + d.commits,
       workItems:      acc.workItems      + d.workItemsCompleted,
       comments:       acc.comments       + d.commentsGiven,
       ticketsCreated: acc.ticketsCreated + d.ticketsCreated,
+      tasksCreated:   acc.tasksCreated   + d.tasksCreated,
       ticketComments: acc.ticketComments + d.ticketComments,
     }),
-    { prs: 0, commits: 0, workItems: 0, comments: 0, ticketsCreated: 0, ticketComments: 0 },
+    { prs: 0, workItems: 0, comments: 0, ticketsCreated: 0, tasksCreated: 0, ticketComments: 0 },
   )
 
   return {
@@ -597,7 +576,7 @@ async function loadDataFromAzure() {
     console.log(`   Repositories: ${repos.length}`)
     setProgress('repos', `${repos.length} repositories found`, { total: repos.length, done: 0 })
 
-    // 2. Per repo: PRs + commits
+    // 2. Per repo: PRs
     for (let i = 0; i < repos.length; i++) {
       const repo = repos[i]
       setProgress('prs', `Repository ${i + 1}/${repos.length}: ${repo.name}`, {
@@ -623,8 +602,7 @@ async function loadDataFromAzure() {
           const rDev = tracker.fromIdentity(rv)
           if (rDev && rDev.id !== creator?.id && prClosedTs) {
             const vote = (rv as unknown as Record<string, number>).vote
-            if (vote === 10)  rDev.prApprovalTs.push(prClosedTs)
-            if (vote === -10) rDev.prRejectionTs.push(prClosedTs)
+            if (vote === 10) rDev.prApprovalTs.push(prClosedTs)
           }
         }
 
@@ -645,18 +623,6 @@ async function loadDataFromAzure() {
         } catch { /* skip */ }
       }
 
-      const commits = await getCommits(String(repo.id), fromTs365) as Array<Record<string, unknown>>
-      for (const c of commits) {
-        const author = c.author as Record<string, string> | undefined
-        if (author?.email) {
-          const dev = tracker.fromEmail(author.email, author.name)
-          if (dev) {
-            dev.repositories.add(String(repo.name))
-            const commitTs = toTs(author.date)
-            if (commitTs) dev.commitTs.push(commitTs)
-          }
-        }
-      }
     }
 
     // 3. Closed tickets
@@ -673,7 +639,7 @@ async function loadDataFromAzure() {
       }
     }
 
-    // 4. Created tickets
+    // 4. Created tickets (non-Task types) and Tasks (separate metric)
     setProgress('tickets-created', 'Loading created tickets…')
     const createdWI = await getCreatedWorkItems(fromTs365) as Array<Record<string, unknown>>
     console.log(`   Created tickets: ${createdWI.length}`)
@@ -681,16 +647,20 @@ async function loadDataFromAzure() {
       const fields    = wi.fields as Record<string, unknown>
       const createdBy = fields?.['System.CreatedBy'] as AzureIdentity | undefined
       const createdTs = toTs(fields?.['System.CreatedDate'] as string)
+      const wiType    = fields?.['System.WorkItemType'] as string | undefined
       if (createdBy && createdTs) {
         const dev = tracker.fromIdentity(createdBy)
-        if (dev) dev.ticketCreatedTs.push(createdTs)
+        if (dev) {
+          if (wiType === 'Task') dev.taskCreatedTs.push(createdTs)
+          else dev.ticketCreatedTs.push(createdTs)
+        }
       }
     }
 
     // 5. Ticket comments
     setProgress('ticket-comments', 'Loading ticket comments…')
     const activeIds = await getActiveWorkItemIds(fromTs365)
-    const fetchIds  = activeIds.slice(0, 1000)
+    const fetchIds  = activeIds.slice(0, 10000)
     console.log(`   Ticket comments: ${fetchIds.length} work items`)
     for (let i = 0; i < fetchIds.length; i++) {
       setProgress('ticket-comments', `Ticket comments ${i + 1}/${fetchIds.length}…`, {

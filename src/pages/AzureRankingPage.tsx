@@ -19,10 +19,9 @@ interface DevStats {
   prsCompleted:       number
   commentsGiven:      number
   approvalsGiven:     number
-  rejectionsGiven:    number
-  commits:            number
   workItemsCompleted: number
   ticketsCreated:     number
+  tasksCreated:       number
   ticketComments:     number
   points:             number
   badges:             Badge[]
@@ -32,7 +31,7 @@ interface DevStats {
 
 interface PeriodData {
   developers:  DevStats[]
-  totals: { prs: number; commits: number; workItems: number; comments: number; ticketsCreated: number; ticketComments: number }
+  totals: { prs: number; workItems: number; comments: number; ticketsCreated: number; tasksCreated: number; ticketComments: number }
   fromDate: string
   toDate:   string
   days:     number
@@ -58,10 +57,9 @@ const BREAKDOWN_DEFS = [
   { field: 'prsCompleted',       tKey: 'prsMerged',          scoringKey: 'prCompleted',       color: '#3fb950' },
   { field: 'commentsGiven',      tKey: 'prReviewComments',   scoringKey: 'prComment',         color: '#bc8cff' },
   { field: 'approvalsGiven',     tKey: 'prApprovals',        scoringKey: 'prApproved',        color: '#a5d6ff' },
-  { field: 'rejectionsGiven',    tKey: 'prRejections',       scoringKey: 'prRejected',        color: '#f0883e' },
-  { field: 'commits',            tKey: 'commits',            scoringKey: 'commit',            color: '#56d364' },
   { field: 'workItemsCompleted', tKey: 'ticketsClosed',      scoringKey: 'workItemCompleted', color: '#e3b341' },
   { field: 'ticketsCreated',     tKey: 'ticketsCreated',     scoringKey: 'ticketCreated',     color: '#ffa657' },
+  { field: 'tasksCreated',       tKey: 'tasksCreated',       scoringKey: 'taskCreated',       color: '#56d364' },
   { field: 'ticketComments',     tKey: 'ticketComments',     scoringKey: 'ticketComment',     color: '#d2a8ff' },
 ] as const
 
@@ -71,9 +69,9 @@ const CATEGORY_DEFS = [
   { key: 'prsCompleted',       tKey: 'prsMerged',      field: 'prsCompleted'       },
   { key: 'commentsGiven',      tKey: 'catPrReviews',   field: 'commentsGiven'      },
   { key: 'approvalsGiven',     tKey: 'catApprovals',   field: 'approvalsGiven'     },
-  { key: 'commits',            tKey: 'commits',        field: 'commits'            },
   { key: 'workItemsCompleted', tKey: 'catTicketsDone', field: 'workItemsCompleted' },
   { key: 'ticketsCreated',     tKey: 'ticketsCreated', field: 'ticketsCreated'     },
+  { key: 'tasksCreated',       tKey: 'tasksCreated',   field: 'tasksCreated'       },
   { key: 'ticketComments',     tKey: 'ticketComments', field: 'ticketComments'     },
 ] as const
 
@@ -425,10 +423,9 @@ function DevModal({ dev, scoring, onClose }: { dev: DevStats; scoring: Record<st
               { icon: '✅', val: dev.prsCompleted,       label: t('azureRanking.statMerged') },
               { icon: '💬', val: dev.commentsGiven,      label: t('azureRanking.statPrComments') },
               { icon: '👍', val: dev.approvalsGiven,     label: t('azureRanking.statApprovals') },
-              { icon: '⛔', val: dev.rejectionsGiven,    label: t('azureRanking.statRejections') },
-              { icon: '💻', val: dev.commits,            label: t('azureRanking.statCommits') },
               { icon: '📋', val: dev.workItemsCompleted, label: t('azureRanking.statTicketsDone') },
               { icon: '📝', val: dev.ticketsCreated,     label: t('azureRanking.statCreated') },
+              { icon: '📌', val: dev.tasksCreated,       label: t('azureRanking.statTasksCreated') },
               { icon: '🗒️', val: dev.ticketComments,     label: t('azureRanking.statTicketComments') },
             ].map((s) => (
               <div key={s.label} style={{ background: 'var(--az-surface2)', border: '1px solid var(--az-border)', borderRadius: 10, padding: '.85rem .75rem', textAlign: 'center' }}>
@@ -795,9 +792,9 @@ export default function AzureRankingPage() {
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: '1rem', padding: '1.5rem' }}>
           {[
             { icon: '🔀', val: data.totals.prs,            label: t('azureRanking.overviewPRs') },
-            { icon: '💻', val: data.totals.commits,         label: t('azureRanking.overviewCommits') },
             { icon: '✅', val: data.totals.workItems,       label: t('azureRanking.overviewDone') },
             { icon: '📝', val: data.totals.ticketsCreated,  label: t('azureRanking.overviewCreated') },
+            { icon: '📌', val: data.totals.tasksCreated,    label: t('azureRanking.overviewTasksCreated') },
             { icon: '💬', val: data.totals.comments,        label: t('azureRanking.overviewPrComments') },
             { icon: '🗒️', val: data.totals.ticketComments,  label: t('azureRanking.overviewTicketComments') },
             { icon: '👥', val: data.developers.length,      label: t('azureRanking.overviewDevs') },
@@ -839,7 +836,7 @@ export default function AzureRankingPage() {
                   <div style={{ fontSize: isFirst ? '2rem' : '1.6rem', fontWeight: 700, color: borderColors[idx] }}>{fmt(getCatVal(dev))}</div>
                   <div style={{ fontSize: '.75rem', color: '#8b949e' }}>{isCustom ? t('azureRanking.combinedScore') : category === 'points' ? t('azureRanking.points') : t(`azureRanking.${catMeta.tKey}`)}</div>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '1.25rem', marginTop: '.9rem', paddingTop: '.75rem', borderTop: '1px solid var(--az-border)', fontSize: '.8rem', color: '#8b949e' }}>
-                    {[[t('azureRanking.statPRs'), dev.prsCreated], [t('azureRanking.statCommits'), dev.commits], [t('azureRanking.statDone'), dev.workItemsCompleted], [t('azureRanking.statCreated'), dev.ticketsCreated]].map(([lbl, val]) => (
+                    {[[t('azureRanking.statPRs'), dev.prsCreated], [t('azureRanking.statDone'), dev.workItemsCompleted], [t('azureRanking.statCreated'), dev.ticketsCreated]].map(([lbl, val]) => (
                       <div key={String(lbl)} style={{ textAlign: 'center' }}>
                         <div style={{ fontWeight: 700, color: 'var(--az-text)', fontSize: '.95rem' }}>{fmt(Number(val))}</div>
                         <div style={{ fontSize: '.7rem' }}>{lbl}</div>
@@ -989,7 +986,6 @@ export default function AzureRankingPage() {
                     {[
                       { key: 'prsCreated',        label: t('azureRanking.statPRs'),       val: dev.prsCreated },
                       { key: 'prsCompleted',       label: t('azureRanking.statMerged'),    val: dev.prsCompleted },
-                      { key: 'commits',            label: t('azureRanking.statCommits'),   val: dev.commits },
                       { key: 'workItemsCompleted', label: t('azureRanking.statDone'),      val: dev.workItemsCompleted },
                       { key: 'ticketsCreated',     label: t('azureRanking.statCreated'),   val: dev.ticketsCreated },
                       { key: 'commentsGiven',      label: t('azureRanking.statPrReviews'), val: dev.commentsGiven },
@@ -1037,10 +1033,9 @@ export default function AzureRankingPage() {
                       [t('azureRanking.prMergedScoring'),        data.scoring.prCompleted],
                       [t('azureRanking.prReviewCommentScoring'), data.scoring.prComment],
                       [t('azureRanking.prApprovedScoring'),      data.scoring.prApproved],
-                      [t('azureRanking.prRejectedScoring'),      data.scoring.prRejected],
-                      [t('azureRanking.commitScoring'),          data.scoring.commit],
                       [t('azureRanking.ticketClosedScoring'),    data.scoring.workItemCompleted],
                       [t('azureRanking.ticketCreatedScoring'),   data.scoring.ticketCreated],
+                      [t('azureRanking.taskCreatedScoring'),     data.scoring.taskCreated],
                       [t('azureRanking.ticketCommentScoring'),   data.scoring.ticketComment],
                     ].map(([label, pts]) => (
                       <tr key={String(label)}>
