@@ -2,7 +2,7 @@ import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { dbGet, dbRun } from '../db'
-import { JWT_SECRET, JWT_EXPIRES_IN, requireAuth, computePagePermissions, type AuthUser } from '../middleware/auth'
+import { JWT_SECRET, JWT_EXPIRES_IN, requireAuth, computePagePermissions, NON_BYPASSABLE_SUBS, type AuthUser, type PagePermission } from '../middleware/auth'
 import crypto from 'crypto'
 
 const router = Router()
@@ -20,9 +20,22 @@ interface UserRow {
 
 function buildPayload(user: UserRow): AuthUser {
   const forbiddenPages: string[] = JSON.parse(user.forbidden_pages ?? '[]')
-  const pagePermissions = user.role === 'admin'
-    ? {}
-    : computePagePermissions(user.id, forbiddenPages)
+  const computedPerms = computePagePermissions(user.id, forbiddenPages)
+
+  // Admins skip the normal per-page checks (requirePageAccess bypasses them),
+  // so their JWT carries an empty permissions map — the frontend applies a blanket
+  // 'write' for all pages via the admin-role shortcut.
+  // Exception: NON_BYPASSABLE_SUBS are always stored explicitly so that the
+  // frontend and the route handler can enforce them even for admins.
+  let pagePermissions: Record<string, PagePermission>
+  if (user.role === 'admin') {
+    pagePermissions = {}
+    for (const key of NON_BYPASSABLE_SUBS) {
+      pagePermissions[key] = computedPerms[key]
+    }
+  } else {
+    pagePermissions = computedPerms
+  }
 
   return {
     id: user.id,

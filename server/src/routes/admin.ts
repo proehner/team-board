@@ -204,7 +204,7 @@ function groupToPublic(g: GroupRow) {
 
   // Ensure all pages are represented.
   // Sub-permissions (kompetenzen-matrix, kompetenzen-matrix-footer) default to 'read'.
-  const SUB_READ_DEFAULTS = new Set(['kompetenzen-matrix', 'kompetenzen-matrix-footer'])
+  const SUB_READ_DEFAULTS = new Set(['kompetenzen-matrix', 'kompetenzen-matrix-footer', 'azure-ranking-refresh'])
   for (const page of ALL_PAGE_KEYS) {
     if (!(page in permissions)) permissions[page] = SUB_READ_DEFAULTS.has(page) ? 'read' : 'write'
   }

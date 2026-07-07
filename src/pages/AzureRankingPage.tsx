@@ -19,10 +19,9 @@ interface DevStats {
   prsCompleted:       number
   commentsGiven:      number
   approvalsGiven:     number
-  rejectionsGiven:    number
-  commits:            number
   workItemsCompleted: number
   ticketsCreated:     number
+  tasksCreated:       number
   ticketComments:     number
   points:             number
   badges:             Badge[]
@@ -32,7 +31,7 @@ interface DevStats {
 
 interface PeriodData {
   developers:  DevStats[]
-  totals: { prs: number; commits: number; workItems: number; comments: number; ticketsCreated: number; ticketComments: number }
+  totals: { prs: number; workItems: number; comments: number; ticketsCreated: number; tasksCreated: number; ticketComments: number }
   fromDate: string
   toDate:   string
   days:     number
@@ -58,10 +57,9 @@ const BREAKDOWN_DEFS = [
   { field: 'prsCompleted',       tKey: 'prsMerged',          scoringKey: 'prCompleted',       color: '#3fb950' },
   { field: 'commentsGiven',      tKey: 'prReviewComments',   scoringKey: 'prComment',         color: '#bc8cff' },
   { field: 'approvalsGiven',     tKey: 'prApprovals',        scoringKey: 'prApproved',        color: '#a5d6ff' },
-  { field: 'rejectionsGiven',    tKey: 'prRejections',       scoringKey: 'prRejected',        color: '#f0883e' },
-  { field: 'commits',            tKey: 'commits',            scoringKey: 'commit',            color: '#56d364' },
   { field: 'workItemsCompleted', tKey: 'ticketsClosed',      scoringKey: 'workItemCompleted', color: '#e3b341' },
   { field: 'ticketsCreated',     tKey: 'ticketsCreated',     scoringKey: 'ticketCreated',     color: '#ffa657' },
+  { field: 'tasksCreated',       tKey: 'tasksCreated',       scoringKey: 'taskCreated',       color: '#56d364' },
   { field: 'ticketComments',     tKey: 'ticketComments',     scoringKey: 'ticketComment',     color: '#d2a8ff' },
 ] as const
 
@@ -71,13 +69,18 @@ const CATEGORY_DEFS = [
   { key: 'prsCompleted',       tKey: 'prsMerged',      field: 'prsCompleted'       },
   { key: 'commentsGiven',      tKey: 'catPrReviews',   field: 'commentsGiven'      },
   { key: 'approvalsGiven',     tKey: 'catApprovals',   field: 'approvalsGiven'     },
-  { key: 'commits',            tKey: 'commits',        field: 'commits'            },
   { key: 'workItemsCompleted', tKey: 'catTicketsDone', field: 'workItemsCompleted' },
   { key: 'ticketsCreated',     tKey: 'ticketsCreated', field: 'ticketsCreated'     },
+  { key: 'tasksCreated',       tKey: 'tasksCreated',   field: 'tasksCreated'       },
   { key: 'ticketComments',     tKey: 'ticketComments', field: 'ticketComments'     },
 ] as const
 
-type CategoryKey = typeof CATEGORY_DEFS[number]['key']
+type CategoryKey = typeof CATEGORY_DEFS[number]['key'] | 'custom'
+
+interface DevHistorySnapshot {
+  loadedAt: string
+  periods: Partial<Record<number, { points: number; rank: number }>>
+}
 
 const AVATAR_COLORS = [
   '#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7',
@@ -101,8 +104,8 @@ function fmt(n: number) { return Number(n).toLocaleString(i18n.language === 'de'
 
 function levelStyle(level: Level): React.CSSProperties {
   const bg: Record<string, string> = {
-    Bronze: 'rgba(205,127,50,.2)', Silber: 'rgba(192,192,192,.2)',
-    Gold: 'rgba(255,215,0,.2)', Platin: 'rgba(229,228,226,.2)', Diamond: 'rgba(0,191,255,.2)',
+    Bronze: 'rgba(205,127,50,.2)', Silver: 'rgba(192,192,192,.2)',
+    Gold: 'rgba(255,215,0,.2)', Platinum: 'rgba(229,228,226,.2)', Diamond: 'rgba(0,191,255,.2)',
   }
   return {
     background: bg[level.name] || '',
@@ -117,14 +120,31 @@ function progressPercent(dev: DevStats) {
   return Math.min(100, Math.round(((dev.points - level.min) / (level.next - level.min)) * 100))
 }
 
-function sortedDevs(devs: DevStats[], category: CategoryKey): DevStats[] {
+function computeCustomScore(dev: DevStats, scoring: Record<string, number>, enabled: Set<string>): number {
+  return Math.round(
+    BREAKDOWN_DEFS.reduce((sum, b) => {
+      if (!enabled.has(b.field)) return sum
+      return sum + ((dev[b.field as keyof DevStats] as number) || 0) * (scoring[b.scoringKey] || 0)
+    }, 0),
+  )
+}
+
+function sortedDevs(
+  devs: DevStats[],
+  category: CategoryKey,
+  scoring: Record<string, number> = {},
+  enabled: Set<string> = new Set(),
+): DevStats[] {
+  if (category === 'custom') {
+    return [...devs].sort((a, b) => computeCustomScore(b, scoring, enabled) - computeCustomScore(a, scoring, enabled))
+  }
   const cat = CATEGORY_DEFS.find((c) => c.key === category) || CATEGORY_DEFS[0]
   return [...devs].sort((a, b) => (b[cat.field as keyof DevStats] as number) - (a[cat.field as keyof DevStats] as number))
 }
 
 function getNextLevelName(currentName: string) {
-  const order = ['Bronze', 'Silber', 'Gold', 'Platin', 'Diamond']
-  const icons: Record<string, string> = { Bronze: '🥉', Silber: '🥈', Gold: '🥇', Platin: '🏆', Diamond: '💎' }
+  const order = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond']
+  const icons: Record<string, string> = { Bronze: '🥉', Silver: '🥈', Gold: '🥇', Platinum: '🏆', Diamond: '💎' }
   const idx  = order.indexOf(currentName)
   const next = order[idx + 1]
   return next ? `${icons[next]} ${next}` : ''
@@ -175,12 +195,151 @@ function LevelBadge({ level, style }: { level: Level; style?: React.CSSPropertie
   )
 }
 
+// ─── History Line Chart ───────────────────────────────────────────────────────
+
+function HistoryLineChart({ snapshots }: { snapshots: DevHistorySnapshot[] }) {
+  const { t }                         = useTranslation()
+  const [activePeriod, setActivePeriod] = useState<number>(30)
+  const locale = i18n.language === 'de' ? 'de-DE' : 'en-US'
+
+  const entries = snapshots
+    .filter((s) => s.periods[activePeriod] !== undefined)
+    .map((s) => ({
+      label:  new Date(s.loadedAt).toLocaleDateString(locale, { day: '2-digit', month: '2-digit' }),
+      points: s.periods[activePeriod]!.points,
+      rank:   s.periods[activePeriod]!.rank,
+    }))
+
+  const W = 460, H = 140
+  const pad = { top: 24, right: 16, bottom: 32, left: 50 }
+  const cW  = W - pad.left - pad.right
+  const cH  = H - pad.top - pad.bottom
+  const maxV = Math.max(...entries.map((e) => e.points), 1)
+
+  const xPos = (i: number) =>
+    entries.length <= 1 ? cW / 2 : (i / (entries.length - 1)) * cW
+  const yPos = (v: number) => cH - (v / maxV) * cH
+
+  const pts  = entries.map((e, i) => `${xPos(i)},${yPos(e.points)}`).join(' ')
+  const area = entries.length > 1
+    ? `${xPos(0)},${cH} ${pts} ${xPos(entries.length - 1)},${cH}`
+    : ''
+
+  // label density: show at most 12 labels
+  const labelStep = Math.max(1, Math.ceil(entries.length / 12))
+
+  return (
+    <div>
+      {/* Period selector */}
+      <div style={{ display: 'flex', gap: '.3rem', marginBottom: '.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {([7, 30, 90, 365] as const).map((p) => (
+          <button key={p} onClick={() => setActivePeriod(p)} style={{
+            background: activePeriod === p ? 'var(--az-accent)' : 'transparent',
+            border: `1px solid ${activePeriod === p ? 'var(--az-accent)' : 'var(--az-border)'}`,
+            color: activePeriod === p ? 'var(--az-accent-on)' : '#8b949e',
+            borderRadius: 20, padding: '.18rem .6rem', fontSize: '.75rem',
+            cursor: 'pointer', fontWeight: activePeriod === p ? 600 : 400,
+          }}>
+            {p === 365 ? t('azureRanking.oneYear') : `${p} ${t('azureRanking.daysLabel')}`}
+          </button>
+        ))}
+        <span style={{ marginLeft: 'auto', fontSize: '.72rem', color: '#484f58' }}>
+          {entries.length} {t('azureRanking.historySnapshots')}
+        </span>
+      </div>
+
+      {entries.length === 0 ? (
+        <p style={{ color: '#484f58', fontSize: '.82rem', fontStyle: 'italic', margin: 0 }}>
+          {t('azureRanking.historyNoPeriodData')}
+        </p>
+      ) : (
+        <>
+          {entries.length === 1 && (
+            <p style={{ color: '#484f58', fontSize: '.75rem', fontStyle: 'italic', margin: '0 0 .4rem' }}>
+              {t('azureRanking.historyOnlyOne')}
+            </p>
+          )}
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block' }}>
+            <defs>
+              <linearGradient id="hist-area-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor="#58a6ff" stopOpacity={0.28} />
+                <stop offset="100%" stopColor="#58a6ff" stopOpacity={0}    />
+              </linearGradient>
+            </defs>
+            <g transform={`translate(${pad.left},${pad.top})`}>
+              {/* Grid */}
+              {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+                <line key={f} x1={0} y1={yPos(maxV * f)} x2={cW} y2={yPos(maxV * f)}
+                  stroke="#21262d" strokeWidth={1} />
+              ))}
+              {/* Area */}
+              {area && <polygon points={area} fill="url(#hist-area-grad)" />}
+              {/* Line */}
+              {entries.length > 1 && (
+                <polyline points={pts} fill="none" stroke="#58a6ff" strokeWidth={2.5}
+                  strokeLinejoin="round" strokeLinecap="round" />
+              )}
+              {/* Dots + value labels */}
+              {entries.map((e, i) => {
+                const showVal = entries.length <= 15
+                return (
+                  <g key={i}>
+                    <circle cx={xPos(i)} cy={yPos(e.points)}
+                      r={entries.length > 20 ? 2.5 : 4}
+                      fill="#58a6ff" stroke="#0d1117" strokeWidth={1.5} />
+                    {showVal && (
+                      <text x={xPos(i)} y={yPos(e.points) - 8} textAnchor="middle"
+                        fill="#58a6ff" fontSize={9} fontWeight="700">
+                        {fmt(e.points)}
+                      </text>
+                    )}
+                  </g>
+                )
+              })}
+              {/* X-axis labels */}
+              {entries.map((e, i) => {
+                if (i % labelStep !== 0 && i !== entries.length - 1) return null
+                return (
+                  <text key={i} x={xPos(i)} y={cH + 20} textAnchor="middle"
+                    fill="#8b949e" fontSize={entries.length > 10 ? 8 : 10}>
+                    {e.label}
+                  </text>
+                )
+              })}
+              {/* Y-axis labels */}
+              {[0, 0.5, 1].map((f) => (
+                <text key={f} x={-6} y={yPos(maxV * f) + 4}
+                  textAnchor="end" fill="#8b949e" fontSize={9}>
+                  {Math.round(maxV * f)}
+                </text>
+              ))}
+            </g>
+          </svg>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 
 function DevModal({ dev, scoring, onClose }: { dev: DevStats; scoring: Record<string, number>; onClose: () => void }) {
   const { t } = useTranslation()
   const pct    = progressPercent(dev)
   const maxPts = Math.max(1, ...BREAKDOWN_DEFS.map((b) => ((dev[b.field as keyof DevStats] as number) || 0) * (scoring[b.scoringKey] || 0)))
+
+  const [history, setHistory]         = useState<DevHistorySnapshot[] | null>(null)
+  const [histLoading, setHistLoading] = useState(true)
+
+  useEffect(() => {
+    setHistLoading(true)
+    apiFetch<{ snapshots: DevHistorySnapshot[] }>(
+      `/api/azure-ranking/dev-history?devId=${encodeURIComponent(dev.id)}`,
+    )
+      .then((data) => setHistory(data.snapshots))
+      .catch(() => setHistory(null))
+      .finally(() => setHistLoading(false))
+  }, [dev.id])
 
   return (
     <div
@@ -189,7 +348,7 @@ function DevModal({ dev, scoring, onClose }: { dev: DevStats; scoring: Record<st
         position: 'fixed', inset: 0, zIndex: 1100,
         background: 'rgba(0,0,0,.75)',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        padding: '2rem 1rem', overflowY: 'auto',
+        padding: '2rem 1rem', overflow: 'hidden',
         backdropFilter: 'blur(4px)',
       }}
     >
@@ -197,6 +356,7 @@ function DevModal({ dev, scoring, onClose }: { dev: DevStats; scoring: Record<st
         background: 'var(--az-surface)', border: '1px solid var(--az-border)', borderRadius: 14,
         width: '100%', maxWidth: 760, position: 'relative', padding: '2rem',
         boxShadow: '0 8px 40px rgba(0,0,0,.6)',
+        overflowY: 'auto', maxHeight: 'calc(100vh - 4rem)',
       }}>
         <button onClick={onClose} style={{
           position: 'absolute', top: '1rem', right: '1rem',
@@ -263,10 +423,9 @@ function DevModal({ dev, scoring, onClose }: { dev: DevStats; scoring: Record<st
               { icon: '✅', val: dev.prsCompleted,       label: t('azureRanking.statMerged') },
               { icon: '💬', val: dev.commentsGiven,      label: t('azureRanking.statPrComments') },
               { icon: '👍', val: dev.approvalsGiven,     label: t('azureRanking.statApprovals') },
-              { icon: '⛔', val: dev.rejectionsGiven,    label: t('azureRanking.statRejections') },
-              { icon: '💻', val: dev.commits,            label: t('azureRanking.statCommits') },
               { icon: '📋', val: dev.workItemsCompleted, label: t('azureRanking.statTicketsDone') },
               { icon: '📝', val: dev.ticketsCreated,     label: t('azureRanking.statCreated') },
+              { icon: '📌', val: dev.tasksCreated,       label: t('azureRanking.statTasksCreated') },
               { icon: '🗒️', val: dev.ticketComments,     label: t('azureRanking.statTicketComments') },
             ].map((s) => (
               <div key={s.label} style={{ background: 'var(--az-surface2)', border: '1px solid var(--az-border)', borderRadius: 10, padding: '.85rem .75rem', textAlign: 'center' }}>
@@ -276,6 +435,21 @@ function DevModal({ dev, scoring, onClose }: { dev: DevStats; scoring: Record<st
               </div>
             ))}
           </div>
+        </div>
+
+        {/* History */}
+        <div style={{ marginBottom: '1.75rem' }}>
+          <div style={{ fontSize: '.82rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#8b949e', marginBottom: '.9rem' }}>
+            📈 {t('azureRanking.devHistory')}
+          </div>
+          {histLoading
+            ? <div style={{ color: '#8b949e', fontSize: '.85rem', fontStyle: 'italic', padding: '.5rem 0' }}>{t('azureRanking.historyLoading')}</div>
+            : history && history.length > 0
+              ? <div style={{ background: 'var(--az-surface2)', borderRadius: 10, padding: '.75rem 1rem', border: '1px solid var(--az-border)' }}>
+                  <HistoryLineChart snapshots={history} />
+                </div>
+              : <div style={{ color: '#484f58', fontSize: '.85rem', fontStyle: 'italic' }}>{t('azureRanking.historyNoData')}</div>
+          }
         </div>
 
         {/* Badges */}
@@ -379,10 +553,12 @@ function SetupModal({ onClose, showCancel, onSaved }: { onClose: () => void; sho
 
 export default function AzureRankingPage() {
   const { t } = useTranslation()
-  const { canWrite, isReadOnly } = usePagePermission('azure-ranking')
+  const { canWrite, isReadOnly }  = usePagePermission('azure-ranking')
+  const { isAllowed: canRefresh } = usePagePermission('azure-ranking-refresh')
 
   const [days, setDays]               = useState<number>(30)
   const [category, setCategory]       = useState<CategoryKey>('points')
+  const [enabledMetrics, setEnabledMetrics] = useState<Set<string>>(() => new Set(BREAKDOWN_DEFS.map((b) => b.field)))
   const [data, setData]               = useState<PeriodData | null>(null)
   const [search, setSearch]           = useState('')
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
@@ -471,14 +647,19 @@ export default function AzureRankingPage() {
 
   const displayedDevs = (() => {
     if (!data) return []
-    let devs = sortedDevs(data.developers, category)
+    let devs = sortedDevs(data.developers, category, data.scoring, enabledMetrics)
     const q  = search.trim().toLowerCase()
     if (q) devs = devs.filter((d) => d.displayName.toLowerCase().includes(q) || d.uniqueName.toLowerCase().includes(q))
     return devs.map((d, i) => ({ ...d, catRank: i + 1 }))
   })()
 
-  const medals = ['🥇', '🥈', '🥉']
-  const catMeta = CATEGORY_DEFS.find((c) => c.key === category) || CATEGORY_DEFS[0]
+  const medals   = ['🥇', '🥈', '🥉']
+  const isCustom = category === 'custom'
+  const catMeta  = CATEGORY_DEFS.find((c) => c.key === category) || CATEGORY_DEFS[0]
+  const getCatVal = (dev: DevStats) =>
+    isCustom
+      ? computeCustomScore(dev, data?.scoring || {}, enabledMetrics)
+      : (dev[catMeta.field as keyof DevStats] as number)
 
   // Status bar text
   const statusBarContent = (() => {
@@ -569,7 +750,7 @@ export default function AzureRankingPage() {
           </div>
 
           {/* Load button */}
-          {canWrite && (
+          {canWrite && canRefresh && (
             <button onClick={triggerLoad} disabled={cacheStatus?.loading} style={{
               background: 'var(--az-green)', color: 'var(--az-green-on)', border: 'none', borderRadius: 8,
               padding: '.4rem .9rem', fontSize: '.88rem', fontWeight: 600, cursor: cacheStatus?.loading ? 'not-allowed' : 'pointer',
@@ -611,9 +792,9 @@ export default function AzureRankingPage() {
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: '1rem', padding: '1.5rem' }}>
           {[
             { icon: '🔀', val: data.totals.prs,            label: t('azureRanking.overviewPRs') },
-            { icon: '💻', val: data.totals.commits,         label: t('azureRanking.overviewCommits') },
             { icon: '✅', val: data.totals.workItems,       label: t('azureRanking.overviewDone') },
             { icon: '📝', val: data.totals.ticketsCreated,  label: t('azureRanking.overviewCreated') },
+            { icon: '📌', val: data.totals.tasksCreated,    label: t('azureRanking.overviewTasksCreated') },
             { icon: '💬', val: data.totals.comments,        label: t('azureRanking.overviewPrComments') },
             { icon: '🗒️', val: data.totals.ticketComments,  label: t('azureRanking.overviewTicketComments') },
             { icon: '👥', val: data.developers.length,      label: t('azureRanking.overviewDevs') },
@@ -631,7 +812,7 @@ export default function AzureRankingPage() {
       {data && displayedDevs.length > 0 && (
         <section style={{ padding: '0 1.5rem 1.5rem' }}>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-            {category === 'points' ? t('azureRanking.topChampions') : `${t(`azureRanking.${catMeta.tKey}`)} ${t('azureRanking.top3Label')}`}
+            {isCustom ? `${t('azureRanking.combined')} ${t('azureRanking.top3Label')}` : category === 'points' ? t('azureRanking.topChampions') : `${t(`azureRanking.${catMeta.tKey}`)} ${t('azureRanking.top3Label')}`}
           </h2>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '.75rem', flexWrap: 'wrap' }}>
             {displayedDevs.slice(0, 3).map((dev, idx) => {
@@ -652,10 +833,10 @@ export default function AzureRankingPage() {
                   </div>
                   <div style={{ fontWeight: 700, fontSize: isFirst ? '1.15rem' : '1rem', marginBottom: '.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--az-text)' }}>{dev.displayName}</div>
                   <LevelBadge level={dev.level} style={{ marginBottom: '.75rem' }} />
-                  <div style={{ fontSize: isFirst ? '2rem' : '1.6rem', fontWeight: 700, color: borderColors[idx] }}>{fmt(dev[catMeta.field as keyof DevStats] as number)}</div>
-                  <div style={{ fontSize: '.75rem', color: '#8b949e' }}>{category === 'points' ? t('azureRanking.points') : t(`azureRanking.${catMeta.tKey}`)}</div>
+                  <div style={{ fontSize: isFirst ? '2rem' : '1.6rem', fontWeight: 700, color: borderColors[idx] }}>{fmt(getCatVal(dev))}</div>
+                  <div style={{ fontSize: '.75rem', color: '#8b949e' }}>{isCustom ? t('azureRanking.combinedScore') : category === 'points' ? t('azureRanking.points') : t(`azureRanking.${catMeta.tKey}`)}</div>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '1.25rem', marginTop: '.9rem', paddingTop: '.75rem', borderTop: '1px solid var(--az-border)', fontSize: '.8rem', color: '#8b949e' }}>
-                    {[[t('azureRanking.statPRs'), dev.prsCreated], [t('azureRanking.statCommits'), dev.commits], [t('azureRanking.statDone'), dev.workItemsCompleted], [t('azureRanking.statCreated'), dev.ticketsCreated]].map(([lbl, val]) => (
+                    {[[t('azureRanking.statPRs'), dev.prsCreated], [t('azureRanking.statDone'), dev.workItemsCompleted], [t('azureRanking.statCreated'), dev.ticketsCreated]].map(([lbl, val]) => (
                       <div key={String(lbl)} style={{ textAlign: 'center' }}>
                         <div style={{ fontWeight: 700, color: 'var(--az-text)', fontSize: '.95rem' }}>{fmt(Number(val))}</div>
                         <div style={{ fontSize: '.7rem' }}>{lbl}</div>
@@ -690,7 +871,7 @@ export default function AzureRankingPage() {
         </div>
 
         {/* Category tabs */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.35rem', marginBottom: isCustom ? '.5rem' : '1rem' }}>
           {CATEGORY_DEFS.map((c) => (
             <button key={c.key} onClick={() => { setCategory(c.key); setSearch('') }} style={{
               background: category === c.key ? 'var(--az-accent)' : 'var(--az-surface2)',
@@ -702,7 +883,51 @@ export default function AzureRankingPage() {
               {t(`azureRanking.${c.tKey}`)}
             </button>
           ))}
+          <button onClick={() => { setCategory('custom'); setSearch('') }} style={{
+            background: isCustom ? '#d29922' : 'var(--az-surface2)',
+            border: `1px solid ${isCustom ? '#d29922' : 'var(--az-border)'}`,
+            color: isCustom ? '#0d1117' : '#8b949e',
+            borderRadius: 20, padding: '.3rem .75rem', fontSize: '.8rem',
+            cursor: 'pointer', fontWeight: isCustom ? 700 : 400, whiteSpace: 'nowrap',
+          }}>
+            {t('azureRanking.combined')}
+          </button>
         </div>
+
+        {/* Metric toggles for combined filter */}
+        {isCustom && (
+          <div style={{ background: 'var(--az-surface2)', border: '1px solid var(--az-border)', borderRadius: 10, padding: '.85rem 1rem', marginBottom: '1rem' }}>
+            <div style={{ fontSize: '.75rem', color: '#8b949e', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '.6rem' }}>
+              {t('azureRanking.selectMetrics')}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
+              {BREAKDOWN_DEFS.map((b) => {
+                const active = enabledMetrics.has(b.field)
+                return (
+                  <button
+                    key={b.field}
+                    onClick={() => setEnabledMetrics((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(b.field)) next.delete(b.field)
+                      else next.add(b.field)
+                      return next
+                    })}
+                    style={{
+                      background: active ? `${b.color}22` : 'var(--az-surface)',
+                      border: `1px solid ${active ? b.color : 'var(--az-border)'}`,
+                      color: active ? b.color : '#484f58',
+                      borderRadius: 20, padding: '.25rem .7rem', fontSize: '.78rem',
+                      cursor: 'pointer', fontWeight: active ? 600 : 400, whiteSpace: 'nowrap',
+                      transition: 'border-color .12s, background .12s',
+                    }}
+                  >
+                    {t(`azureRanking.${b.tKey}`)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {!data && !cacheStatus?.loading && (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#8b949e' }}>
@@ -724,7 +949,7 @@ export default function AzureRankingPage() {
           {displayedDevs.map((dev, idx) => {
             const displayRank = idx + 1
             const pct         = progressPercent(dev)
-            const catVal      = dev[catMeta.field as keyof DevStats] as number
+            const catVal      = getCatVal(dev)
             const borderLeft  = displayRank <= 3 ? `3px solid ${['#FFD700','#C0C0C0','#CD7F32'][displayRank - 1]}` : undefined
 
             return (
@@ -749,8 +974,8 @@ export default function AzureRankingPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '.5rem', minWidth: 200 }}>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--az-accent)' }}>{fmt(catVal)}</div>
-                    <div style={{ fontSize: '.7rem', color: '#8b949e' }}>{category === 'points' ? t('azureRanking.points') : t(`azureRanking.${catMeta.tKey}`)}</div>
-                    {category !== 'points' && <div style={{ fontSize: '.7rem', color: '#8b949e' }}>{fmt(dev.points)} {t('azureRanking.ptsTotal')}</div>}
+                    <div style={{ fontSize: '.7rem', color: '#8b949e' }}>{isCustom ? t('azureRanking.combinedScore') : category === 'points' ? t('azureRanking.points') : t(`azureRanking.${catMeta.tKey}`)}</div>
+                    {!isCustom && category !== 'points' && <div style={{ fontSize: '.7rem', color: '#8b949e' }}>{fmt(dev.points)} {t('azureRanking.ptsTotal')}</div>}
                   </div>
 
                   <div style={{ width: '100%', height: 5, background: 'var(--az-surface2)', borderRadius: 3, overflow: 'hidden' }}>
@@ -761,13 +986,12 @@ export default function AzureRankingPage() {
                     {[
                       { key: 'prsCreated',        label: t('azureRanking.statPRs'),       val: dev.prsCreated },
                       { key: 'prsCompleted',       label: t('azureRanking.statMerged'),    val: dev.prsCompleted },
-                      { key: 'commits',            label: t('azureRanking.statCommits'),   val: dev.commits },
                       { key: 'workItemsCompleted', label: t('azureRanking.statDone'),      val: dev.workItemsCompleted },
                       { key: 'ticketsCreated',     label: t('azureRanking.statCreated'),   val: dev.ticketsCreated },
                       { key: 'commentsGiven',      label: t('azureRanking.statPrReviews'), val: dev.commentsGiven },
                     ].map((stat) => (
-                      <div key={stat.key} style={{ textAlign: 'center', color: stat.key === category ? 'var(--az-accent)' : undefined, fontWeight: stat.key === category ? 700 : undefined }}>
-                        <div style={{ fontWeight: stat.key === category ? 700 : 600, color: stat.key === category ? 'var(--az-accent)' : 'var(--az-text)', fontSize: '.9rem' }}>{fmt(stat.val)}</div>
+                      <div key={stat.key} style={{ textAlign: 'center', color: (!isCustom && stat.key === category) ? 'var(--az-accent)' : undefined, fontWeight: (!isCustom && stat.key === category) ? 700 : undefined }}>
+                        <div style={{ fontWeight: (!isCustom && stat.key === category) ? 700 : 600, color: (!isCustom && stat.key === category) ? 'var(--az-accent)' : 'var(--az-text)', fontSize: '.9rem' }}>{fmt(stat.val)}</div>
                         <div>{stat.label}</div>
                       </div>
                     ))}
@@ -809,10 +1033,9 @@ export default function AzureRankingPage() {
                       [t('azureRanking.prMergedScoring'),        data.scoring.prCompleted],
                       [t('azureRanking.prReviewCommentScoring'), data.scoring.prComment],
                       [t('azureRanking.prApprovedScoring'),      data.scoring.prApproved],
-                      [t('azureRanking.prRejectedScoring'),      data.scoring.prRejected],
-                      [t('azureRanking.commitScoring'),          data.scoring.commit],
                       [t('azureRanking.ticketClosedScoring'),    data.scoring.workItemCompleted],
                       [t('azureRanking.ticketCreatedScoring'),   data.scoring.ticketCreated],
+                      [t('azureRanking.taskCreatedScoring'),     data.scoring.taskCreated],
                       [t('azureRanking.ticketCommentScoring'),   data.scoring.ticketComment],
                     ].map(([label, pts]) => (
                       <tr key={String(label)}>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Users, Bug, CalendarClock, Map, Zap, Package, MessageSquare,
-  Star, Activity, Globe, Monitor, RefreshCw, Ticket,
+  Star, Activity, Globe, Monitor, RefreshCw, Ticket, Archive,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { searchApi, type SearchHit } from '@/api/client'
@@ -165,13 +165,19 @@ export default function GlobalSearch({ open, onClose }: Props) {
                     <Icon className="w-3.5 h-3.5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                    <p className={`text-sm font-medium truncate ${hit.isArchived ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-900 dark:text-slate-100'}`}>
                       <Highlight text={hit.title} query={query} />
                     </p>
                     {hit.subtitle && (
                       <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{hit.subtitle}</p>
                     )}
                   </div>
+                  {hit.isArchived && (
+                    <span className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-full shrink-0">
+                      <Archive className="w-3 h-3" />
+                      {t('search.archived')}
+                    </span>
+                  )}
                   <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0 ml-2">
                     {t(`search.type.${hit.type}`, hit.type)}
                   </span>

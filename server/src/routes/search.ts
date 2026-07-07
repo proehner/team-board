@@ -10,6 +10,7 @@ export interface SearchHit {
   subtitle?: string
   url: string
   score: number
+  isArchived?: boolean
 }
 
 function scoreHit(title: string, others: (string | null | undefined)[], q: string): number {
@@ -90,15 +91,15 @@ router.get('/', (req, res) => {
   if (meetingMap.size > 0) {
     const ids = [...meetingMap.keys()]
     const ph  = ids.map(() => '?').join(',')
-    const topics = dbAll<{ id: string; title: string; description: string; meetingId: string }>(
-      `SELECT id, title, description, meetingId FROM meeting_topics WHERE meetingId IN (${ph}) AND status != 'done'`,
+    const topics = dbAll<{ id: string; title: string; description: string; meetingId: string; status: string }>(
+      `SELECT id, title, description, meetingId, status FROM meeting_topics WHERE meetingId IN (${ph})`,
       ids,
     )
     for (const t of topics) {
       const s = scoreHit(t.title, [t.description], q)
       if (s > 0) {
         const mtg = meetingMap.get(t.meetingId)
-        hits.push({ type: 'topic', id: t.id, title: t.title, subtitle: mtg?.title, url: `/meetings/${t.meetingId}/topics/${t.id}`, score: s })
+        hits.push({ type: 'topic', id: t.id, title: t.title, subtitle: mtg?.title, url: `/meetings/${t.meetingId}/topics/${t.id}`, score: s, isArchived: t.status === 'done' })
       }
     }
   }

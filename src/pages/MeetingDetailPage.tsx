@@ -7,7 +7,7 @@ import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import {
   CalendarClock, ArrowLeft, Plus, Archive,
   ChevronRight, Trash2, RefreshCw, MapPin, Clock,
-  ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown, Search,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { meetingsApi } from '@/api/client'
@@ -38,6 +38,7 @@ export default function MeetingDetailPage() {
   const [topics, setTopics]             = useState<MeetingTopic[]>([])
   const [showArchived, setShowArchived] = useState(false)
   const [loadingTopics, setLoadingTopics] = useState(true)
+  const [topicFilter, setTopicFilter]   = useState('')
   const [newTitle, setNewTitle]         = useState('')
   const [adding, setAdding]             = useState(false)
   const [showAddForm, setShowAddForm]   = useState(false)
@@ -117,6 +118,20 @@ export default function MeetingDetailPage() {
 
   const activeTopics = topics.filter((tp) => tp.status !== 'done')
   const doneTopics   = topics.filter((tp) => tp.status === 'done')
+
+  const filterQuery = topicFilter.trim().toLowerCase()
+  const filteredActiveTopics = filterQuery
+    ? activeTopics.filter((tp) =>
+        tp.title.toLowerCase().includes(filterQuery) ||
+        (tp.description ?? '').toLowerCase().includes(filterQuery),
+      )
+    : activeTopics
+  const filteredDoneTopics = filterQuery
+    ? doneTopics.filter((tp) =>
+        tp.title.toLowerCase().includes(filterQuery) ||
+        (tp.description ?? '').toLowerCase().includes(filterQuery),
+      )
+    : doneTopics
 
   function formatSchedule() {
     const parts: string[] = []
@@ -206,6 +221,19 @@ export default function MeetingDetailPage() {
         </div>
       </div>
 
+      {/* Topic filter */}
+      {topics.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            value={topicFilter}
+            onChange={(e) => setTopicFilter(e.target.value)}
+            placeholder={t('common.search')}
+            className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+          />
+        </div>
+      )}
+
       {/* Add topic form */}
       {showAddForm && (
         <div className="flex gap-2">
@@ -244,14 +272,14 @@ export default function MeetingDetailPage() {
       ) : (
         <div className="space-y-1.5">
           {/* Active topics */}
-          {activeTopics.map((topic, idx) => (
+          {filteredActiveTopics.map((topic, idx) => (
             <TopicRow
               key={topic.id}
               topic={topic}
               meetingId={meeting.id}
               members={meeting.isGlobal ? allMembers : members}
               isFirst={idx === 0}
-              isLast={idx === activeTopics.length - 1}
+              isLast={idx === filteredActiveTopics.length - 1}
               canWrite={canWrite}
               onStatusChange={handleStatusChange}
               onMove={handleMove}
@@ -261,8 +289,13 @@ export default function MeetingDetailPage() {
             />
           ))}
 
+          {/* Empty filter result */}
+          {filterQuery && filteredActiveTopics.length === 0 && filteredDoneTopics.length === 0 && (
+            <div className="text-center py-8 text-slate-400 text-sm">{t('meetings.noResults')}</div>
+          )}
+
           {/* Done / archived section */}
-          {showArchived && doneTopics.length > 0 && (
+          {showArchived && filteredDoneTopics.length > 0 && (
             <>
               <div className="flex items-center gap-2 py-2">
                 <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
@@ -271,7 +304,7 @@ export default function MeetingDetailPage() {
                 </span>
                 <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
               </div>
-              {doneTopics.map((topic) => (
+              {filteredDoneTopics.map((topic) => (
                 <TopicRow
                   key={topic.id}
                   topic={topic}

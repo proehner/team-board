@@ -32,11 +32,16 @@ export const ALL_PAGE_KEYS = [
   'pulse',
   'stakeholder',
   'azure-ranking',
+  'azure-ranking-refresh',
   'known-errors',
   'meetings',
   'tickets',
   'roadmap',
 ]
+
+// Sub-permissions that are never auto-granted based on admin role.
+// They must be explicitly set in a permission group, even for admins.
+export const NON_BYPASSABLE_SUBS = new Set(['azure-ranking-refresh'])
 
 // ─── Mapping: page key → API path prefixes ────────────────────────────────────
 // NOTE: kompetenzen-matrix must come BEFORE kompetenzen so that
@@ -123,6 +128,10 @@ export function computePagePermissions(
       } else if (page === 'kompetenzen-matrix-footer' && !(page in perms)) {
         // Groups created before kompetenzen-matrix-footer was introduced lack that key;
         // default to 'read' so existing groups keep showing the footer.
+        storedPerm = 'read'
+      } else if (page === 'azure-ranking-refresh' && !(page in perms)) {
+        // Groups created before azure-ranking-refresh was introduced lack that key;
+        // default to 'read' so existing groups can still trigger refreshes.
         storedPerm = 'read'
       } else {
         storedPerm = perms[page] ?? 'none'

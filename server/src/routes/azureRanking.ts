@@ -5,9 +5,11 @@ import fs from 'fs'
 
 const router = Router()
 
-const DATA_DIR   = path.join(__dirname, '..', '..', 'data')
-const CONFIG_FILE = path.join(DATA_DIR, 'azure-ranking.config.json')
-const CACHE_FILE  = path.join(DATA_DIR, 'azure-ranking.cache.json')
+const DATA_DIR    = path.join(__dirname, '..', '..', 'data')
+const CONFIG_FILE  = path.join(DATA_DIR, 'azure-ranking.config.json')
+const CACHE_FILE   = path.join(DATA_DIR, 'azure-ranking.cache.json')
+const HISTORY_FILE = path.join(DATA_DIR, 'azure-ranking.history.json')
+const MAX_SNAPSHOTS = 200
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,10 +43,9 @@ interface DevStats {
   prsCompleted:       number
   commentsGiven:      number
   approvalsGiven:     number
-  rejectionsGiven:    number
-  commits:            number
   workItemsCompleted: number
   ticketsCreated:     number
+  tasksCreated:       number
   ticketComments:     number
   points:             number
   badges:             Badge[]
@@ -56,10 +57,10 @@ interface PeriodData {
   developers:  DevStats[]
   totals: {
     prs:            number
-    commits:        number
     workItems:      number
     comments:       number
     ticketsCreated: number
+    tasksCreated:   number
     ticketComments: number
   }
   fromDate: string
@@ -71,6 +72,20 @@ interface PeriodData {
 
 interface CacheData {
   periods: Record<number, PeriodData>
+}
+
+interface HistoryDevPoint {
+  displayName: string
+  periods: Partial<Record<number, { points: number; rank: number }>>
+}
+
+interface HistorySnapshot {
+  loadedAt: string
+  devStats: Record<string, HistoryDevPoint>
+}
+
+interface HistoryStore {
+  snapshots: HistorySnapshot[]
 }
 
 interface CacheState {
@@ -128,6 +143,31 @@ function tryRestoreCache() {
 
 // Attempt immediately on server start
 tryRestoreCache()
+
+// ─── History Store ────────────────────────────────────────────────────────────
+
+let historyStore: HistoryStore = { snapshots: [] }
+
+function loadHistory() {
+  if (!fs.existsSync(HISTORY_FILE)) return
+  try {
+    const saved = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')) as HistoryStore
+    historyStore = saved
+    console.log(`📜 Azure ranking history loaded (${historyStore.snapshots.length} snapshots)`)
+  } catch (e: unknown) {
+    console.warn('Azure ranking history could not be read:', (e as Error).message)
+  }
+}
+
+function persistHistory() {
+  try {
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(historyStore))
+  } catch (e: unknown) {
+    console.warn('Azure ranking history could not be saved:', (e as Error).message)
+  }
+}
+
+loadHistory()
 
 function persistCache() {
   try {
@@ -202,18 +242,6 @@ async function getPRThreads(repoId: string, prId: number) {
   return data.value || []
 }
 
-async function getCommits(repoId: string, fromTs: number) {
-  const dateStr = new Date(fromTs).toISOString().split('T')[0]
-  const url = `${BASE()}/_apis/git/repositories/${repoId}/commits` +
-    `?searchCriteria.fromDate=${dateStr}&$top=10000&api-version=7.0`
-  try {
-    const data = await azGet<{ value: unknown[] }>(url)
-    return data.value || []
-  } catch {
-    return []
-  }
-}
-
 async function getClosedWorkItems(fromTs: number) {
   const dateStr = new Date(fromTs).toISOString().split('T')[0]
   const query =
@@ -253,7 +281,7 @@ async function getCreatedWorkItems(fromTs: number) {
     let all: unknown[] = []
     for (let i = 0; i < ids.length; i += 200) {
       const batch  = ids.slice(i, i + 200).join(',')
-      const fields = 'System.Id,System.CreatedBy,System.CreatedDate'
+      const fields = 'System.Id,System.CreatedBy,System.CreatedDate,System.WorkItemType'
       const data   = await azGet<{ value: unknown[] }>(`${BASE()}/_apis/wit/workitems?ids=${batch}&fields=${fields}&api-version=7.0`)
       all = all.concat(data.value || [])
     }
@@ -293,13 +321,12 @@ async function getWorkItemComments(wiId: number) {
 
 const SCORING = {
   prCreated:         10,
-  prCompleted:       25,
+  prCompleted:       20,
   prComment:          5,
   prApproved:        15,
-  prRejected:         8,
-  commit:             2,
-  workItemCompleted: 12,
-  ticketCreated:      8,
+  workItemCompleted:  8,
+  ticketCreated:      10,
+  taskCreated:        2,
   ticketComment:      3,
 }
 
@@ -316,10 +343,9 @@ interface RawDevStats {
   prsCompleted:       number
   commentsGiven:      number
   approvalsGiven:     number
-  rejectionsGiven:    number
-  commits:            number
   workItemsCompleted: number
   ticketsCreated:     number
+  tasksCreated:       number
   ticketComments:     number
 }
 
@@ -331,24 +357,62 @@ const BADGES: BadgeDef[] = [
   { id: 'reviewer',       name: 'Code Reviewer',     icon: '🔍', desc: '20+ review comments',         cond: (s) => s.commentsGiven >= 20 },
   { id: 'senior_rev',     name: 'Senior Reviewer',   icon: '👁️', desc: '50+ review comments',         cond: (s) => s.commentsGiven >= 50 },
   { id: 'approver',       name: 'Approver',          icon: '✅', desc: '10+ PRs approved',            cond: (s) => s.approvalsGiven >= 10 },
-  { id: 'nitpicker',      name: 'Perfectionist',     icon: '🔎', desc: '5+ PRs rejected',             cond: (s) => s.rejectionsGiven >= 5 },
-  { id: 'committer',      name: 'Active Coder',      icon: '💻', desc: '20+ commits',                 cond: (s) => s.commits >= 20 },
-  { id: 'commit_king',    name: 'Commit King',       icon: '👑', desc: '100+ commits',                cond: (s) => s.commits >= 100 },
   { id: 'worker',         name: 'Work Horse',        icon: '🐴', desc: '10+ tickets completed',       cond: (s) => s.workItemsCompleted >= 10 },
   { id: 'powerworker',    name: 'Power Worker',      icon: '💪', desc: '30+ tickets completed',       cond: (s) => s.workItemsCompleted >= 30 },
   { id: 'ticket_starter', name: 'Ticket Creator',    icon: '📝', desc: '5+ tickets created',          cond: (s) => s.ticketsCreated >= 5 },
   { id: 'ticket_master',  name: 'Ticket Master',     icon: '🎫', desc: '20+ tickets created',         cond: (s) => s.ticketsCreated >= 20 },
   { id: 'commentator',    name: 'Commentator',       icon: '💡', desc: '20+ ticket comments',         cond: (s) => s.ticketComments >= 20 },
   { id: 'disc_king',      name: 'Discussion King',   icon: '🗣️', desc: '50+ ticket comments',         cond: (s) => s.ticketComments >= 50 },
-  { id: 'all_rounder',    name: 'All-Rounder',       icon: '🌟', desc: 'Active in all categories',    cond: (s) => s.prsCreated > 0 && s.commits > 0 && s.workItemsCompleted > 0 && s.commentsGiven > 0 },
+  { id: 'all_rounder',    name: 'All-Rounder',       icon: '🌟', desc: 'Active in all categories',    cond: (s) => s.prsCreated > 0 && s.workItemsCompleted > 0 && s.commentsGiven > 0 },
 ]
 
-function getLevel(points: number): Level {
-  if (points >= 10000) return { name: 'Diamond', icon: '💎', color: '#00BFFF', min: 10000, next: null }
-  if (points >= 5000)  return { name: 'Platinum', icon: '🏆', color: '#E5E4E2', min: 5000,  next: 10000 }
-  if (points >= 2500)  return { name: 'Gold',    icon: '🥇', color: '#FFD700', min: 2500,  next: 5000 }
-  if (points >= 1000)  return { name: 'Silver',  icon: '🥈', color: '#C0C0C0', min: 1000,  next: 2500 }
-  return                      { name: 'Bronze',  icon: '🥉', color: '#CD7F32', min: 0,     next: 1000 }
+// Level thresholds per time period [Diamond, Platinum, Gold, Silver, Bronze]
+// Calibrated so that a top developer (~1000 pts/week, ~38000 pts/year) reaches
+// Platinum in the 7-day view and just enters Diamond in the 365-day view.
+const PERIOD_THRESHOLDS: Record<number, readonly [number, number, number, number, number]> = {
+  7:   [1300,  700,  300,  100,  0],
+  30:  [5500,  3000, 1400, 500,  0],
+  90:  [12000, 6000, 3000, 1100, 0],
+  365: [35000, 18000, 9000, 3500, 0],
+}
+
+const LEVEL_DEFS = [
+  { name: 'Diamond', icon: '💎', color: '#00BFFF' },
+  { name: 'Platinum', icon: '🏆', color: '#E5E4E2' },
+  { name: 'Gold',     icon: '🥇', color: '#FFD700' },
+  { name: 'Silver',   icon: '🥈', color: '#C0C0C0' },
+  { name: 'Bronze',   icon: '🥉', color: '#CD7F32' },
+] as const
+
+function getLevel(points: number, days = 365): Level {
+  const thr = PERIOD_THRESHOLDS[days] ?? PERIOD_THRESHOLDS[365]
+  for (let i = 0; i < LEVEL_DEFS.length; i++) {
+    if (points >= thr[i]) {
+      return {
+        name:  LEVEL_DEFS[i].name,
+        icon:  LEVEL_DEFS[i].icon,
+        color: LEVEL_DEFS[i].color,
+        min:   thr[i],
+        next:  i > 0 ? thr[i - 1] : null,
+      }
+    }
+  }
+  return { name: 'Bronze', icon: '🥉', color: '#CD7F32', min: 0, next: thr[3] }
+}
+
+function buildLevelsForPeriod(days: number): PeriodData['levels'] {
+  const thr = PERIOD_THRESHOLDS[days] ?? PERIOD_THRESHOLDS[365]
+  // ascending order: Bronze first, Diamond last
+  return [...LEVEL_DEFS].reverse().map((def, i) => {
+    const idx = LEVEL_DEFS.length - 1 - i
+    return {
+      name:  def.name,
+      icon:  def.icon,
+      color: def.color,
+      min:   thr[idx],
+      max:   idx > 0 ? thr[idx - 1] - 1 : null,
+    }
+  })
 }
 
 // ─── Developer Tracker ────────────────────────────────────────────────────────
@@ -361,10 +425,9 @@ interface RawDev {
   prCompletedTs:       number[]
   prCommentTs:         number[]
   prApprovalTs:        number[]
-  prRejectionTs:       number[]
-  commitTs:            number[]
   workItemCompletedTs: number[]
   ticketCreatedTs:     number[]
+  taskCreatedTs:       number[]
   ticketCommentTs:     number[]
   repositories: Set<string>
 }
@@ -383,8 +446,8 @@ class DevTracker {
     return {
       id: key, displayName, uniqueName: key,
       prCreatedTs: [], prCompletedTs: [], prCommentTs: [],
-      prApprovalTs: [], prRejectionTs: [], commitTs: [],
-      workItemCompletedTs: [], ticketCreatedTs: [], ticketCommentTs: [],
+      prApprovalTs: [],
+      workItemCompletedTs: [], ticketCreatedTs: [], taskCreatedTs: [], ticketCommentTs: [],
       repositories: new Set(),
     }
   }
@@ -429,15 +492,14 @@ function aggregateForPeriod(rawDevs: RawDev[], fromTs: number, days: number): Pe
       prsCompleted:       count(d.prCompletedTs),
       commentsGiven:      count(d.prCommentTs),
       approvalsGiven:     count(d.prApprovalTs),
-      rejectionsGiven:    count(d.prRejectionTs),
-      commits:            count(d.commitTs),
       workItemsCompleted: count(d.workItemCompletedTs),
       ticketsCreated:     count(d.ticketCreatedTs),
+      tasksCreated:       count(d.taskCreatedTs),
       ticketComments:     count(d.ticketCommentTs),
     }))
     .filter((d) =>
-      d.prsCreated + d.commits + d.workItemsCompleted +
-      d.commentsGiven + d.ticketsCreated + d.ticketComments > 0
+      d.prsCreated + d.workItemsCompleted +
+      d.commentsGiven + d.ticketsCreated + d.tasksCreated + d.ticketComments > 0
     )
     .map((d) => {
       const points = Math.round(
@@ -445,16 +507,15 @@ function aggregateForPeriod(rawDevs: RawDev[], fromTs: number, days: number): Pe
         d.prsCompleted       * SCORING.prCompleted +
         d.commentsGiven      * SCORING.prComment +
         d.approvalsGiven     * SCORING.prApproved +
-        d.rejectionsGiven    * SCORING.prRejected +
-        d.commits            * SCORING.commit +
         d.workItemsCompleted * SCORING.workItemCompleted +
         d.ticketsCreated     * SCORING.ticketCreated +
+        d.tasksCreated       * SCORING.taskCreated +
         d.ticketComments     * SCORING.ticketComment,
       )
       return {
         ...d, points,
         badges: BADGES.filter((b) => b.cond(d)).map(({ id, name, icon, desc }) => ({ id, name, icon, desc })),
-        level:  getLevel(points),
+        level:  getLevel(points, days),
         rank:   0,
       }
     })
@@ -464,13 +525,13 @@ function aggregateForPeriod(rawDevs: RawDev[], fromTs: number, days: number): Pe
   const totals = devStats.reduce(
     (acc, d) => ({
       prs:            acc.prs            + d.prsCreated,
-      commits:        acc.commits        + d.commits,
       workItems:      acc.workItems      + d.workItemsCompleted,
       comments:       acc.comments       + d.commentsGiven,
       ticketsCreated: acc.ticketsCreated + d.ticketsCreated,
+      tasksCreated:   acc.tasksCreated   + d.tasksCreated,
       ticketComments: acc.ticketComments + d.ticketComments,
     }),
-    { prs: 0, commits: 0, workItems: 0, comments: 0, ticketsCreated: 0, ticketComments: 0 },
+    { prs: 0, workItems: 0, comments: 0, ticketsCreated: 0, tasksCreated: 0, ticketComments: 0 },
   )
 
   return {
@@ -480,13 +541,7 @@ function aggregateForPeriod(rawDevs: RawDev[], fromTs: number, days: number): Pe
     toDate:   new Date().toISOString(),
     days,
     scoring: SCORING,
-    levels: [
-      { name: 'Bronze',   icon: '🥉', color: '#CD7F32', min: 0,    max: 499  },
-      { name: 'Silver',   icon: '🥈', color: '#C0C0C0', min: 500,  max: 999  },
-      { name: 'Gold',     icon: '🥇', color: '#FFD700', min: 1000, max: 2499 },
-      { name: 'Platinum', icon: '🏆', color: '#E5E4E2', min: 2500, max: 4999 },
-      { name: 'Diamond',  icon: '💎', color: '#00BFFF', min: 5000, max: null },
-    ],
+    levels: buildLevelsForPeriod(days),
   }
 }
 
@@ -521,7 +576,7 @@ async function loadDataFromAzure() {
     console.log(`   Repositories: ${repos.length}`)
     setProgress('repos', `${repos.length} repositories found`, { total: repos.length, done: 0 })
 
-    // 2. Per repo: PRs + commits
+    // 2. Per repo: PRs
     for (let i = 0; i < repos.length; i++) {
       const repo = repos[i]
       setProgress('prs', `Repository ${i + 1}/${repos.length}: ${repo.name}`, {
@@ -547,8 +602,7 @@ async function loadDataFromAzure() {
           const rDev = tracker.fromIdentity(rv)
           if (rDev && rDev.id !== creator?.id && prClosedTs) {
             const vote = (rv as unknown as Record<string, number>).vote
-            if (vote === 10)  rDev.prApprovalTs.push(prClosedTs)
-            if (vote === -10) rDev.prRejectionTs.push(prClosedTs)
+            if (vote === 10) rDev.prApprovalTs.push(prClosedTs)
           }
         }
 
@@ -569,18 +623,6 @@ async function loadDataFromAzure() {
         } catch { /* skip */ }
       }
 
-      const commits = await getCommits(String(repo.id), fromTs365) as Array<Record<string, unknown>>
-      for (const c of commits) {
-        const author = c.author as Record<string, string> | undefined
-        if (author?.email) {
-          const dev = tracker.fromEmail(author.email, author.name)
-          if (dev) {
-            dev.repositories.add(String(repo.name))
-            const commitTs = toTs(author.date)
-            if (commitTs) dev.commitTs.push(commitTs)
-          }
-        }
-      }
     }
 
     // 3. Closed tickets
@@ -597,7 +639,7 @@ async function loadDataFromAzure() {
       }
     }
 
-    // 4. Created tickets
+    // 4. Created tickets (non-Task types) and Tasks (separate metric)
     setProgress('tickets-created', 'Loading created tickets…')
     const createdWI = await getCreatedWorkItems(fromTs365) as Array<Record<string, unknown>>
     console.log(`   Created tickets: ${createdWI.length}`)
@@ -605,16 +647,20 @@ async function loadDataFromAzure() {
       const fields    = wi.fields as Record<string, unknown>
       const createdBy = fields?.['System.CreatedBy'] as AzureIdentity | undefined
       const createdTs = toTs(fields?.['System.CreatedDate'] as string)
+      const wiType    = fields?.['System.WorkItemType'] as string | undefined
       if (createdBy && createdTs) {
         const dev = tracker.fromIdentity(createdBy)
-        if (dev) dev.ticketCreatedTs.push(createdTs)
+        if (dev) {
+          if (wiType === 'Task') dev.taskCreatedTs.push(createdTs)
+          else dev.ticketCreatedTs.push(createdTs)
+        }
       }
     }
 
     // 5. Ticket comments
     setProgress('ticket-comments', 'Loading ticket comments…')
     const activeIds = await getActiveWorkItemIds(fromTs365)
-    const fetchIds  = activeIds.slice(0, 1000)
+    const fetchIds  = activeIds.slice(0, 10000)
     console.log(`   Ticket comments: ${fetchIds.length} work items`)
     for (let i = 0; i < fetchIds.length; i++) {
       setProgress('ticket-comments', `Ticket comments ${i + 1}/${fetchIds.length}…`, {
@@ -643,6 +689,23 @@ async function loadDataFromAzure() {
     cacheState.data       = { periods }
     cacheState.lastLoaded = new Date().toISOString()
     persistCache()
+
+    // Save history snapshot
+    const snapshot: HistorySnapshot = { loadedAt: cacheState.lastLoaded!, devStats: {} }
+    for (const [p, periodData] of Object.entries(periods)) {
+      for (const dev of periodData.developers) {
+        if (!snapshot.devStats[dev.id]) {
+          snapshot.devStats[dev.id] = { displayName: dev.displayName, periods: {} }
+        }
+        snapshot.devStats[dev.id].periods[Number(p)] = { points: dev.points, rank: dev.rank }
+      }
+    }
+    historyStore.snapshots.push(snapshot)
+    if (historyStore.snapshots.length > MAX_SNAPSHOTS) {
+      historyStore.snapshots = historyStore.snapshots.slice(-MAX_SNAPSHOTS)
+    }
+    persistHistory()
+    console.log(`📜 History snapshot saved (${historyStore.snapshots.length} total)`)
 
     console.log(`✅ Azure ranking cache updated – as of: ${new Date(cacheState.lastLoaded).toLocaleString('en-US')}\n`)
     setProgress('done', 'Done')
@@ -695,6 +758,13 @@ router.get('/cache/status', (_req, res) => {
 })
 
 router.post('/cache/refresh', (req, res) => {
+  // Check azure-ranking-refresh sub-permission for every user, including admins.
+  // requirePageAccess bypasses admins, so we enforce this sub-permission here explicitly.
+  const refreshPerm = req.user?.pagePermissions?.['azure-ranking-refresh'] ?? 'write'
+  if (refreshPerm === 'none') {
+    return res.status(403).json({ error: 'No permission to refresh data.' })
+  }
+
   if (!config.organization || !config.project || !config.pat)
     return res.status(400).json({ error: 'Not configured.' })
   if (cacheState.loading)
@@ -702,6 +772,20 @@ router.post('/cache/refresh', (req, res) => {
 
   loadDataFromAzure() // fire and forget
   res.json({ started: true, message: 'Data load started.' })
+})
+
+router.get('/dev-history', (req, res) => {
+  const devId = String(req.query.devId || '')
+  if (!devId) return res.status(400).json({ error: 'devId is required' })
+
+  const snapshots = historyStore.snapshots
+    .filter((s) => s.devStats[devId])
+    .map((s) => ({
+      loadedAt: s.loadedAt,
+      periods:  s.devStats[devId].periods,
+    }))
+
+  res.json({ snapshots })
 })
 
 router.get('/stats', (req, res) => {
@@ -723,7 +807,18 @@ router.get('/stats', (req, res) => {
   const data         = cacheState.data.periods[period]
 
   if (!data) return res.status(400).json({ error: `Period ${days} not in cache.` })
-  res.json(data)
+
+  // Always recompute levels from current thresholds so threshold changes
+  // take effect immediately without requiring a full Azure data reload.
+  const response: PeriodData = {
+    ...data,
+    levels: buildLevelsForPeriod(period),
+    developers: data.developers.map((dev) => ({
+      ...dev,
+      level: getLevel(dev.points, period),
+    })),
+  }
+  res.json(response)
 })
 
 export default router

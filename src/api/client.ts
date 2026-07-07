@@ -474,6 +474,7 @@ export interface SearchHit {
   subtitle?: string
   url: string
   score: number
+  isArchived?: boolean
 }
 
 export const searchApi = {
