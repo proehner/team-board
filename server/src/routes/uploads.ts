@@ -48,6 +48,16 @@ type TopicAttachmentRow = {
   uploadedAt: string
 }
 
+type ResponsibilityTypeAttachmentRow = {
+  id: string
+  responsibilityTypeId: string
+  filename: string
+  originalName: string
+  mimeType: string
+  size: number
+  uploadedAt: string
+}
+
 // ─── Attachment CRUD (auth required) ─────────────────────────────────────────
 // These routes are defined BEFORE the /:filename catch-all to ensure they match first.
 
@@ -152,6 +162,58 @@ router.delete(
     const filePath = path.join(UPLOADS_DIR, row.filename)
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
     dbRun('DELETE FROM topic_attachments WHERE id = ?', [attachId])
+    res.status(204).send()
+  },
+)
+
+// ─── Responsibility Type Attachment CRUD ─────────────────────────────────────
+
+// GET /api/uploads/responsibility-types/:typeId/attachments
+router.get('/responsibility-types/:typeId/attachments', requireAuth as RequestHandler, (req, res) => {
+  res.json(
+    dbAll<ResponsibilityTypeAttachmentRow>(
+      'SELECT * FROM responsibility_type_attachments WHERE responsibilityTypeId = ? ORDER BY uploadedAt ASC',
+      [req.params.typeId],
+    ),
+  )
+})
+
+// POST /api/uploads/responsibility-types/:typeId/attachments
+router.post(
+  '/responsibility-types/:typeId/attachments',
+  requireAuth as RequestHandler,
+  upload.single('file'),
+  (req, res) => {
+    const { typeId } = req.params
+    if (!dbGet('SELECT id FROM responsibility_types WHERE id = ?', [typeId])) {
+      return res.status(404).json({ error: 'Responsibility type not found.' })
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' })
+    const id  = crypto.randomUUID()
+    const now = new Date().toISOString()
+    dbRun(
+      `INSERT INTO responsibility_type_attachments (id, responsibilityTypeId, filename, originalName, mimeType, size, uploadedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, typeId, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size, now],
+    )
+    res.status(201).json(dbGet<ResponsibilityTypeAttachmentRow>('SELECT * FROM responsibility_type_attachments WHERE id = ?', [id]))
+  },
+)
+
+// DELETE /api/uploads/responsibility-types/:typeId/attachments/:attachId
+router.delete(
+  '/responsibility-types/:typeId/attachments/:attachId',
+  requireAuth as RequestHandler,
+  (req, res) => {
+    const { typeId, attachId } = req.params
+    const row = dbGet<ResponsibilityTypeAttachmentRow>(
+      'SELECT * FROM responsibility_type_attachments WHERE id = ? AND responsibilityTypeId = ?',
+      [attachId, typeId],
+    )
+    if (!row) return res.status(404).json({ error: 'Attachment not found.' })
+    const filePath = path.join(UPLOADS_DIR, row.filename)
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    dbRun('DELETE FROM responsibility_type_attachments WHERE id = ?', [attachId])
     res.status(204).send()
   },
 )

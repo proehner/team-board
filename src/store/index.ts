@@ -75,7 +75,7 @@ interface AppState {
 
   // ─── Responsibility Types ──────────────────────────────────────────────────
   addResponsibilityType:    (data: { name: string; color: string }) => Promise<string>
-  updateResponsibilityType: (id: string, data: Partial<Pick<ResponsibilityTypeConfig, 'name' | 'color' | 'sortOrder'>>) => Promise<void>
+  updateResponsibilityType: (id: string, data: Partial<Pick<ResponsibilityTypeConfig, 'name' | 'color' | 'sortOrder' | 'documentation'>>) => Promise<void>
   deleteResponsibilityType: (id: string) => Promise<void>
 
   // ─── Retrospectives ───────────────────────────────────────────────────────
