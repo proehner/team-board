@@ -10,6 +10,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { useAuthStore } from '@/store/auth'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
+import { getMemberDisplayNames } from '@/utils/members'
 
 // ─── Page keys + labels (same order as sidebar) ───────────────────────────────
 const ALL_PAGES: { key: string; labelKey: string; hasWriteOwn?: boolean; isSubReadOnly?: boolean }[] = [
@@ -742,9 +743,13 @@ export default function AdminPage() {
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.linkedMember')}</label>
             <select value={form.memberId} onChange={(e) => setForm((p) => ({ ...p, memberId: e.target.value }))} className="form-input w-full">
               <option value="">{t('admin.noLinkedMember')}</option>
-              {allMembers.filter((m) => m.isActive).map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
+              {(() => {
+                const activeMembers = allMembers.filter((m) => m.isActive)
+                const displayNames  = getMemberDisplayNames(activeMembers, teamList)
+                return activeMembers.map((m) => (
+                  <option key={m.id} value={m.id}>{displayNames.get(m.id) ?? m.name}</option>
+                ))
+              })()}
             </select>
           </div>
           {editUser && (

@@ -81,7 +81,8 @@
     "password": "Passwort",
     "usernamePlaceholder": "benutzername",
     "failed": "Anmeldung fehlgeschlagen",
-    "signingIn": "Anmelden…"
+    "signingIn": "Anmelden…",
+    "publicDashboardLink": "Öffentliches Dashboard ansehen"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1004,5 +1005,17 @@
       "software": "Software",
       "ticket": "Ticket"
     }
+  },
+  "publicDashboard": {
+    "title": "Verantwortlichkeiten",
+    "subtitle": "Aktuelle Rotationszuweisungen aller Teams",
+    "loading": "Lade Daten…",
+    "error": "Daten konnten nicht geladen werden.",
+    "empty": "Keine Teams vorhanden.",
+    "noTypes": "Keine Verantwortlichkeitstypen definiert.",
+    "noActiveAssignment": "Keine aktive Zuweisung",
+    "endsToday": "Endet heute",
+    "daysLeft": "Noch {{count}} Tag(e)",
+    "loginLink": "Zur Anmeldung"
   }
 }

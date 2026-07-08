@@ -13,6 +13,7 @@ import { useStore } from '@/store'
 import { meetingsApi, topicAttachmentsApi, ticketsApi, ticketCategoriesApi } from '@/api/client'
 import type { MeetingTopic, MeetingTopicStatus, TopicComment, TopicAttachment, Ticket, TicketPriority, TicketCategory } from '@/types'
 import { useAuthStore } from '@/store/auth'
+import { getMemberDisplayNames } from '@/utils/members'
 import MarkdownEditor from '@/components/ui/MarkdownEditor'
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -343,6 +344,7 @@ export default function TopicDetailPage() {
   const assignees = [...members, ...allMembers].filter(
     (m, i, arr) => topic.assigneeIds.includes(m.id) && arr.findIndex((x) => x.id === m.id) === i,
   )
+  const assigneeDisplayNames = getMemberDisplayNames(assignees, teams)
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
@@ -594,7 +596,7 @@ export default function TopicDetailPage() {
                 >
                   {m.name.charAt(0).toUpperCase()}
                 </span>
-                {m.name}
+                {assigneeDisplayNames.get(m.id) ?? m.name}
               </div>
             ))}
           </div>

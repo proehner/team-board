@@ -25,6 +25,7 @@ import dashboardRouter from './routes/dashboardTiles'
 import roadmapRouter from './routes/roadmap'
 import uploadsRouter from './routes/uploads'
 import searchRouter from './routes/search'
+import publicDashboardRouter from './routes/publicDashboard'
 
 const app = express()
 const PORT: string | number = process.env.PORT ?? 3001
@@ -65,6 +66,9 @@ app.use('/api/auth', authRouter)
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
+
+// Public rotation dashboard (cross-team, read-only, no PII — no email/notes/history)
+app.use('/api/public/dashboard', publicDashboardRouter)
 
 // ─── Protected API Routes ─────────────────────────────────────────────────────
 // requireAuth       → valid JWT required
