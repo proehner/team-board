@@ -81,7 +81,8 @@
     "password": "Password",
     "usernamePlaceholder": "username",
     "failed": "Sign in failed",
-    "signingIn": "Signing in…"
+    "signingIn": "Signing in…",
+    "publicDashboardLink": "View public dashboard"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1004,5 +1005,17 @@
       "software": "Software",
       "ticket": "Ticket"
     }
+  },
+  "publicDashboard": {
+    "title": "Responsibilities",
+    "subtitle": "Current rotation assignments across all teams",
+    "loading": "Loading data…",
+    "error": "Failed to load data.",
+    "empty": "No teams found.",
+    "noTypes": "No responsibility types defined.",
+    "noActiveAssignment": "No active assignment",
+    "endsToday": "Ends today",
+    "daysLeft": "{{count}} day(s) left",
+    "loginLink": "Back to login"
   }
 }

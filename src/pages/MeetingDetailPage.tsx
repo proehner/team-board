@@ -10,8 +10,10 @@ import {
   ChevronUp, ChevronDown, Search,
 } from 'lucide-react'
 import { useStore } from '@/store'
+import { useAuthStore } from '@/store/auth'
+import { getMemberDisplayNames } from '@/utils/members'
 import { meetingsApi } from '@/api/client'
-import type { MeetingTopic, MeetingTopicStatus, TeamMember } from '@/types'
+import type { MeetingTopic, MeetingTopicStatus, TeamMember, Team } from '@/types'
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
@@ -30,6 +32,7 @@ export default function MeetingDetailPage() {
   const meetings        = useStore((s) => s.meetings)
   const members         = useStore((s) => s.members)
   const allMembers      = useStore((s) => s.allMembers)
+  const teams           = useAuthStore((s) => s.teams)
 
   const { canWrite, isReadOnly } = usePagePermission('meetings')
 
@@ -278,6 +281,7 @@ export default function MeetingDetailPage() {
               topic={topic}
               meetingId={meeting.id}
               members={meeting.isGlobal ? allMembers : members}
+              teams={teams}
               isFirst={idx === 0}
               isLast={idx === filteredActiveTopics.length - 1}
               canWrite={canWrite}
@@ -310,6 +314,7 @@ export default function MeetingDetailPage() {
                   topic={topic}
                   meetingId={meeting.id}
                   members={meeting.isGlobal ? allMembers : members}
+                  teams={teams}
                   isFirst={false}
                   isLast={false}
                   canWrite={canWrite}
@@ -352,6 +357,7 @@ interface TopicRowProps {
   topic: MeetingTopic
   meetingId: string
   members: TeamMember[]
+  teams: Team[]
   isFirst: boolean
   isLast: boolean
   canWrite: boolean
@@ -362,9 +368,10 @@ interface TopicRowProps {
   t: (key: string, opts?: Record<string, unknown>) => string
 }
 
-function TopicRow({ topic, members, isFirst, isLast, canWrite, onStatusChange, onMove, onDelete, onNavigate, t }: TopicRowProps) {
+function TopicRow({ topic, members, teams, isFirst, isLast, canWrite, onStatusChange, onMove, onDelete, onNavigate, t }: TopicRowProps) {
   const isDone    = topic.status === 'done'
   const assignees = members.filter((m) => topic.assigneeIds?.includes(m.id))
+  const assigneeDisplayNames = getMemberDisplayNames(assignees, teams)
   const cfg       = STATUS_CONFIG[topic.status]
 
   const STATUSES: MeetingTopicStatus[] = ['todo', 'in_progress', 'deferred', 'fixed', 'done']
@@ -436,7 +443,7 @@ function TopicRow({ topic, members, isFirst, isLast, canWrite, onStatusChange, o
           {assignees.slice(0, 3).map((m) => (
             <div
               key={m.id}
-              title={m.name}
+              title={assigneeDisplayNames.get(m.id) ?? m.name}
               className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center text-xs font-bold text-white shrink-0"
               style={{ backgroundColor: m.avatarColor }}
             >

@@ -1,5 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import type { TeamMember } from '@/types'
+import { useAuthStore } from '@/store/auth'
+import { getMemberDisplayNames } from '@/utils/members'
 
 interface Props {
   value:       string
@@ -20,6 +22,9 @@ export default function MentionInput({ value, onChange, onKeyDown, members, plac
   const [query,     setQuery]     = useState('')
   const [atIndex,   setAtIndex]   = useState(-1)
   const [activeIdx, setActiveIdx] = useState(0)
+
+  const teams = useAuthStore((s) => s.teams)
+  const memberDisplayNames = getMemberDisplayNames(members, teams)
 
   const filtered = members
     .filter((m) => m.name.toLowerCase().includes(query.toLowerCase()))
@@ -131,7 +136,7 @@ export default function MentionInput({ value, onChange, onKeyDown, members, plac
               >
                 {m.name.charAt(0).toUpperCase()}
               </span>
-              <span className="truncate font-medium">{m.name}</span>
+              <span className="truncate font-medium">{memberDisplayNames.get(m.id) ?? m.name}</span>
             </button>
           ))}
         </div>

@@ -6,8 +6,10 @@ import {
   Loader2, Flag, Users, X, Globe, Tag, Archive, ArchiveRestore,
 } from 'lucide-react'
 import { ticketsApi, ticketCategoriesApi } from '@/api/client'
-import type { Ticket, TicketStatus, TicketPriority, TeamMember, TicketCategory } from '@/types'
+import type { Ticket, TicketStatus, TicketPriority, TeamMember, TicketCategory, Team } from '@/types'
 import { useStore } from '@/store'
+import { useAuthStore } from '@/store/auth'
+import { getMemberDisplayNames } from '@/utils/members'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import { usePagePermission } from '@/hooks/usePagePermission'
@@ -29,6 +31,7 @@ export default function TicketsPage() {
   const { canWrite, isReadOnly } = usePagePermission('tickets')
   const members    = useStore((s) => s.members)
   const allMembers = useStore((s) => s.allMembers)
+  const teams      = useAuthStore((s) => s.teams)
 
   const [tickets,      setTickets]      = useState<Ticket[]>([])
   const [categories,   setCategories]   = useState<TicketCategory[]>([])
@@ -314,6 +317,7 @@ export default function TicketsPage() {
                       key={ticket.id}
                       ticket={ticket}
                       members={ticket.isGlobal ? allMembers : members}
+                      teams={teams}
                       categories={categories}
                       onOpen={() => setDetailTicket(ticket)}
                       onMove={async (tk, dir) => {
@@ -456,6 +460,7 @@ export default function TicketsPage() {
 interface TicketCardProps {
   ticket: Ticket
   members: TeamMember[]
+  teams: Team[]
   categories: TicketCategory[]
   onOpen: () => void
   onMove: (ticket: Ticket, dir: 'forward' | 'backward') => void
@@ -464,12 +469,13 @@ interface TicketCardProps {
   t: (key: string, opts?: Record<string, unknown>) => string
 }
 
-function TicketCard({ ticket, members, categories, onOpen, onMove, onDelete, onArchive, t }: TicketCardProps) {
+function TicketCard({ ticket, members, teams, categories, onOpen, onMove, onDelete, onArchive, t }: TicketCardProps) {
   const statuses: TicketStatus[] = ['todo', 'in_progress', 'done']
   const idx        = statuses.indexOf(ticket.status)
   const canBack    = idx > 0
   const canForward = idx < statuses.length - 1
   const assignees  = members.filter((m) => ticket.assigneeIds?.includes(m.id))
+  const assigneeDisplayNames = getMemberDisplayNames(assignees, teams)
   const category   = ticket.categoryId ? categories.find((c) => c.id === ticket.categoryId) : null
 
   return (
@@ -503,7 +509,7 @@ function TicketCard({ ticket, members, categories, onOpen, onMove, onDelete, onA
         {assignees.length > 0 && (
           <div className="flex items-center -space-x-1 ml-auto">
             {assignees.slice(0, 4).map((m) => (
-              <div key={m.id} title={m.name} className="w-5 h-5 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ backgroundColor: m.avatarColor }}>
+              <div key={m.id} title={assigneeDisplayNames.get(m.id) ?? m.name} className="w-5 h-5 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ backgroundColor: m.avatarColor }}>
                 {m.name.charAt(0).toUpperCase()}
               </div>
             ))}

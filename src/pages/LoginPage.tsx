@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react'
-import { Shield, Loader2, Eye, EyeOff } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Shield, Loader2, Eye, EyeOff, Users } from 'lucide-react'
 import { authApi } from '@/api/client'
 import { useAuthStore } from '@/store/auth'
 import { useTranslation } from 'react-i18next'
@@ -109,6 +110,14 @@ export default function LoginPage() {
             </button>
           </form>
         </div>
+
+        <Link
+          to="/public-dashboard"
+          className="mt-4 flex items-center justify-center gap-1.5 text-sm text-slate-500 hover:text-indigo-600 transition-colors"
+        >
+          <Users className="w-3.5 h-3.5" />
+          {t('login.publicDashboardLink')}
+        </Link>
       </div>
     </div>
   )

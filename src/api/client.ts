@@ -59,6 +59,22 @@ export const teamsApi = {
   delete: (id: string) => del(`/teams/${id}`),
 }
 
+// ─── Public Dashboard (no auth required) ──────────────────────────────────────
+export interface PublicDashboardResponsibility {
+  typeId:   string
+  typeName: string
+  color:    string
+  current:  { memberName: string; avatarColor: string; endDate: string } | null
+}
+export interface PublicDashboardTeam {
+  teamId:           string
+  teamName:         string
+  responsibilities: PublicDashboardResponsibility[]
+}
+export const publicApi = {
+  dashboard: () => get<PublicDashboardTeam[]>('/public/dashboard'),
+}
+
 // ─── Members ──────────────────────────────────────────────────────────────────
 export const membersApi = {
   list:    () => get<TeamMember[]>('/members'),

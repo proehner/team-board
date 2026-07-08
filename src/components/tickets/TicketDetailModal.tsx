@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -8,6 +8,8 @@ import {
   Archive, ArchiveRestore, Trash2, ExternalLink,
 } from 'lucide-react'
 import { ticketsApi, meetingsApi } from '@/api/client'
+import { useAuthStore } from '@/store/auth'
+import { getMemberDisplayNames } from '@/utils/members'
 import type { Ticket, TicketStatus, TicketPriority, TeamMember, TicketCategory, MeetingTopic } from '@/types'
 
 // ─── Shared style constants ───────────────────────────────────────────────────
@@ -46,6 +48,7 @@ export default function TicketDetailModal({
 }: TicketDetailModalProps) {
   const { t }    = useTranslation()
   const navigate = useNavigate()
+  const teams    = useAuthStore((s) => s.teams)
 
   const [title,       setTitle]       = useState(ticket.title)
   const [description, setDescription] = useState(ticket.description)
@@ -114,6 +117,7 @@ export default function TicketDetailModal({
   }
 
   const memberPool = isGlobal ? allMembers.filter((m) => m.isActive) : members.filter((m) => m.isActive)
+  const memberDisplayNames = useMemo(() => getMemberDisplayNames(memberPool, teams), [memberPool, teams])
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
@@ -317,7 +321,7 @@ export default function TicketDetailModal({
                       >
                         {m.name.charAt(0).toUpperCase()}
                       </span>
-                      {m.name}
+                      {memberDisplayNames.get(m.id) ?? m.name}
                     </button>
                   )
                 })}

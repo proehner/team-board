@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
 import Layout from '@/components/layout/Layout'
@@ -24,6 +24,7 @@ import TicketsPage from '@/pages/TicketsPage'
 import RoadmapPage from '@/pages/RoadmapPage'
 import RoadmapFeatureDetailPage from '@/pages/RoadmapFeatureDetailPage'
 import LoginPage from '@/pages/LoginPage'
+import PublicDashboardPage from '@/pages/PublicDashboardPage'
 import { useStore } from '@/store'
 import { useAuthStore } from '@/store/auth'
 import { authApi, teamsApi } from '@/api/client'
@@ -105,6 +106,7 @@ function TeamSelectionScreen() {
 
 export default function App() {
   const { t } = useTranslation()
+  const location = useLocation()
   const loadAll = useStore((s) => s.loadAll)
   const loading = useStore((s) => s.loading)
   const error   = useStore((s) => s.error)
@@ -137,6 +139,11 @@ export default function App() {
   useEffect(() => {
     if (token && user && currentTeamId) loadAll()
   }, [token, user, currentTeamId, loadAll])
+
+  // Public dashboard: reachable without login, rendered standalone (no Layout/sidebar).
+  if (location.pathname === '/public-dashboard') {
+    return <PublicDashboardPage />
+  }
 
   // Not logged in → login page
   if (!token || (!user && !loading)) {
