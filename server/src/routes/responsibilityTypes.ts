@@ -40,9 +40,10 @@ router.patch('/:id', (req, res) => {
   }
   const updates: string[] = []
   const values: unknown[] = []
-  if (req.body.name !== undefined)      { updates.push('name = ?');      values.push(req.body.name.trim()) }
-  if (req.body.color !== undefined)     { updates.push('color = ?');     values.push(req.body.color) }
-  if (req.body.sortOrder !== undefined) { updates.push('sortOrder = ?'); values.push(req.body.sortOrder) }
+  if (req.body.name !== undefined)          { updates.push('name = ?');          values.push(req.body.name.trim()) }
+  if (req.body.color !== undefined)         { updates.push('color = ?');         values.push(req.body.color) }
+  if (req.body.sortOrder !== undefined)     { updates.push('sortOrder = ?');     values.push(req.body.sortOrder) }
+  if (req.body.documentation !== undefined) { updates.push('documentation = ?'); values.push(req.body.documentation) }
   if (updates.length === 0) return res.status(400).json({ error: 'No fields provided.' })
   values.push(id)
   dbRun(`UPDATE responsibility_types SET ${updates.join(', ')} WHERE id = ?`, values)

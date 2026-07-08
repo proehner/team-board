@@ -12,11 +12,13 @@ import { formatDate, todayISO, daysUntil } from '@/utils/date'
 import {
   Plus, RefreshCw, Edit2, Trash2, Wand2, BarChart2, Settings,
   Archive, ChevronDown, List, Layers, CalendarRange, MoreHorizontal,
-  ChevronRight, ChevronUp, Users,
+  ChevronRight, ChevronUp, Users, BookOpen, Save, X, Pencil,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig, Sprint } from '@/types'
-import { assignmentsApi } from '@/api/client'
+import { assignmentsApi, responsibilityTypeAttachmentsApi } from '@/api/client'
+import MarkdownEditor from '@/components/ui/MarkdownEditor'
+import MarkdownRenderer from '@/components/ui/MarkdownRenderer'
 import { differenceInDays, parseISO, addDays, format } from 'date-fns'
 import { de } from 'date-fns/locale'
 
@@ -209,6 +211,48 @@ export default function RotationPage() {
     }
   }
 
+  // ─── Type documentation modal ────────────────────────────────────────────────
+  const [showDocsModal, setShowDocsModal] = useState(false)
+  const [docsTarget,    setDocsTarget]    = useState<ResponsibilityTypeConfig | null>(null)
+  const [docsEditing,   setDocsEditing]   = useState(false)
+  const [docsValue,     setDocsValue]     = useState('')
+  const [docsSaving,    setDocsSaving]    = useState(false)
+  const [docsError,     setDocsError]     = useState('')
+
+  function openDocs(rt: ResponsibilityTypeConfig) {
+    setDocsTarget(rt)
+    setDocsValue(rt.documentation ?? '')
+    setDocsEditing(canWrite && !rt.documentation)
+    setDocsError('')
+    setShowDocsModal(true)
+  }
+
+  function closeDocsModal() {
+    setShowDocsModal(false)
+    setDocsTarget(null)
+    setDocsEditing(false)
+  }
+
+  async function handleDocsImageUpload(file: File): Promise<string> {
+    const att = await responsibilityTypeAttachmentsApi.upload(docsTarget!.id, file)
+    return att.filename
+  }
+
+  async function saveDocs() {
+    if (!docsTarget) return
+    setDocsSaving(true)
+    setDocsError('')
+    try {
+      await updateResponsibilityType(docsTarget.id, { documentation: docsValue })
+      setDocsTarget((prev) => (prev ? { ...prev, documentation: docsValue } : prev))
+      setDocsEditing(false)
+    } catch (err) {
+      setDocsError(err instanceof Error ? err.message : t('admin.errorSaving'))
+    } finally {
+      setDocsSaving(false)
+    }
+  }
+
   // ─── Stats modal ─────────────────────────────────────────────────────────────
   const [showStats, setShowStats] = useState(false)
 
@@ -352,15 +396,27 @@ export default function RotationPage() {
               const daysLeft = active ? daysUntil(active.endDate) : null
               const suggestedMember = suggestions[rt.name] ? allMembers.find((m) => m.id === suggestions[rt.name]) : null
               return (
-                <button
+                <div
                   key={rt.id}
+                  role="button"
+                  tabIndex={canWrite ? 0 : -1}
                   onClick={() => canWrite && openAdd(rt.name)}
-                  disabled={!canWrite}
-                  className={`text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-3 transition-all group ${canWrite ? 'hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-sm' : 'cursor-default'}`}
+                  onKeyDown={(e) => {
+                    if (canWrite && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openAdd(rt.name) }
+                  }}
+                  className={`text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-3 transition-all group ${canWrite ? 'cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-sm' : 'cursor-default'}`}
                 >
                   <div className="flex items-center gap-2 mb-2.5">
                     <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: rt.color }} />
-                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">{rt.name}</span>
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 truncate flex-1 min-w-0">{rt.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); openDocs(rt) }}
+                      title={t('rotation.documentation')}
+                      className={`shrink-0 p-0.5 rounded transition-colors ${rt.documentation ? 'text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400'}`}
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                   {member ? (
                     <div className="flex items-center gap-2">
@@ -387,7 +443,7 @@ export default function RotationPage() {
                       </div>
                     </div>
                   )}
-                </button>
+                </div>
               )
             })}
           </div>
@@ -612,6 +668,9 @@ export default function RotationPage() {
                 <span className="text-xs text-slate-400 dark:text-slate-500 mr-1">
                   {assignments.filter((a) => a.type === rt.name && !a.isSynthetic && !a.isArchived).length}×
                 </span>
+                <button onClick={() => openDocs(rt)} title={t('rotation.documentation')} className="p-1.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors">
+                  <BookOpen className="w-3.5 h-3.5" />
+                </button>
                 <button onClick={() => openEditType(rt)} className="p-1.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors">
                   <Edit2 className="w-3.5 h-3.5" />
                 </button>
@@ -667,6 +726,55 @@ export default function RotationPage() {
               </Button>
             </div>
           </div>
+        </div>
+      </Modal>
+
+      {/* ── Type Documentation Modal ── */}
+      <Modal
+        isOpen={showDocsModal}
+        onClose={closeDocsModal}
+        title={docsTarget ? `${t('rotation.documentation')} – ${docsTarget.name}` : t('rotation.documentation')}
+        size="xl"
+        footer={
+          docsEditing ? (
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  if (!docsTarget?.documentation) { closeDocsModal(); return }
+                  setDocsValue(docsTarget.documentation)
+                  setDocsEditing(false)
+                  setDocsError('')
+                }}
+              >
+                <X className="w-4 h-4" />{t('common.cancel')}
+              </Button>
+              <Button variant="primary" onClick={saveDocs} disabled={docsSaving}>
+                <Save className="w-4 h-4" />{docsSaving ? '…' : t('common.save')}
+              </Button>
+            </>
+          ) : canWrite ? (
+            <Button variant="secondary" onClick={() => setDocsEditing(true)}>
+              <Pencil className="w-4 h-4" />{t('common.edit')}
+            </Button>
+          ) : undefined
+        }
+      >
+        <div className="space-y-3">
+          {docsError && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{docsError}</p>}
+          {docsEditing ? (
+            <MarkdownEditor
+              value={docsValue}
+              onChange={setDocsValue}
+              placeholder={t('rotation.documentationPlaceholder')}
+              rows={14}
+              onImageUpload={handleDocsImageUpload}
+            />
+          ) : docsTarget?.documentation ? (
+            <MarkdownRenderer content={docsTarget.documentation} />
+          ) : (
+            <p className="text-sm text-slate-400 italic">{t('rotation.noDocumentation')}</p>
+          )}
         </div>
       </Modal>
 

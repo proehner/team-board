@@ -105,6 +105,17 @@ export interface ResponsibilityTypeConfig {
   name: string
   color: string
   sortOrder: number
+  documentation: string
+}
+
+export interface ResponsibilityTypeAttachment {
+  id: string
+  responsibilityTypeId: string
+  filename: string
+  originalName: string
+  mimeType: string
+  size: number
+  uploadedAt: string
 }
 
 export interface ResponsibilityAssignment {

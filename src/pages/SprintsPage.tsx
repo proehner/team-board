@@ -54,7 +54,7 @@ export default function SprintsPage() {
   const deleteSprint = useStore((s) => s.deleteSprint)
   const setSprintStatus = useStore((s) => s.setSprintStatus)
 
-  const [tab, setTab] = useState<MainTab>('Alle')
+  const [tab, setTab] = useState<MainTab>('Aktiv')
   const [showModal, setShowModal] = useState(false)
   const [editTarget, setEditTarget] = useState<Sprint | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Sprint | null>(null)
@@ -76,7 +76,7 @@ export default function SprintsPage() {
     : tab === 'Alle'
     ? sprints
     : sprints.filter((s) => s.status === tab)
-  const sorted = [...filtered].sort((a, b) => a.startDate.localeCompare(b.startDate))
+  const sorted = [...filtered].sort((a, b) => b.startDate.localeCompare(a.startDate))
 
   // Chart data: abgeschlossene Sprints chronologisch
   const chartSprints = [...sprints]

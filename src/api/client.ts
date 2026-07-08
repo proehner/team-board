@@ -2,7 +2,7 @@ import type {
   TeamMember, MemberRole,
   Skill, MemberSkill, SkillLevel, SkillArea, SkillAreaCategory,
   Sprint, SprintStatus, SprintGoalMet,
-  ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig,
+  ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig, ResponsibilityTypeAttachment,
   Retrospective, RetroItemType, RetroItem,
   PulseCheck,
   AppUser, AdminUser, PermissionGroup, PagePermission,
@@ -147,9 +147,33 @@ export const assignmentsApi = {
 export const responsibilityTypesApi = {
   list:   () => get<ResponsibilityTypeConfig[]>('/responsibility-types'),
   create: (data: { name: string; color: string }) => post<ResponsibilityTypeConfig>('/responsibility-types', data),
-  update: (id: string, data: Partial<Pick<ResponsibilityTypeConfig, 'name' | 'color' | 'sortOrder'>>) =>
+  update: (id: string, data: Partial<Pick<ResponsibilityTypeConfig, 'name' | 'color' | 'sortOrder' | 'documentation'>>) =>
     patch<ResponsibilityTypeConfig>(`/responsibility-types/${id}`, data),
   delete: (id: string) => del(`/responsibility-types/${id}`),
+}
+
+// ─── Responsibility Type Attachments ──────────────────────────────────────────
+async function uploadResponsibilityTypeFile(typeId: string, file: File): Promise<ResponsibilityTypeAttachment> {
+  const token  = getStoredToken()
+  const teamId = getStoredTeamId()
+  const headers: Record<string, string> = {}
+  if (token)  headers['Authorization'] = `Bearer ${token}`
+  if (teamId) headers['X-Team-ID']     = teamId
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${BASE}/uploads/responsibility-types/${typeId}/attachments`, {
+    method: 'POST', headers, body: formData,
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`)
+  return data as ResponsibilityTypeAttachment
+}
+
+export const responsibilityTypeAttachmentsApi = {
+  list:    (typeId: string) => get<ResponsibilityTypeAttachment[]>(`/uploads/responsibility-types/${typeId}/attachments`),
+  upload:  uploadResponsibilityTypeFile,
+  delete:  (typeId: string, attachId: string) => del(`/uploads/responsibility-types/${typeId}/attachments/${attachId}`),
+  fileUrl: (filename: string) => `${BASE}/uploads/${filename}`,
 }
 
 // ─── Retrospectives ───────────────────────────────────────────────────────────

@@ -288,7 +288,10 @@
     "archiveCount": "Archive {{count}}",
     "archivedSuccess": "{{count}} entries archived.",
     "andMore": "… and {{count}} more",
-    "today": "Today"
+    "today": "Today",
+    "documentation": "Documentation",
+    "documentationPlaceholder": "Describe the tasks for this type and anything to keep in mind…",
+    "noDocumentation": "No documentation has been added for this type yet."
   },
   "retro": {
     "title": "Retrospectives",

@@ -142,12 +142,24 @@ try {
   );
 
   CREATE TABLE IF NOT EXISTS responsibility_types (
-    id        TEXT PRIMARY KEY,
-    name      TEXT NOT NULL,
-    teamId    TEXT,
-    color     TEXT NOT NULL DEFAULT '#6366f1',
-    sortOrder INTEGER NOT NULL DEFAULT 0,
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    teamId        TEXT,
+    color         TEXT NOT NULL DEFAULT '#6366f1',
+    sortOrder     INTEGER NOT NULL DEFAULT 0,
+    documentation TEXT NOT NULL DEFAULT '',
     UNIQUE(name, teamId)
+  );
+
+  CREATE TABLE IF NOT EXISTS responsibility_type_attachments (
+    id                   TEXT PRIMARY KEY,
+    responsibilityTypeId TEXT NOT NULL,
+    filename             TEXT NOT NULL,
+    originalName         TEXT NOT NULL,
+    mimeType             TEXT NOT NULL,
+    size                 INTEGER NOT NULL,
+    uploadedAt           TEXT NOT NULL,
+    FOREIGN KEY (responsibilityTypeId) REFERENCES responsibility_types(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS retrospectives (
@@ -508,6 +520,12 @@ if (!rtColsCheck.some((c) => c.name === 'teamId')) {
     DROP TABLE responsibility_types;
     ALTER TABLE responsibility_types_new RENAME TO responsibility_types;
   `)
+}
+
+// ─── responsibility_types: documentation column ──────────────────────────────
+const rtDocCols = db.prepare('PRAGMA table_info(responsibility_types)').all([]) as Array<{ name: string }>
+if (!rtDocCols.some((c) => c.name === 'documentation')) {
+  db.exec("ALTER TABLE responsibility_types ADD COLUMN documentation TEXT NOT NULL DEFAULT ''")
 }
 
 // ─── meetings: add isGlobal column ───────────────────────────────────────────
