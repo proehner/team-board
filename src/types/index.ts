@@ -96,6 +96,20 @@ export interface Sprint {
   createdAt: string
 }
 
+// ─── Sprint Settings ──────────────────────────────────────────────────────────
+// Per-team configuration used to pre-fill new sprints (name + dates).
+
+export interface SprintSettings {
+  /** Name template, e.g. "{YYYY}_{KW1}_{KW2}" → "2026_38_39" */
+  namePattern: string
+  /** Sprint length in calendar weeks */
+  durationWeeks: number
+  /** ISO weekday the sprint starts on (1 = Monday … 7 = Sunday) */
+  startWeekday: number
+  /** ISO weekday the sprint ends on, in the last week of the sprint */
+  endWeekday: number
+}
+
 // ─── Responsibility Rotation ──────────────────────────────────────────────────
 
 export type ResponsibilityType = string
@@ -129,6 +143,19 @@ export interface ResponsibilityAssignment {
   isAutoSuggested: boolean
   isSynthetic: boolean
   isArchived: boolean
+}
+
+/** Manual correction of a member's rotation counter for one responsibility type. */
+export interface RotationAdjustment {
+  type: ResponsibilityType
+  memberId: string
+  delta: number
+}
+
+/** Per-team rotation tuning: who is skipped by the auto-suggestion, and counter corrections. */
+export interface RotationSettings {
+  excludedMemberIds: string[]
+  adjustments: RotationAdjustment[]
 }
 
 // ─── Retrospectives ───────────────────────────────────────────────────────────

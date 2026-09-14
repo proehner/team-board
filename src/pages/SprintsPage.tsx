@@ -10,10 +10,11 @@ import EmptyState from '@/components/ui/EmptyState'
 import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import SprintLineChart from '@/components/ui/SprintLineChart'
 import type { SprintChartSeries } from '@/components/ui/SprintLineChart'
-import { formatDate } from '@/utils/date'
+import { formatDate, formatDateShort } from '@/utils/date'
+import { buildSprintName, sprintEndDate, suggestNextSprint, SPRINT_NAME_PLACEHOLDERS } from '@/utils/sprint'
 import { usePagePermission } from '@/hooks/usePagePermission'
-import { Plus, Zap, Calendar, Target, ChevronRight, Edit2, Trash2, Play, CheckCircle, X, TrendingUp, BarChart2 } from 'lucide-react'
-import type { Sprint, SprintStatus, SprintGoalMet } from '@/types'
+import { Plus, Zap, Calendar, Target, ChevronRight, Edit2, Trash2, Play, CheckCircle, X, TrendingUp, BarChart2, Settings, Filter } from 'lucide-react'
+import type { Sprint, SprintStatus, SprintGoalMet, SprintSettings } from '@/types'
 
 const STATUS_VARIANTS: Record<SprintStatus, 'default' | 'info' | 'success' | 'danger'> = {
   Geplant: 'default',
@@ -34,6 +35,27 @@ interface SprintFormData {
   notes: string
 }
 
+/** ISO weekday (1 = Monday … 7 = Sunday) → i18n key under `meetings.days`. */
+const WEEKDAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+
+interface DateRange {
+  from: string
+  to: string
+}
+
+const isoDate = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+/** Default analysis range: exactly one year, ending today. */
+function defaultAnalysisRange(): DateRange {
+  const today = new Date()
+  const from = new Date(today)
+  from.setFullYear(from.getFullYear() - 1)
+  return { from: isoDate(from), to: isoDate(today) }
+}
+
+const calendarYearRange = (year: number): DateRange => ({ from: `${year}-01-01`, to: `${year}-12-31` })
+
 // ─── Chart series definitions ─────────────────────────────────────────────────
 const CHART_SERIES_ALL: SprintChartSeries[] = [
   { key: 'capacityHours',   label: 'Kapazität (h)',       color: '#6366f1' },
@@ -53,6 +75,8 @@ export default function SprintsPage() {
   const updateSprint = useStore((s) => s.updateSprint)
   const deleteSprint = useStore((s) => s.deleteSprint)
   const setSprintStatus = useStore((s) => s.setSprintStatus)
+  const sprintSettings = useStore((s) => s.sprintSettings)
+  const updateSprintSettings = useStore((s) => s.updateSprintSettings)
 
   const [tab, setTab] = useState<MainTab>('Aktiv')
   const [showModal, setShowModal] = useState(false)
@@ -64,10 +88,30 @@ export default function SprintsPage() {
   const [activeSeriesKeys, setActiveSeriesKeys] = useState<Set<string>>(
     new Set(CHART_SERIES_ALL.map((s) => s.key)),
   )
+  // Set as soon as the user edits the name by hand – the suggestion then stops
+  // overwriting it when the start date changes.
+  const [nameTouched, setNameTouched] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [settingsForm, setSettingsForm] = useState<SprintSettings>(sprintSettings)
+  const [settingsError, setSettingsError] = useState('')
+  const [range, setRange] = useState<DateRange>(defaultAnalysisRange)
 
+  /** Pre-fills a new sprint with the next name and dates from the configuration. */
   function defaultForm(): SprintFormData {
-    const nextNum = sprints.length + 1
-    return { name: `Sprint ${nextNum}`, goal: '', startDate: '', endDate: '', notes: '' }
+    const next = suggestNextSprint(sprints, sprintSettings)
+    return { name: next.name, goal: '', startDate: next.startDate, endDate: next.endDate, notes: '' }
+  }
+
+  /** Start date drives end date and – until edited – the suggested name. */
+  function handleStartDateChange(startDate: string) {
+    setForm((f) => ({
+      ...f,
+      startDate,
+      endDate: !editTarget && startDate ? sprintEndDate(startDate, sprintSettings) : f.endDate,
+      name: !editTarget && !nameTouched && startDate
+        ? buildSprintName(startDate, sprintSettings, sprints.length + 1)
+        : f.name,
+    }))
   }
 
   const isAuswertung = tab === 'Auswertung'
@@ -78,10 +122,15 @@ export default function SprintsPage() {
     : sprints.filter((s) => s.status === tab)
   const sorted = [...filtered].sort((a, b) => b.startDate.localeCompare(a.startDate))
 
-  // Chart data: abgeschlossene Sprints chronologisch
-  const chartSprints = [...sprints]
+  // Chart data: abgeschlossene Sprints chronologisch, gefiltert nach Zeitraum
+  const completedSprints = [...sprints]
     .filter((s) => s.status === 'Abgeschlossen')
     .sort((a, b) => a.startDate.localeCompare(b.startDate))
+
+  const chartSprints = completedSprints.filter(
+    (sp) => (!range.from || sp.startDate >= range.from) && (!range.to || sp.startDate <= range.to),
+  )
+  const hiddenByFilter = completedSprints.length - chartSprints.length
 
   const chartData = chartSprints.map((sp) => {
     const pct =
@@ -112,6 +161,7 @@ export default function SprintsPage() {
 
   function openAdd() {
     setEditTarget(null)
+    setNameTouched(false)
     setForm(defaultForm())
     setErrors({})
     setShowModal(true)
@@ -119,6 +169,7 @@ export default function SprintsPage() {
 
   function openEdit(sp: Sprint) {
     setEditTarget(sp)
+    setNameTouched(true)
     setForm({ name: sp.name, goal: sp.goal, startDate: sp.startDate, endDate: sp.endDate, notes: sp.notes })
     setErrors({})
     setShowModal(true)
@@ -153,6 +204,32 @@ export default function SprintsPage() {
     }
   }
 
+  function openSettings() {
+    setSettingsForm(sprintSettings)
+    setSettingsError('')
+    setShowSettings(true)
+  }
+
+  async function handleSettingsSubmit() {
+    if (!settingsForm.namePattern.trim()) {
+      setSettingsError(t('sprints.patternRequired'))
+      return
+    }
+    if (settingsForm.durationWeeks < 1 || settingsForm.durationWeeks > 12) {
+      setSettingsError(t('sprints.durationInvalid'))
+      return
+    }
+    try {
+      await updateSprintSettings({ ...settingsForm, namePattern: settingsForm.namePattern.trim() })
+      setShowSettings(false)
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : t('common.saveError'))
+    }
+  }
+
+  // Live preview of the next sprint for the settings dialog
+  const settingsPreview = suggestNextSprint(sprints, settingsForm)
+
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-5xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -160,9 +237,16 @@ export default function SprintsPage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('sprints.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('sprints.count', { count: sprints.length })}</p>
         </div>
-        <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd} disabled={!canWrite}>
-          {t('sprints.newSprint')}
-        </Button>
+        <div className="flex items-center gap-2">
+          {canWrite && (
+            <Button variant="secondary" icon={<Settings className="w-4 h-4" />} onClick={openSettings}>
+              {t('sprints.settings')}
+            </Button>
+          )}
+          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd} disabled={!canWrite}>
+            {t('sprints.newSprint')}
+          </Button>
+        </div>
       </div>
       {isReadOnly && <ReadOnlyBanner />}
 
@@ -207,11 +291,50 @@ export default function SprintsPage() {
       {/* ── Auswertungs-View ── */}
       {isAuswertung && (
         <div className="space-y-5">
+          {/* Zeitraum-Filter */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 flex flex-wrap items-end gap-3">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+              <Filter className="w-4 h-4 text-slate-400" />
+              {t('sprints.period')}
+            </div>
+            <div className="space-y-1 w-40">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{t('sprints.periodFrom')}</label>
+              <input
+                type="date"
+                value={range.from}
+                onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
+                className="form-input"
+              />
+            </div>
+            <div className="space-y-1 w-40">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{t('sprints.periodTo')}</label>
+              <input
+                type="date"
+                value={range.to}
+                onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
+                className="form-input"
+              />
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-0.5">
+              <RangePreset label={t('sprints.periodLast12Months')} onClick={() => setRange(defaultAnalysisRange())} />
+              <RangePreset label={String(new Date().getFullYear())} onClick={() => setRange(calendarYearRange(new Date().getFullYear()))} />
+              <RangePreset label={String(new Date().getFullYear() - 1)} onClick={() => setRange(calendarYearRange(new Date().getFullYear() - 1))} />
+              <RangePreset label={t('common.all')} onClick={() => setRange({ from: '', to: '' })} />
+            </div>
+            <p className="text-xs text-slate-400 dark:text-slate-500 ml-auto mb-2">
+              {t('sprints.periodCount', { shown: chartSprints.length, total: completedSprints.length })}
+            </p>
+          </div>
+
           {chartSprints.length < 2 ? (
             <EmptyState
               icon={<BarChart2 className="w-12 h-12" />}
               title={t('sprints.analysisEmpty')}
-              description={t('sprints.analysisEmptySubtitle')}
+              description={
+                hiddenByFilter > 0
+                  ? t('sprints.analysisFilterEmptySubtitle', { count: hiddenByFilter })
+                  : t('sprints.analysisEmptySubtitle')
+              }
             />
           ) : (
             <>
@@ -364,14 +487,19 @@ export default function SprintsPage() {
       >
         <div className="space-y-4">
           <FormField label={t('common.name')} error={errors.name}>
-            <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="form-input" />
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) => { setNameTouched(true); setForm((f) => ({ ...f, name: e.target.value })) }}
+              className="form-input"
+            />
           </FormField>
           <FormField label={t('sprints.sprintGoal')} error={errors.goal}>
             <textarea value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} rows={2} className="form-textarea" placeholder={t('sprints.sprintGoalPlaceholder')} />
           </FormField>
           <div className="grid grid-cols-2 gap-3">
             <FormField label={t('sprints.startDate')} error={errors.startDate}>
-              <input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} className="form-input" />
+              <input type="date" value={form.startDate} onChange={(e) => handleStartDateChange(e.target.value)} className="form-input" />
             </FormField>
             <FormField label={t('sprints.endDate')} error={errors.endDate}>
               <input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} className="form-input" />
@@ -380,6 +508,89 @@ export default function SprintsPage() {
           <FormField label={t('sprints.notes')}>
             <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="form-textarea" placeholder={t('sprints.notesPlaceholder')} />
           </FormField>
+        </div>
+      </Modal>
+
+      {/* Sprint settings modal */}
+      <Modal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        title={t('sprints.settings')}
+        footer={
+          <>
+            {settingsError && <p className="flex-1 text-sm text-red-600">{settingsError}</p>}
+            <Button variant="secondary" onClick={() => setShowSettings(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={handleSettingsSubmit}>{t('common.save')}</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t('sprints.settingsIntro')}</p>
+
+          <FormField label={t('sprints.namePattern')}>
+            <input
+              type="text"
+              value={settingsForm.namePattern}
+              onChange={(e) => setSettingsForm((f) => ({ ...f, namePattern: e.target.value }))}
+              className="form-input font-mono"
+              placeholder="{YYYY}_{KW1}_{KW2}"
+            />
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+              {t('sprints.namePatternHelp')}{' '}
+              {SPRINT_NAME_PLACEHOLDERS.map((ph) => (
+                <code key={ph} className="mx-0.5 px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{ph}</code>
+              ))}
+            </p>
+          </FormField>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FormField label={t('sprints.durationWeeks')}>
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={settingsForm.durationWeeks}
+                onChange={(e) => setSettingsForm((f) => ({ ...f, durationWeeks: Number(e.target.value) }))}
+                className="form-input"
+              />
+            </FormField>
+            <FormField label={t('sprints.startWeekday')}>
+              <select
+                value={settingsForm.startWeekday}
+                onChange={(e) => setSettingsForm((f) => ({ ...f, startWeekday: Number(e.target.value) }))}
+                className="form-input"
+              >
+                {WEEKDAY_KEYS.map((key, i) => (
+                  <option key={key} value={i + 1}>{t(`meetings.days.${key}`)}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label={t('sprints.endWeekday')}>
+              <select
+                value={settingsForm.endWeekday}
+                onChange={(e) => setSettingsForm((f) => ({ ...f, endWeekday: Number(e.target.value) }))}
+                className="form-input"
+              >
+                {WEEKDAY_KEYS.map((key, i) => (
+                  <option key={key} value={i + 1}>{t(`meetings.days.${key}`)}</option>
+                ))}
+              </select>
+            </FormField>
+          </div>
+
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3">
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">
+              {t('sprints.settingsPreview')}
+            </p>
+            <p className="text-sm text-slate-800 dark:text-slate-200">
+              <span className="font-mono font-semibold">{settingsPreview.name || '—'}</span>
+              {settingsPreview.startDate && (
+                <span className="text-slate-500 dark:text-slate-400">
+                  {' '}· {formatDateShort(settingsPreview.startDate)} – {formatDateShort(settingsPreview.endDate)}
+                </span>
+              )}
+            </p>
+          </div>
         </div>
       </Modal>
 
@@ -392,6 +603,20 @@ export default function SprintsPage() {
         confirmLabel={t('common.delete')}
       />
     </div>
+  )
+}
+
+// ─── Analysis filter helpers ──────────────────────────────────────────────────
+
+function RangePreset({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+    >
+      {label}
+    </button>
   )
 }
 

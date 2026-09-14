@@ -128,6 +128,14 @@ try {
     FOREIGN KEY (sprintId) REFERENCES sprints(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS sprint_settings (
+    teamId        TEXT PRIMARY KEY,
+    namePattern   TEXT    NOT NULL DEFAULT '{YYYY}_{KW1}_{KW2}',
+    durationWeeks INTEGER NOT NULL DEFAULT 2,
+    startWeekday  INTEGER NOT NULL DEFAULT 1,
+    endWeekday    INTEGER NOT NULL DEFAULT 5
+  );
+
   CREATE TABLE IF NOT EXISTS assignments (
     id              TEXT PRIMARY KEY,
     type            TEXT NOT NULL,
@@ -139,6 +147,22 @@ try {
     isAutoSuggested INTEGER NOT NULL DEFAULT 0,
     isSynthetic     INTEGER NOT NULL DEFAULT 0,
     teamId          TEXT
+  );
+
+  -- Members excluded from the automatic rotation suggestion (still assignable by hand)
+  CREATE TABLE IF NOT EXISTS rotation_exclusions (
+    teamId   TEXT NOT NULL,
+    memberId TEXT NOT NULL,
+    PRIMARY KEY (teamId, memberId)
+  );
+
+  -- Manual corrections to the rotation counter, e.g. for duties done outside the tool
+  CREATE TABLE IF NOT EXISTS rotation_adjustments (
+    teamId   TEXT NOT NULL,
+    type     TEXT NOT NULL,
+    memberId TEXT NOT NULL,
+    delta    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (teamId, type, memberId)
   );
 
   CREATE TABLE IF NOT EXISTS responsibility_types (

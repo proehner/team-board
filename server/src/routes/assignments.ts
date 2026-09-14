@@ -16,14 +16,84 @@ function toAssignment(row: Row) {
   }
 }
 
+// ─── Rotation settings ───────────────────────────────────────────────────────
+// Members can be excluded from the automatic suggestion, and their counter can
+// be corrected by hand (e.g. for duties taken over outside the tool). Both feed
+// into the fairness algorithm below.
+
+const excludedMemberIds = (teamId: string): string[] =>
+  dbAll<{ memberId: string }>('SELECT memberId FROM rotation_exclusions WHERE teamId = ?', [teamId])
+    .map((r) => r.memberId)
+
+const adjustmentsFor = (teamId: string, type?: string) =>
+  type === undefined
+    ? dbAll<{ type: string; memberId: string; delta: number }>(
+        'SELECT type, memberId, delta FROM rotation_adjustments WHERE teamId = ? AND delta != 0', [teamId],
+      )
+    : dbAll<{ type: string; memberId: string; delta: number }>(
+        'SELECT type, memberId, delta FROM rotation_adjustments WHERE teamId = ? AND type = ?', [teamId, type],
+      )
+
+// GET /api/assignments/rotation-settings
+router.get('/rotation-settings', (req, res) => {
+  const { teamId } = req
+  res.json({
+    excludedMemberIds: excludedMemberIds(teamId!),
+    adjustments: adjustmentsFor(teamId!),
+  })
+})
+
+// PUT /api/assignments/exclusions/:memberId   body: { excluded: boolean }
+router.put('/exclusions/:memberId', (req, res) => {
+  const { memberId } = req.params
+  const { teamId } = req
+  if (!dbGet('SELECT id FROM members WHERE id = ? AND teamId = ?', [memberId, teamId])) {
+    return res.status(404).json({ error: 'Member not found.' })
+  }
+  if (req.body.excluded) {
+    dbRun('INSERT OR IGNORE INTO rotation_exclusions (teamId, memberId) VALUES (?, ?)', [teamId, memberId])
+  } else {
+    dbRun('DELETE FROM rotation_exclusions WHERE teamId = ? AND memberId = ?', [teamId, memberId])
+  }
+  res.json({ memberId, excluded: !!req.body.excluded })
+})
+
+// PUT /api/assignments/adjustments   body: { type, memberId, delta }
+// `delta` is the absolute correction value, not an increment.
+router.put('/adjustments', (req, res) => {
+  const { teamId } = req
+  const { type, memberId } = req.body
+  const delta = Math.round(Number(req.body.delta))
+  if (!type || !memberId) {
+    return res.status(400).json({ error: 'type and memberId are required.' })
+  }
+  if (!Number.isFinite(delta) || delta < 0 || delta > 9999) {
+    return res.status(400).json({ error: 'delta must be between 0 and 9999.' })
+  }
+  if (!dbGet('SELECT id FROM members WHERE id = ? AND teamId = ?', [memberId, teamId])) {
+    return res.status(404).json({ error: 'Member not found.' })
+  }
+  if (delta === 0) {
+    dbRun('DELETE FROM rotation_adjustments WHERE teamId = ? AND type = ? AND memberId = ?', [teamId, type, memberId])
+  } else {
+    dbRun(
+      `INSERT INTO rotation_adjustments (teamId, type, memberId, delta) VALUES (?, ?, ?, ?)
+       ON CONFLICT(teamId, type, memberId) DO UPDATE SET delta = excluded.delta`,
+      [teamId, type, memberId, delta],
+    )
+  }
+  res.json({ type, memberId, delta })
+})
+
 // GET /api/assignments/suggest/:type  — must be BEFORE /:id to avoid param conflict
 // Archived entries are INTENTIONALLY included – they count for the fairness algorithm.
 router.get('/suggest/:type', (req, res) => {
   const { type } = req.params
   const { teamId } = req
+  const excluded = new Set(excludedMemberIds(teamId!))
   const members = dbAll<{ id: string }>(
     'SELECT id FROM members WHERE isActive = 1 AND teamId = ?', [teamId],
-  )
+  ).filter((m) => !excluded.has(m.id))
   if (members.length === 0) return res.json({ memberId: null })
 
   const counts: Record<string, number> = {}
@@ -40,6 +110,11 @@ router.get('/suggest/:type', (req, res) => {
       counts[a.memberId]++
       if (a.endDate > lastDates[a.memberId]) lastDates[a.memberId] = a.endDate
     }
+  }
+
+  // Manual corrections count like real assignments
+  for (const adj of adjustmentsFor(teamId!, type)) {
+    if (counts[adj.memberId] !== undefined) counts[adj.memberId] += adj.delta
   }
 
   const minCount = Math.min(...members.map((m) => counts[m.id]))

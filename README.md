@@ -23,8 +23,8 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 | **Dashboard** | Customizable overview tiles – active sprint, open action items, team metrics, custom URLs |
 | **Team** | Member management with roles, avatar upload, and active/inactive status |
 | **Competencies** | Competency matrix and hierarchical skill catalogue (areas → categories → skills) with rating levels 0–5; separate read / write-own / write permissions for the matrix |
-| **Sprints** | Sprint planning, per-member capacity management, velocity tracking, and sprint detail view |
-| **Rotation** | Assignment and rotation of configurable team responsibilities (e.g. on-call, Scrum Master) with color coding; list, grouped, and timeline views; automatic archiving of past assignments |
+| **Sprints** | Sprint planning, per-member capacity management, velocity tracking, and sprint detail view; configurable naming pattern (e.g. `{YYYY}_{KW1}_{KW2}` → `2026_38_39`) with automatic pre-fill of name and dates for new sprints; sprint analysis with a date range filter |
+| **Rotation** | Assignment and rotation of configurable team responsibilities (e.g. on-call, Scrum Master) with color coding; list, grouped, and timeline views; automatic detection of the next uncovered sprint incl. its date range; members can be excluded from the automatic suggestion and their counter corrected by hand; automatic archiving of past assignments |
 | **Retrospectives** | Structured retro boards with voting, status tracking, and action item assignment |
 | **Team Health** | Bus factor analysis, workload distribution, and absence simulation |
 | **Pulse Check** | Anonymous satisfaction surveys within the team (session-based duplicate prevention) |

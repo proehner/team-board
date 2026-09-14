@@ -21,15 +21,47 @@ interface Props {
 
 const PAD = { top: 16, right: 16, bottom: 48, left: 52 }
 
+const LABEL_FONT_SIZE = 11
+/** Rough width of one character at LABEL_FONT_SIZE, used to lay out x labels. */
+const LABEL_CHAR_W = 6.2
+/** Extra space each label needs next to its neighbour before it looks cramped. */
+const LABEL_GAP = 10
+
 export default function SprintLineChart({ series, data, yLabel, height = 260 }: Props) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
 
   if (data.length === 0) return null
 
   const W = 800
-  const H = height
-  const chartW = W - PAD.left - PAD.right
-  const chartH = H - PAD.top - PAD.bottom
+
+  // ─── X-axis label layout ───────────────────────────────────────────────────
+  // Sprint names can be long ("2026_38_39"). Horizontal labels are centred
+  // under their data point, so the outermost ones need half a label of side
+  // padding. When they would still collide, labels are rotated by 45° instead
+  // and the bottom padding grows accordingly.
+  const labelW = Math.max(...data.map((d) => String(d.sprintName).length)) * LABEL_CHAR_W
+  const halfLabel = Math.round(labelW / 2) + 4
+  const horizontalChartW = W - Math.max(PAD.left, halfLabel) - Math.max(PAD.right, halfLabel)
+  const slotW = data.length > 1 ? horizontalChartW / (data.length - 1) : horizontalChartW
+  const rotateLabels = labelW + LABEL_GAP > slotW
+
+  // Rotated labels reach up and to the left of their anchor point.
+  const padLeft  = rotateLabels ? Math.max(PAD.left, Math.round(labelW * 0.71) + 6) : Math.max(PAD.left, halfLabel)
+  const padRight = rotateLabels ? PAD.right : Math.max(PAD.right, halfLabel)
+  const chartW = W - padLeft - padRight
+
+  const bottomPad = rotateLabels
+    ? Math.min(Math.round(labelW * 0.71) + 24, 120)
+    : PAD.bottom
+  // Keep the plot area at the requested height and grow the SVG instead.
+  const H = height + bottomPad - PAD.bottom
+  const chartH = H - PAD.top - bottomPad
+
+  // Minimum width so labels stay readable – the container scrolls beyond it.
+  const minWidth = Math.max(
+    data.length * (rotateLabels ? 30 : labelW + LABEL_GAP + 6) + padLeft + padRight,
+    320,
+  )
 
   // Collect all numeric values for y-axis
   const allVals: number[] = data.flatMap((d) =>
@@ -69,10 +101,10 @@ export default function SprintLineChart({ series, data, yLabel, height = 260 }: 
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="w-full"
-        style={{ minWidth: Math.max(data.length * 60, 320) }}
+        style={{ minWidth }}
         onMouseLeave={() => setHoveredIdx(null)}
       >
-        <g transform={`translate(${PAD.left},${PAD.top})`}>
+        <g transform={`translate(${padLeft},${PAD.top})`}>
           {/* Grid lines + y-axis labels */}
           {yTicks.map((tick) => {
             const y = yPos(tick)
@@ -98,14 +130,18 @@ export default function SprintLineChart({ series, data, yLabel, height = 260 }: 
             </text>
           )}
 
-          {/* X-axis labels */}
+          {/* X-axis labels – rotated when they would otherwise overlap */}
           {data.map((d, i) => (
             <text
               key={i}
-              x={xPos(i)}
-              y={chartH + 18}
-              textAnchor="middle"
-              fontSize={11}
+              transform={
+                rotateLabels
+                  ? `translate(${xPos(i).toFixed(1)},${chartH + 16}) rotate(-45)`
+                  : `translate(${xPos(i).toFixed(1)},${chartH + 18})`
+              }
+              textAnchor={rotateLabels ? 'end' : 'middle'}
+              dominantBaseline={rotateLabels ? 'middle' : 'auto'}
+              fontSize={LABEL_FONT_SIZE}
               className="fill-slate-500 dark:fill-slate-400"
             >
               {d.sprintName}

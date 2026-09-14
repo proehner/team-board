@@ -1,8 +1,9 @@
 import type {
   TeamMember, MemberRole,
   Skill, MemberSkill, SkillLevel, SkillArea, SkillAreaCategory,
-  Sprint, SprintStatus, SprintGoalMet,
+  Sprint, SprintStatus, SprintGoalMet, SprintSettings,
   ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig, ResponsibilityTypeAttachment,
+  RotationSettings, RotationAdjustment,
   Retrospective, RetroItemType, RetroItem,
   PulseCheck,
   AppUser, AdminUser, PermissionGroup, PagePermission,
@@ -139,6 +140,8 @@ export const sprintsApi = {
     put<unknown>(`/sprints/${sprintId}/capacity/${memberId}`, { availableDays, plannedPoints }),
   removeCapacity: (sprintId: string, memberId: string) =>
     del(`/sprints/${sprintId}/capacity/${memberId}`),
+  getSettings:    () => get<SprintSettings>('/sprints/settings'),
+  updateSettings: (data: SprintSettings) => put<SprintSettings>('/sprints/settings', data),
 }
 
 // ─── Assignments ──────────────────────────────────────────────────────────────
@@ -157,6 +160,11 @@ export const assignmentsApi = {
   update:         (id: string, data: Partial<ResponsibilityAssignment>) =>
     patch<ResponsibilityAssignment>(`/assignments/${id}`, data),
   delete:         (id: string) => del(`/assignments/${id}`),
+  rotationSettings: () => get<RotationSettings>('/assignments/rotation-settings'),
+  setExclusion:   (memberId: string, excluded: boolean) =>
+    put<{ memberId: string; excluded: boolean }>(`/assignments/exclusions/${memberId}`, { excluded }),
+  setAdjustment:  (type: ResponsibilityType, memberId: string, delta: number) =>
+    put<RotationAdjustment>('/assignments/adjustments', { type, memberId, delta }),
 }
 
 // ─── Responsibility Types ─────────────────────────────────────────────────────

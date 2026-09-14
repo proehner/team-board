@@ -3,11 +3,12 @@ import {
   membersApi, skillsApi, skillAreasApi, sprintsApi, assignmentsApi, retrosApi, responsibilityTypesApi, pulseApi,
   softwareApi, knownErrorsApi, meetingsApi, roadmapApi,
 } from '@/api/client'
+import { DEFAULT_SPRINT_SETTINGS } from '@/utils/sprint'
 import type {
   TeamMember, MemberRole,
   Skill, MemberSkill, SkillLevel, SkillArea, SkillAreaCategory,
-  Sprint, SprintStatus,
-  ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig,
+  Sprint, SprintStatus, SprintSettings,
+  ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig, RotationSettings,
   Retrospective, RetroItem, RetroItemType,
   PulseCheck,
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus,
@@ -24,7 +25,9 @@ interface AppState {
   memberSkills: MemberSkill[]
   skillAreas: SkillArea[]
   sprints: Sprint[]
+  sprintSettings: SprintSettings
   assignments: ResponsibilityAssignment[]
+  rotationSettings: RotationSettings
   retrospectives: Retrospective[]
   responsibilityTypes: ResponsibilityTypeConfig[]
   pulseChecks: PulseCheck[]
@@ -65,6 +68,7 @@ interface AppState {
   setSprintStatus:     (id: string, status: SprintStatus) => Promise<void>
   setMemberCapacity:   (sprintId: string, memberId: string, availableDays: number, plannedPoints: number) => Promise<void>
   removeMemberFromSprint: (sprintId: string, memberId: string) => Promise<void>
+  updateSprintSettings:   (data: SprintSettings) => Promise<void>
 
   // ─── Assignments ──────────────────────────────────────────────────────────
   addAssignment:    (data: Omit<ResponsibilityAssignment, 'id'>) => Promise<string>
@@ -72,6 +76,8 @@ interface AppState {
   deleteAssignment: (id: string) => Promise<void>
   suggestNextAssignee:    (type: ResponsibilityType) => Promise<string | null>
   archiveOldAssignments:  (before?: string) => Promise<number>
+  setRotationExclusion:   (memberId: string, excluded: boolean) => Promise<void>
+  setRotationAdjustment:  (type: ResponsibilityType, memberId: string, delta: number) => Promise<void>
 
   // ─── Responsibility Types ──────────────────────────────────────────────────
   addResponsibilityType:    (data: { name: string; color: string }) => Promise<string>
@@ -158,6 +164,8 @@ export const useStore = create<AppState>()((set, _get) => ({
   retrospectives: [],
   responsibilityTypes: [],
   pulseChecks: [],
+  sprintSettings: DEFAULT_SPRINT_SETTINGS,
+  rotationSettings: { excludedMemberIds: [], adjustments: [] },
   software: [],
   knownErrors: [],
   meetings: [],
@@ -173,14 +181,16 @@ export const useStore = create<AppState>()((set, _get) => ({
   loadAll: async () => {
     set({ loading: true, error: null })
     try {
-      const [members, allMembers, { skills, memberSkills }, skillAreas, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures] =
+      const [members, allMembers, { skills, memberSkills }, skillAreas, sprints, sprintSettings, assignments, rotationSettings, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures] =
         await Promise.all([
           membersApi.list(),
           membersApi.listAll(),
           skillsApi.list(),
           skillAreasApi.list(),
           sprintsApi.list(),
+          sprintsApi.getSettings(),
           assignmentsApi.list(),
+          assignmentsApi.rotationSettings(),
           retrosApi.list(),
           responsibilityTypesApi.list(),
           pulseApi.list(),
@@ -189,7 +199,7 @@ export const useStore = create<AppState>()((set, _get) => ({
           meetingsApi.list(),
           roadmapApi.listFeatures(),
         ])
-      set({ members, allMembers, skills, memberSkills, skillAreas, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures, loading: false })
+      set({ members, allMembers, skills, memberSkills, skillAreas, sprints, sprintSettings, assignments, rotationSettings, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures, loading: false })
     } catch (err) {
       set({ loading: false, error: String(err) })
     }
@@ -343,6 +353,11 @@ export const useStore = create<AppState>()((set, _get) => ({
     set((s) => ({ sprints: s.sprints.map((sp) => (sp.id === sprintId ? updated : sp)) }))
   },
 
+  updateSprintSettings: async (data) => {
+    const saved = await sprintsApi.updateSettings(data)
+    set({ sprintSettings: saved })
+  },
+
   // ─── Assignments ──────────────────────────────────────────────────────────
   addAssignment: async (data) => {
     const a = await assignmentsApi.create(data)
@@ -363,6 +378,33 @@ export const useStore = create<AppState>()((set, _get) => ({
   suggestNextAssignee: async (type) => {
     const { memberId } = await assignmentsApi.suggest(type)
     return memberId
+  },
+
+  setRotationExclusion: async (memberId, excluded) => {
+    await assignmentsApi.setExclusion(memberId, excluded)
+    set((s) => ({
+      rotationSettings: {
+        ...s.rotationSettings,
+        excludedMemberIds: excluded
+          ? [...s.rotationSettings.excludedMemberIds, memberId]
+          : s.rotationSettings.excludedMemberIds.filter((id) => id !== memberId),
+      },
+    }))
+  },
+
+  setRotationAdjustment: async (type, memberId, delta) => {
+    const saved = await assignmentsApi.setAdjustment(type, memberId, delta)
+    set((s) => {
+      const rest = s.rotationSettings.adjustments.filter(
+        (a) => !(a.type === type && a.memberId === memberId),
+      )
+      return {
+        rotationSettings: {
+          ...s.rotationSettings,
+          adjustments: saved.delta > 0 ? [...rest, saved] : rest,
+        },
+      }
+    })
   },
 
   archiveOldAssignments: async (before) => {

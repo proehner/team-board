@@ -24,6 +24,79 @@ router.get('/', (req, res) => {
   })))
 })
 
+// ─── Sprint settings (per team) ──────────────────────────────────────────────
+// Configure how new sprints are pre-filled: naming pattern, length and the
+// weekdays a sprint starts / ends on.
+// NOTE: these routes must stay ABOVE the `/:id` routes, otherwise Express
+// would match "settings" as a sprint id.
+
+interface SprintSettings {
+  namePattern:   string
+  durationWeeks: number
+  startWeekday:  number  // ISO weekday, 1 = Monday … 7 = Sunday
+  endWeekday:    number
+}
+
+const DEFAULT_SPRINT_SETTINGS: SprintSettings = {
+  namePattern:   '{YYYY}_{KW1}_{KW2}',
+  durationWeeks: 2,
+  startWeekday:  1,
+  endWeekday:    5,
+}
+
+function getSprintSettings(teamId: string): SprintSettings {
+  const row = dbGet<Row>('SELECT * FROM sprint_settings WHERE teamId = ?', [teamId])
+  if (!row) return { ...DEFAULT_SPRINT_SETTINGS }
+  return {
+    namePattern:   (row.namePattern as string) || DEFAULT_SPRINT_SETTINGS.namePattern,
+    durationWeeks: Number(row.durationWeeks) || DEFAULT_SPRINT_SETTINGS.durationWeeks,
+    startWeekday:  Number(row.startWeekday)  || DEFAULT_SPRINT_SETTINGS.startWeekday,
+    endWeekday:    Number(row.endWeekday)    || DEFAULT_SPRINT_SETTINGS.endWeekday,
+  }
+}
+
+const clampWeekday = (v: unknown, fallback: number): number => {
+  const n = Math.round(Number(v))
+  return Number.isFinite(n) && n >= 1 && n <= 7 ? n : fallback
+}
+
+// GET /api/sprints/settings
+router.get('/settings', (req, res) => {
+  res.json(getSprintSettings(req.teamId!))
+})
+
+// PUT /api/sprints/settings
+router.put('/settings', (req, res) => {
+  const { teamId } = req
+  const current = getSprintSettings(teamId!)
+  const pattern = typeof req.body.namePattern === 'string' ? req.body.namePattern.trim() : current.namePattern
+  if (!pattern) return res.status(400).json({ error: 'namePattern must not be empty.' })
+
+  const weeks = Math.round(Number(req.body.durationWeeks ?? current.durationWeeks))
+  if (!Number.isFinite(weeks) || weeks < 1 || weeks > 12) {
+    return res.status(400).json({ error: 'durationWeeks must be between 1 and 12.' })
+  }
+
+  const settings: SprintSettings = {
+    namePattern:   pattern,
+    durationWeeks: weeks,
+    startWeekday:  clampWeekday(req.body.startWeekday, current.startWeekday),
+    endWeekday:    clampWeekday(req.body.endWeekday,   current.endWeekday),
+  }
+
+  dbRun(
+    `INSERT INTO sprint_settings (teamId, namePattern, durationWeeks, startWeekday, endWeekday)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(teamId) DO UPDATE SET
+       namePattern = excluded.namePattern,
+       durationWeeks = excluded.durationWeeks,
+       startWeekday = excluded.startWeekday,
+       endWeekday = excluded.endWeekday`,
+    [teamId, settings.namePattern, settings.durationWeeks, settings.startWeekday, settings.endWeekday],
+  )
+  res.json(settings)
+})
+
 // GET /api/sprints/:id
 router.get('/:id', (req, res) => {
   if (!dbGet('SELECT id FROM sprints WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])) {

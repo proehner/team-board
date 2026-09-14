@@ -12,7 +12,7 @@ import { formatDate, todayISO, daysUntil } from '@/utils/date'
 import {
   Plus, RefreshCw, Edit2, Trash2, Wand2, BarChart2, Settings,
   Archive, ChevronDown, List, Layers, CalendarRange, MoreHorizontal,
-  ChevronRight, ChevronUp, Users, BookOpen, Save, X, Pencil,
+  ChevronRight, ChevronUp, Users, BookOpen, Save, X, Pencil, Minus, UserX,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig, Sprint } from '@/types'
@@ -78,6 +78,17 @@ export default function RotationPage() {
   const updateResponsibilityType = useStore((s) => s.updateResponsibilityType)
   const deleteResponsibilityType = useStore((s) => s.deleteResponsibilityType)
   const archiveOldAssignments  = useStore((s) => s.archiveOldAssignments)
+  const rotationSettings       = useStore((s) => s.rotationSettings)
+  const setRotationExclusion   = useStore((s) => s.setRotationExclusion)
+  const setRotationAdjustment  = useStore((s) => s.setRotationAdjustment)
+
+  const excludedIds = useMemo(
+    () => new Set(rotationSettings.excludedMemberIds),
+    [rotationSettings.excludedMemberIds],
+  )
+  /** Manual counter correction for a member within one responsibility type. */
+  const adjustmentOf = (type: string, memberId: string) =>
+    rotationSettings.adjustments.find((a) => a.type === type && a.memberId === memberId)?.delta ?? 0
 
   const typeNames = responsibilityTypes.map((rt) => rt.name)
   const colorOf   = (typeName: string) =>
@@ -112,22 +123,64 @@ export default function RotationPage() {
   const [formErrors,   setFormErrors]   = useState<Partial<AssignmentFormData>>({})
   const [assignmentSaveError, setAssignmentSaveError] = useState('')
 
+  /**
+   * The next sprint that still needs this responsibility: the earliest sprint
+   * that has not ended yet and has no assignment of that type. Archived
+   * assignments count as covered – the sprint was taken care of.
+   */
+  function nextFreeSprint(type: ResponsibilityType): Sprint | null {
+    const today = todayISO()
+    const candidates = [...sprints]
+      .filter((sp) => sp.endDate >= today && sp.status !== 'Abgebrochen')
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))
+    return candidates.find((sp) =>
+      !assignments.some((a) => a.sprintId === sp.id && a.type === type && !a.isSynthetic),
+    ) ?? null
+  }
+
   function makeDefaultForm(type?: ResponsibilityType, memberId?: string): AssignmentFormData {
     const today = todayISO()
+    const resolvedType = type ?? typeNames[0] ?? ''
+    const sprint = resolvedType ? nextFreeSprint(resolvedType) : null
     return {
-      type: type ?? typeNames[0] ?? '',
+      type: resolvedType,
       memberId: memberId ?? '',
-      sprintId: '',
-      startDate: today,
-      endDate: addDaysToISO(today, 13),
+      sprintId: sprint?.id ?? '',
+      startDate: sprint?.startDate ?? today,
+      endDate: sprint?.endDate ?? addDaysToISO(today, 13),
       notes: '',
     }
   }
 
+  /** Selecting a sprint takes over its date range; "no sprint" keeps the dates. */
+  function applySprintSelection(sprintId: string) {
+    const sprint = sprints.find((sp) => sp.id === sprintId)
+    setForm((f) => ({
+      ...f,
+      sprintId,
+      startDate: sprint?.startDate ?? f.startDate,
+      endDate:   sprint?.endDate   ?? f.endDate,
+    }))
+  }
+
+  /** Switching the responsibility re-runs the sprint detection for a new entry. */
+  function applyTypeSelection(type: ResponsibilityType) {
+    if (editTarget) { setForm((f) => ({ ...f, type })); return }
+    const sprint = nextFreeSprint(type)
+    setForm((f) => ({
+      ...f,
+      type,
+      sprintId:  sprint?.id        ?? '',
+      startDate: sprint?.startDate ?? f.startDate,
+      endDate:   sprint?.endDate   ?? f.endDate,
+    }))
+  }
+
   async function openAdd(type?: string) {
-    const suggested = type ? await suggestNextAssignee(type) : null
+    const resolvedType = type ?? typeNames[0] ?? ''
+    const suggested = resolvedType ? await suggestNextAssignee(resolvedType) : null
     setEditTarget(null)
-    setForm(makeDefaultForm(type, suggested ?? ''))
+    setForm(makeDefaultForm(resolvedType, suggested ?? ''))
     setFormErrors({})
     setShowModal(true)
   }
@@ -253,20 +306,40 @@ export default function RotationPage() {
     }
   }
 
+  // ─── Participants modal (who takes part in the automatic rotation) ───────────
+  const [showParticipants, setShowParticipants] = useState(false)
+  const [participantsError, setParticipantsError] = useState('')
+
+  async function toggleParticipant(memberId: string, excluded: boolean) {
+    setParticipantsError('')
+    try {
+      await setRotationExclusion(memberId, excluded)
+    } catch (err) {
+      setParticipantsError(err instanceof Error ? err.message : t('common.saveError'))
+    }
+  }
+
   // ─── Stats modal ─────────────────────────────────────────────────────────────
   const [showStats, setShowStats] = useState(false)
 
+  // `manual` is the hand-made correction, `total` the number the rotation works with.
   const stats = useMemo(() =>
     typeNames.reduce((acc, type) => {
       const ta = assignments.filter((a) => a.type === type && !a.isSynthetic && !a.isArchived)
-      acc[type] = members.map((m) => ({
-        member: m,
-        total: ta.filter((a) => a.memberId === m.id).length,
-        active: ta.filter((a) => a.memberId === m.id && getStatus(a) === 'active').length,
-      })).sort((a, b) => b.total - a.total)
+      acc[type] = members.map((m) => {
+        const manual = adjustmentOf(type, m.id)
+        return {
+          member: m,
+          assigned: ta.filter((a) => a.memberId === m.id).length,
+          manual,
+          total: ta.filter((a) => a.memberId === m.id).length + manual,
+          active: ta.filter((a) => a.memberId === m.id && getStatus(a) === 'active').length,
+        }
+      }).sort((a, b) => b.total - a.total)
       return acc
-    }, {} as Record<string, { member: typeof members[0]; total: number; active: number }[]>),
-  [assignments, typeNames, members])
+    }, {} as Record<string, { member: typeof members[0]; assigned: number; manual: number; total: number; active: number }[]>),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [assignments, typeNames, members, rotationSettings.adjustments])
 
   // ─── Cleanup modal ────────────────────────────────────────────────────────────
   const [showCleanup,    setShowCleanup]    = useState(false)
@@ -321,6 +394,18 @@ export default function RotationPage() {
     })
   }, [assignments, filterType, filterMember])
 
+  // Sprint options for the assignment modal: current/upcoming first (ascending),
+  // finished ones after that, each flagged if it already has this responsibility.
+  const sprintOptions = useMemo(() => {
+    const today = todayISO()
+    const covered = (sp: Sprint) =>
+      assignments.some((a) => a.sprintId === sp.id && a.type === form.type && !a.isSynthetic
+        && (!editTarget || a.id !== editTarget.id))
+    const open   = sprints.filter((sp) => sp.endDate >= today).sort((a, b) => a.startDate.localeCompare(b.startDate))
+    const past   = sprints.filter((sp) => sp.endDate <  today).sort((a, b) => b.startDate.localeCompare(a.startDate))
+    return [...open, ...past].map((sp) => ({ id: sp.id, name: sp.name, covered: covered(sp) }))
+  }, [sprints, assignments, form.type, editTarget])
+
   const sorted = useMemo(() =>
     [...visibleAssignments].sort((a, b) => {
       const sa = getStatus(a), sb = getStatus(b)
@@ -370,6 +455,7 @@ export default function RotationPage() {
               <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg py-1 z-20">
                 {canWrite && <MenuButton icon={<Settings className="w-4 h-4" />} label={t('rotation.types')} onClick={() => { openAddType(); setShowMoreMenu(false) }} />}
                 <MenuButton icon={<BarChart2 className="w-4 h-4" />} label={t('rotation.statistics')} onClick={() => { setShowStats(true); setShowMoreMenu(false) }} />
+                {canWrite && <MenuButton icon={<Users className="w-4 h-4" />} label={t('rotation.participants')} onClick={() => { setShowParticipants(true); setShowMoreMenu(false) }} />}
                 {canWrite && <MenuButton icon={<Archive className="w-4 h-4" />} label={t('rotation.cleanup')} onClick={() => { openCleanup(); setShowMoreMenu(false) }} />}
               </div>
             )}
@@ -566,7 +652,7 @@ export default function RotationPage() {
                 <button
                   key={rt.id}
                   type="button"
-                  onClick={() => setForm((f) => ({ ...f, type: rt.name }))}
+                  onClick={() => applyTypeSelection(rt.name)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
                     form.type === rt.name
                       ? 'text-white border-transparent'
@@ -596,7 +682,9 @@ export default function RotationPage() {
               <option value="">{t('rotation.selectMember')}</option>
               {members.map((m) => {
                 const count = assignments.filter((a) => a.type === form.type && a.memberId === m.id && !a.isSynthetic && !a.isArchived).length
-                return <option key={m.id} value={m.id}>{m.name} ({count}×)</option>
+                  + adjustmentOf(form.type, m.id)
+                const suffix = excludedIds.has(m.id) ? ` – ${t('rotation.excludedShort')}` : ''
+                return <option key={m.id} value={m.id}>{m.name} ({count}×){suffix}</option>
               })}
             </select>
           </div>
@@ -635,13 +723,18 @@ export default function RotationPage() {
             </div>
           </div>
 
-          {/* Sprint */}
+          {/* Sprint – selecting one takes over its date range */}
           <div className="space-y-1">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{t('pulse.sprintOptional')}</label>
-            <select value={form.sprintId} onChange={(e) => setForm((f) => ({ ...f, sprintId: e.target.value }))} className="form-input">
+            <select value={form.sprintId} onChange={(e) => applySprintSelection(e.target.value)} className="form-input">
               <option value="">{t('pulse.noSprint')}</option>
-              {sprints.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {sprintOptions.map((sp) => (
+                <option key={sp.id} value={sp.id}>
+                  {sp.name}{sp.covered ? ` – ${t('rotation.sprintCovered')}` : ''}
+                </option>
+              ))}
             </select>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{t('rotation.sprintDatesHint')}</p>
           </div>
 
           {/* Notes */}
@@ -794,16 +887,47 @@ export default function RotationPage() {
                   </span>
                 </div>
                 <div className="space-y-2">
-                  {typeStats.map(({ member, total, active }) => (
+                  {typeStats.map(({ member, manual, total, active }) => (
                     <div key={member.id} className="flex items-center gap-3">
                       <Avatar name={member.name} color={member.avatarColor} size="xs" />
-                      <span className="text-xs text-slate-600 dark:text-slate-400 w-24 shrink-0 truncate">{member.name}</span>
+                      <span className="text-xs text-slate-600 dark:text-slate-400 w-24 shrink-0 truncate">
+                        {member.name}
+                        {excludedIds.has(member.id) && (
+                          <span className="ml-1 text-slate-300 dark:text-slate-600" title={t('rotation.excludedHint')}>✕</span>
+                        )}
+                      </span>
                       <div className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
                         <div className="h-2 rounded-full transition-all" style={{ width: `${(total / maxCount) * 100}%`, backgroundColor: rt.color }} />
                       </div>
+                      {manual > 0 && (
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium" title={t('rotation.manualCountHint')}>
+                          +{manual}
+                        </span>
+                      )}
                       <span className="text-xs font-medium text-slate-700 dark:text-slate-300 w-6 text-right">{total}</span>
+                      {canWrite && (
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setRotationAdjustment(rt.name, member.id, Math.max(0, manual - 1))}
+                            disabled={manual === 0}
+                            title={t('rotation.decreaseCount')}
+                            className="w-5 h-5 flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRotationAdjustment(rt.name, member.id, manual + 1)}
+                            title={t('rotation.increaseCount')}
+                            className="w-5 h-5 flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
                       {active > 0 && (
-                        <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium w-12">{t('rotation.activeNow')}</span>
+                        <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium whitespace-nowrap">{t('rotation.activeNow')}</span>
                       )}
                     </div>
                   ))}
@@ -814,6 +938,55 @@ export default function RotationPage() {
           {responsibilityTypes.length === 0 && (
             <p className="text-sm text-slate-400 text-center py-6">{t('rotation.noTypes')}</p>
           )}
+          {canWrite && responsibilityTypes.length > 0 && (
+            <p className="text-xs text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-slate-800 pt-3">
+              {t('rotation.manualCountHint')}
+            </p>
+          )}
+        </div>
+      </Modal>
+
+      {/* ── Participants Modal ── */}
+      <Modal
+        isOpen={showParticipants}
+        onClose={() => setShowParticipants(false)}
+        title={t('rotation.participants')}
+        footer={<Button variant="secondary" onClick={() => setShowParticipants(false)}>{t('common.close')}</Button>}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t('rotation.participantsIntro')}</p>
+          {participantsError && <p className="text-sm text-red-600">{participantsError}</p>}
+          <div className="space-y-1.5">
+            {members.map((m) => {
+              const excluded = excludedIds.has(m.id)
+              return (
+                <label
+                  key={m.id}
+                  className="flex items-center gap-3 bg-slate-50 dark:bg-slate-950 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!excluded}
+                    onChange={(e) => toggleParticipant(m.id, !e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <Avatar name={m.name} color={m.avatarColor} size="xs" />
+                  <span className={`flex-1 text-sm ${excluded ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-700 dark:text-slate-300'}`}>
+                    {m.name}
+                  </span>
+                  {excluded && (
+                    <span className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
+                      <UserX className="w-3.5 h-3.5" />
+                      {t('rotation.excludedShort')}
+                    </span>
+                  )}
+                </label>
+              )
+            })}
+            {members.length === 0 && (
+              <p className="text-sm text-slate-400 text-center py-4">{t('rotation.noMembers')}</p>
+            )}
+          </div>
         </div>
       </Modal>
 
