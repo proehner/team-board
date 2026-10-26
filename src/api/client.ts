@@ -1,7 +1,7 @@
 import type {
   TeamMember, MemberRole,
   Skill, MemberSkill, SkillLevel, SkillArea, SkillAreaCategory,
-  Sprint, SprintStatus, SprintGoalMet,
+  Sprint, SprintStatus, SprintGoalMet, SprintMemberCapacityUpdate, CapacityActivity,
   ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig, ResponsibilityTypeAttachment,
   Retrospective, RetroItemType, RetroItem,
   PulseCheck,
@@ -125,6 +125,7 @@ type SprintUpdateData = {
   capacityHours?: number | null
   remainingHours?: number | null
   averageBurndown?: number | null
+  teamDaysOff?: number
   notes?: string
 }
 
@@ -135,10 +136,24 @@ export const sprintsApi = {
   update:         (id: string, data: SprintUpdateData) => patch<Sprint>(`/sprints/${id}`, data),
   delete:         (id: string) => del(`/sprints/${id}`),
   setStatus:      (id: string, status: SprintStatus) => patch<Sprint>(`/sprints/${id}`, { status }),
-  setCapacity:    (sprintId: string, memberId: string, availableDays: number, plannedPoints: number) =>
-    put<unknown>(`/sprints/${sprintId}/capacity/${memberId}`, { availableDays, plannedPoints }),
+  addCapacityMembers: (sprintId: string, memberIds: string[]) =>
+    post<Sprint>(`/sprints/${sprintId}/capacity`, { memberIds }),
+  copyCapacity:   (sprintId: string, sourceSprintId: string) =>
+    post<Sprint>(`/sprints/${sprintId}/capacity/copy`, { sourceSprintId }),
+  setCapacity:    (sprintId: string, memberId: string, data: SprintMemberCapacityUpdate) =>
+    put<Sprint>(`/sprints/${sprintId}/capacity/${memberId}`, data),
   removeCapacity: (sprintId: string, memberId: string) =>
-    del(`/sprints/${sprintId}/capacity/${memberId}`),
+    request<Sprint>('DELETE', `/sprints/${sprintId}/capacity/${memberId}`),
+}
+
+// ─── Capacity Activities ──────────────────────────────────────────────────────
+type CapacityActivityData = Pick<CapacityActivity, 'name' | 'color' | 'countsToSprint'>
+export const capacityActivitiesApi = {
+  list:   () => get<CapacityActivity[]>('/capacity-activities'),
+  create: (data: CapacityActivityData) => post<CapacityActivity>('/capacity-activities', data),
+  update: (id: string, data: Partial<CapacityActivityData & Pick<CapacityActivity, 'sortOrder'>>) =>
+    patch<CapacityActivity>(`/capacity-activities/${id}`, data),
+  delete: (id: string) => del(`/capacity-activities/${id}`),
 }
 
 // ─── Assignments ──────────────────────────────────────────────────────────────

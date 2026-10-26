@@ -1,4 +1,4 @@
-import { format, parseISO, differenceInDays, isWithinInterval, addDays } from 'date-fns'
+import { format, parseISO, differenceInDays, isWithinInterval, addDays, eachDayOfInterval, isWeekend } from 'date-fns'
 import { de } from 'date-fns/locale'
 
 export const formatDate = (iso: string): string =>
@@ -11,6 +11,14 @@ export const formatDateInput = (iso: string): string => iso.substring(0, 10)
 
 export const sprintDurationDays = (start: string, end: string): number =>
   differenceInDays(parseISO(end), parseISO(start)) + 1
+
+/** Number of weekdays (Mon–Fri) between start and end, both inclusive. */
+export const countWorkingDays = (start: string, end: string): number => {
+  const s = parseISO(start)
+  const e = parseISO(end)
+  if (!(s <= e)) return 0
+  return eachDayOfInterval({ start: s, end: e }).filter((d) => !isWeekend(d)).length
+}
 
 export const isCurrentlyActive = (start: string, end: string): boolean => {
   const now = new Date()

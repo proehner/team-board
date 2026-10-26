@@ -128,6 +128,16 @@ try {
     FOREIGN KEY (sprintId) REFERENCES sprints(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS capacity_activities (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    teamId         TEXT NOT NULL,
+    color          TEXT NOT NULL DEFAULT '#6366f1',
+    countsToSprint INTEGER NOT NULL DEFAULT 0,
+    sortOrder      INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(name, teamId)
+  );
+
   CREATE TABLE IF NOT EXISTS assignments (
     id              TEXT PRIMARY KEY,
     type            TEXT NOT NULL,
@@ -460,6 +470,16 @@ if (!sprintColNames.has('impediments'))      db.exec("ALTER TABLE sprints ADD CO
 if (!sprintColNames.has('capacityHours'))    db.exec('ALTER TABLE sprints ADD COLUMN capacityHours INTEGER')
 if (!sprintColNames.has('remainingHours'))   db.exec('ALTER TABLE sprints ADD COLUMN remainingHours INTEGER')
 if (!sprintColNames.has('averageBurndown'))  db.exec('ALTER TABLE sprints ADD COLUMN averageBurndown REAL')
+if (!sprintColNames.has('teamDaysOff'))      db.exec('ALTER TABLE sprints ADD COLUMN teamDaysOff REAL NOT NULL DEFAULT 0')
+
+// ─── Sprint capacity: hours per day per activity (Azure DevOps style) ────────
+// activities is a JSON object { [capacityActivityId]: hoursPerDay }
+const capacityCols = db.prepare('PRAGMA table_info(sprint_capacity)').all([]) as Array<{ name: string }>
+const capacityColNames = new Set(capacityCols.map((c) => c.name))
+if (!capacityColNames.has('hoursPerDay')) db.exec('ALTER TABLE sprint_capacity ADD COLUMN hoursPerDay REAL NOT NULL DEFAULT 8')
+if (!capacityColNames.has('daysOff'))     db.exec('ALTER TABLE sprint_capacity ADD COLUMN daysOff REAL NOT NULL DEFAULT 0')
+if (!capacityColNames.has('activities'))  db.exec("ALTER TABLE sprint_capacity ADD COLUMN activities TEXT NOT NULL DEFAULT '{}'")
+if (!capacityColNames.has('notes'))       db.exec("ALTER TABLE sprint_capacity ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
 
 // ─── Retro Items migration ────────────────────────────────────────────────────
 const retroItemCols = db.prepare('PRAGMA table_info(retro_items)').all([]) as Array<{ name: string }>

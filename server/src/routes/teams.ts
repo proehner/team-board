@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { dbGet, dbAll, dbRun } from '../db'
 import { requireAdmin } from '../middleware/auth'
+import { seedCapacityActivities } from '../seed'
 import crypto from 'crypto'
 
 const router = Router()
@@ -47,8 +48,9 @@ router.post('/', requireAdmin, (req, res) => {
     'INSERT INTO teams (id, name, description, createdAt) VALUES (?, ?, ?, ?)',
     [id, name.trim(), description, new Date().toISOString()],
   )
-  // Seed default responsibility types for the new team
+  // Seed default responsibility types and capacity activities for the new team
   seedResponsibilityTypesForTeam(id)
+  seedCapacityActivities(id)
   res.status(201).json(dbGet<Row>('SELECT * FROM teams WHERE id = ?', [id]))
 })
 

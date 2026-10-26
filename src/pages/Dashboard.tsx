@@ -283,10 +283,12 @@ export default function Dashboard() {
                 <Badge label={t(`sprintStatus.${activeSprint.status}`)} variant={sprintStatusVariant[activeSprint.status]} dot />
                 <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{activeSprint.name}</span>
               </div>
-              <div className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
-                <Target className="w-4 h-4 mt-0.5 shrink-0 text-slate-400 dark:text-slate-500" />
-                <span className="italic">{activeSprint.goal}</span>
-              </div>
+              {activeSprint.goal && (
+                <div className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
+                  <Target className="w-4 h-4 mt-0.5 shrink-0 text-slate-400 dark:text-slate-500" />
+                  <span className="italic">{activeSprint.goal}</span>
+                </div>
+              )}
               <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
                 <div className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5" />

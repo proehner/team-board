@@ -3,16 +3,21 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
 import Button from '@/components/ui/Button'
-import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import SprintLineChart from '@/components/ui/SprintLineChart'
+import CapacityOverview from '@/components/sprints/CapacityOverview'
+import SprintFormModal from '@/components/sprints/SprintFormModal'
+import SprintStatusActions from '@/components/sprints/SprintStatusActions'
+import SprintTimingInfo from '@/components/sprints/SprintTimingInfo'
 import type { SprintChartSeries } from '@/components/ui/SprintLineChart'
-import { formatDate } from '@/utils/date'
+import { countWorkingDays, formatDate, formatDateShort } from '@/utils/date'
+import { sprintCapacityHours, formatNumber } from '@/utils/capacity'
+import { suggestNextSprintDates, suggestSprintName } from '@/utils/sprint'
 import { usePagePermission } from '@/hooks/usePagePermission'
-import { Plus, Zap, Calendar, Target, ChevronRight, Edit2, Trash2, Play, CheckCircle, X, TrendingUp, BarChart2 } from 'lucide-react'
+import { Plus, Zap, Calendar, Target, ChevronRight, Edit2, Trash2, TrendingUp, BarChart2, Gauge, Clock, CalendarPlus } from 'lucide-react'
 import type { Sprint, SprintStatus, SprintGoalMet } from '@/types'
 
 const STATUS_VARIANTS: Record<SprintStatus, 'default' | 'info' | 'success' | 'danger'> = {
@@ -22,16 +27,17 @@ const STATUS_VARIANTS: Record<SprintStatus, 'default' | 'info' | 'success' | 'da
   Abgebrochen: 'danger',
 }
 
-type MainTab = SprintStatus | 'Alle' | 'Auswertung'
+type MainTab = SprintStatus | 'Alle' | 'Auswertung' | 'Kapazitaet'
 
 const STATUS_TABS: (SprintStatus | 'Alle')[] = ['Alle', 'Aktiv', 'Geplant', 'Abgeschlossen', 'Abgebrochen']
 
-interface SprintFormData {
-  name: string
-  goal: string
-  startDate: string
-  endDate: string
-  notes: string
+// Order of the groups in the "Alle" tab: what's running first, then what's next, then history
+const STATUS_GROUPS: SprintStatus[] = ['Aktiv', 'Geplant', 'Abgeschlossen', 'Abgebrochen']
+
+/** Running and upcoming sprints in chronological order, history newest first. */
+function sortForStatus(list: Sprint[], status: SprintStatus): Sprint[] {
+  const ascending = status === 'Aktiv' || status === 'Geplant'
+  return [...list].sort((a, b) => ascending ? a.startDate.localeCompare(b.startDate) : b.startDate.localeCompare(a.startDate))
 }
 
 // ─── Chart series definitions ─────────────────────────────────────────────────
@@ -49,34 +55,25 @@ export default function SprintsPage() {
   const navigate = useNavigate()
   const { canWrite, isReadOnly } = usePagePermission('sprints')
   const sprints = useStore((s) => s.sprints)
-  const addSprint = useStore((s) => s.addSprint)
-  const updateSprint = useStore((s) => s.updateSprint)
   const deleteSprint = useStore((s) => s.deleteSprint)
-  const setSprintStatus = useStore((s) => s.setSprintStatus)
 
-  const [tab, setTab] = useState<MainTab>('Aktiv')
+  const [tab, setTab] = useState<MainTab>('Alle')
   const [showModal, setShowModal] = useState(false)
   const [editTarget, setEditTarget] = useState<Sprint | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Sprint | null>(null)
-  const [form, setForm] = useState<SprintFormData>(defaultForm())
-  const [errors, setErrors] = useState<Partial<SprintFormData>>({})
-  const [saveError, setSaveError] = useState('')
   const [activeSeriesKeys, setActiveSeriesKeys] = useState<Set<string>>(
     new Set(CHART_SERIES_ALL.map((s) => s.key)),
   )
 
-  function defaultForm(): SprintFormData {
-    const nextNum = sprints.length + 1
-    return { name: `Sprint ${nextNum}`, goal: '', startDate: '', endDate: '', notes: '' }
-  }
-
   const isAuswertung = tab === 'Auswertung'
-  const filtered = isAuswertung
+  const isKapazitaet = tab === 'Kapazitaet'
+  const isListTab = !isAuswertung && !isKapazitaet
+  const groups = !isListTab
     ? []
-    : tab === 'Alle'
-    ? sprints
-    : sprints.filter((s) => s.status === tab)
-  const sorted = [...filtered].sort((a, b) => b.startDate.localeCompare(a.startDate))
+    : (tab === 'Alle' ? STATUS_GROUPS : [tab as SprintStatus])
+        .map((status) => ({ status, sprints: sortForStatus(sprints.filter((s) => s.status === status), status) }))
+        // The "Geplant" group always shows the suggestion for the next sprint
+        .filter((g) => g.sprints.length > 0 || (g.status === 'Geplant' && canWrite))
 
   // Chart data: abgeschlossene Sprints chronologisch
   const chartSprints = [...sprints]
@@ -112,45 +109,12 @@ export default function SprintsPage() {
 
   function openAdd() {
     setEditTarget(null)
-    setForm(defaultForm())
-    setErrors({})
     setShowModal(true)
   }
 
   function openEdit(sp: Sprint) {
     setEditTarget(sp)
-    setForm({ name: sp.name, goal: sp.goal, startDate: sp.startDate, endDate: sp.endDate, notes: sp.notes })
-    setErrors({})
     setShowModal(true)
-  }
-
-  function validate(): boolean {
-    const e: Partial<SprintFormData> = {}
-    if (!form.name.trim()) e.name = t('sprints.nameRequired')
-    if (!form.goal.trim()) e.goal = t('sprints.goalRequired')
-    if (!form.startDate) e.startDate = t('sprints.startDateRequired')
-    if (!form.endDate) e.endDate = t('sprints.endDateRequired')
-    if (form.startDate && form.endDate && form.endDate <= form.startDate) {
-      e.endDate = t('sprints.endDateAfterStart')
-    }
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }
-
-  async function handleSubmit() {
-    if (!validate()) return
-    setSaveError('')
-    try {
-      if (editTarget) {
-        await updateSprint(editTarget.id, form)
-      } else {
-        const id = await addSprint(form)
-        navigate(`/sprints/${id}`)
-      }
-      setShowModal(false)
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : t('common.saveError'))
-    }
   }
 
   return (
@@ -202,7 +166,22 @@ export default function SprintsPage() {
           <BarChart2 className="w-3.5 h-3.5" />
           {t('sprints.analysis')}
         </button>
+        {/* Kapazitäts-Tab */}
+        <button
+          onClick={() => setTab('Kapazitaet')}
+          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+            tab === 'Kapazitaet'
+              ? 'bg-indigo-600 text-white'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Gauge className="w-3.5 h-3.5" />
+          {t('capacity.tab')}
+        </button>
       </div>
+
+      {/* ── Kapazitäts-View ── */}
+      {isKapazitaet && <CapacityOverview />}
 
       {/* ── Auswertungs-View ── */}
       {isAuswertung && (
@@ -324,64 +303,49 @@ export default function SprintsPage() {
       )}
 
       {/* ── Sprint list ── */}
-      {!isAuswertung && (
-        sorted.length === 0 ? (
+      {isListTab && (
+        sprints.length === 0 ? (
           <EmptyState
             icon={<Zap className="w-12 h-12" />}
             title={t('sprints.noSprints')}
             description={t('sprints.noSprintsSubtitle')}
             action={canWrite ? <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>{t('sprints.newSprint')}</Button> : undefined}
           />
+        ) : groups.length === 0 ? (
+          <p className="py-10 text-center text-sm text-slate-400 dark:text-slate-500">{t('sprints.noSprintsInTab')}</p>
         ) : (
-          <div className="space-y-3">
-            {sorted.map((sp) => (
-              <SprintCard
-                key={sp.id}
-                sprint={sp}
-                canWrite={canWrite}
-                onEdit={() => openEdit(sp)}
-                onDelete={() => setDeleteTarget(sp)}
-                onStatusChange={(status) => setSprintStatus(sp.id, status)}
-                onClick={() => navigate(`/sprints/${sp.id}`)}
-              />
+          <div className="space-y-6">
+            {groups.map(({ status, sprints: list }) => (
+              <section key={status} className="space-y-3">
+                {tab === 'Alle' && (
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t(`sprintStatus.${status}`)}
+                    {list.length > 0 && <span className="ml-1.5 font-normal text-slate-400 dark:text-slate-500">{list.length}</span>}
+                  </h2>
+                )}
+                {list.map((sp) => (
+                  <SprintCard
+                    key={sp.id}
+                    sprint={sp}
+                    canWrite={canWrite}
+                    onEdit={() => openEdit(sp)}
+                    onDelete={() => setDeleteTarget(sp)}
+                    onClick={() => navigate(`/sprints/${sp.id}`)}
+                  />
+                ))}
+                {status === 'Geplant' && canWrite && <NextSprintSuggestion sprints={sprints} onClick={openAdd} />}
+              </section>
             ))}
           </div>
         )
       )}
 
-      {/* Add/Edit Modal */}
-      <Modal
+      <SprintFormModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editTarget ? t('sprints.editSprint') : t('sprints.newSprint')}
-        footer={
-          <>
-            {saveError && <p className="flex-1 text-sm text-red-600">{saveError}</p>}
-            <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
-            <Button variant="primary" onClick={handleSubmit}>{editTarget ? t('common.save') : t('common.create')}</Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <FormField label={t('common.name')} error={errors.name}>
-            <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="form-input" />
-          </FormField>
-          <FormField label={t('sprints.sprintGoal')} error={errors.goal}>
-            <textarea value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} rows={2} className="form-textarea" placeholder={t('sprints.sprintGoalPlaceholder')} />
-          </FormField>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label={t('sprints.startDate')} error={errors.startDate}>
-              <input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} className="form-input" />
-            </FormField>
-            <FormField label={t('sprints.endDate')} error={errors.endDate}>
-              <input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} className="form-input" />
-            </FormField>
-          </div>
-          <FormField label={t('sprints.notes')}>
-            <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="form-textarea" placeholder={t('sprints.notesPlaceholder')} />
-          </FormField>
-        </div>
-      </Modal>
+        sprint={editTarget ?? undefined}
+        onCreated={(id) => navigate(`/sprints/${id}`)}
+      />
 
       <ConfirmDialog
         isOpen={!!deleteTarget}
@@ -437,81 +401,94 @@ interface SprintCardProps {
   canWrite: boolean
   onEdit: () => void
   onDelete: () => void
-  onStatusChange: (status: SprintStatus) => void
   onClick: () => void
 }
 
-function SprintCard({ sprint, canWrite, onEdit, onDelete, onStatusChange, onClick }: SprintCardProps) {
+function SprintCard({ sprint, canWrite, onEdit, onDelete, onClick }: SprintCardProps) {
   const { t } = useTranslation()
+  const activities = useStore((s) => s.capacityActivities)
+  const members = useStore((s) => s.members)
+  const capacityHours = sprint.capacity.length > 0
+    ? sprintCapacityHours(sprint, activities, new Set(members.map((m) => m.id)))
+    : null
+  const highlight = sprint.status === 'Aktiv'
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 flex items-start gap-4 hover:border-indigo-300 dark:hover:border-indigo-600 transition-colors group">
-      <button className="flex-1 text-left" onClick={onClick}>
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-slate-900 dark:text-slate-100">{sprint.name}</span>
-            <Badge label={t(`sprintStatus.${sprint.status}`)} variant={STATUS_VARIANTS[sprint.status]} dot />
-            {sprint.goalMet && <GoalMetBadge value={sprint.goalMet} />}
-          </div>
-          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors shrink-0" />
+    <div className={`bg-white dark:bg-slate-900 rounded-xl border shadow-sm flex flex-col sm:flex-row sm:items-start sm:gap-3 hover:border-indigo-300 dark:hover:border-indigo-600 transition-colors group ${
+      highlight ? 'border-indigo-200 dark:border-indigo-900' : 'border-slate-200 dark:border-slate-700'
+    }`}>
+      <button className="flex-1 min-w-0 text-left p-4 space-y-2" onClick={onClick}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{sprint.name}</span>
+          <Badge label={t(`sprintStatus.${sprint.status}`)} variant={STATUS_VARIANTS[sprint.status]} dot />
+          {sprint.goalMet && <GoalMetBadge value={sprint.goalMet} />}
         </div>
-        <div className="flex items-start gap-1.5 text-sm text-slate-500 dark:text-slate-400 mb-2">
-          <Target className="w-4 h-4 shrink-0 mt-0.5" />
-          <span className="line-clamp-1">{sprint.goal}</span>
+        <div className="flex items-start gap-1.5 text-sm">
+          <Target className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
+          {sprint.goal
+            ? <span className="line-clamp-2 text-slate-600 dark:text-slate-400">{sprint.goal}</span>
+            : <span className="italic text-slate-300 dark:text-slate-600">{t('sprints.noGoal')}</span>}
         </div>
-        <div className="flex items-center gap-4 text-xs text-slate-400 dark:text-slate-500">
-          <div className="flex items-center gap-1">
+        <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-xs text-slate-500 dark:text-slate-400">
+          <span className="flex items-center gap-1">
             <Calendar className="w-3.5 h-3.5" />
             {formatDate(sprint.startDate)} – {formatDate(sprint.endDate)}
-          </div>
-          {sprint.plannedPoints > 0 && (
-            <span className="flex items-center gap-0.5">
-              <Target className="w-3 h-3" />{sprint.plannedPoints} SP
+            <span className="text-slate-400 dark:text-slate-500">· {t('sprints.workingDays', { count: countWorkingDays(sprint.startDate, sprint.endDate) })}</span>
+          </span>
+          {capacityHours !== null && (
+            <span className="flex items-center gap-1" title={t('capacity.sprintCapacity')}>
+              <Clock className="w-3.5 h-3.5" />{t('sprints.capacityShort', { hours: formatNumber(capacityHours) })}
             </span>
           )}
-          {sprint.velocity !== undefined && (
-            <span className="flex items-center gap-0.5">
-              <TrendingUp className="w-3 h-3" />{sprint.velocity} SP
+          {sprint.plannedPoints > 0 && (
+            <span className="flex items-center gap-1">
+              <Target className="w-3.5 h-3.5" />{t('sprints.plannedPointsShort', { count: sprint.plannedPoints })}
+            </span>
+          )}
+          {sprint.velocity != null && (
+            <span className="flex items-center gap-1">
+              <TrendingUp className="w-3.5 h-3.5" />{t('sprints.velocityShort', { count: sprint.velocity })}
             </span>
           )}
         </div>
+        <SprintTimingInfo sprint={sprint} />
       </button>
 
-      {canWrite && (
-        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-          {sprint.status === 'Geplant' && (
-            <button onClick={() => onStatusChange('Aktiv')} className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors">
-              <Play className="w-4 h-4" />
+      <div className="flex items-center justify-end gap-1 shrink-0 px-3 pb-3 sm:p-3" onClick={(e) => e.stopPropagation()}>
+        {canWrite && (
+          <>
+            <SprintStatusActions sprint={sprint} compact />
+            <button onClick={onEdit} title={t('sprints.editSprint')} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">
+              <Edit2 className="w-4 h-4" />
             </button>
-          )}
-          {sprint.status === 'Aktiv' && (
-            <button onClick={() => onStatusChange('Abgeschlossen')} className="p-1.5 rounded-lg text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors">
-              <CheckCircle className="w-4 h-4" />
+            <button onClick={onDelete} title={t('sprints.deleteSprint')} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors">
+              <Trash2 className="w-4 h-4" />
             </button>
-          )}
-          {sprint.status === 'Aktiv' && (
-            <button onClick={() => onStatusChange('Abgebrochen')} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-              <X className="w-4 h-4" />
-            </button>
-          )}
-          <button onClick={onEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button onClick={onDelete} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+          </>
+        )}
+        <button onClick={onClick} className="p-1.5 text-slate-400 group-hover:text-indigo-500 transition-colors">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   )
 }
 
-function FormField({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+// ─── Next sprint suggestion ───────────────────────────────────────────────────
+
+function NextSprintSuggestion({ sprints, onClick }: { sprints: Sprint[]; onClick: () => void }) {
+  const { t } = useTranslation()
+  const { startDate, endDate } = suggestNextSprintDates(sprints)
   return (
-    <div className="space-y-1">
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
-      {children}
-      {error && <p className="text-xs text-red-500">{error}</p>}
-    </div>
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 px-4 py-3 text-left text-slate-500 dark:text-slate-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:border-indigo-700 dark:hover:text-indigo-400 transition-colors"
+    >
+      <CalendarPlus className="w-5 h-5 shrink-0" />
+      <span className="text-sm font-medium">{t('sprints.planNext', { name: suggestSprintName(sprints) })}</span>
+      <span className="text-xs text-slate-400 dark:text-slate-500">
+        {formatDateShort(startDate)} – {formatDateShort(endDate)} · {t('sprints.workingDays', { count: countWorkingDays(startDate, endDate) })}
+      </span>
+    </button>
   )
 }

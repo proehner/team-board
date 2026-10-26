@@ -115,6 +115,7 @@ router.patch('/:id', (req, res) => {
 router.delete('/:id', (req, res) => {
   const r = dbRun('DELETE FROM members WHERE id = ? AND teamId = ?', [req.params.id, req.teamId])
   if (r.changes === 0) return res.status(404).json({ error: 'Member not found.' })
+  dbRun('DELETE FROM sprint_capacity WHERE memberId = ?', [req.params.id])
   res.status(204).send()
 })
 
