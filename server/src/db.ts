@@ -547,6 +547,10 @@ const rtDocCols = db.prepare('PRAGMA table_info(responsibility_types)').all([]) 
 if (!rtDocCols.some((c) => c.name === 'documentation')) {
   db.exec("ALTER TABLE responsibility_types ADD COLUMN documentation TEXT NOT NULL DEFAULT ''")
 }
+// JSON array of member ids that don't take part in this rotation (e.g. the PO for on-call duty)
+if (!rtDocCols.some((c) => c.name === 'excludedMemberIds')) {
+  db.exec("ALTER TABLE responsibility_types ADD COLUMN excludedMemberIds TEXT NOT NULL DEFAULT '[]'")
+}
 
 // ─── meetings: add isGlobal column ───────────────────────────────────────────
 const meetingCols = db.prepare('PRAGMA table_info(meetings)').all([]) as Array<{ name: string }>

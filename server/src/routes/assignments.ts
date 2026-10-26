@@ -21,9 +21,14 @@ function toAssignment(row: Row) {
 router.get('/suggest/:type', (req, res) => {
   const { type } = req.params
   const { teamId } = req
+  const typeRow = dbGet<{ excludedMemberIds: string }>(
+    'SELECT excludedMemberIds FROM responsibility_types WHERE name = ? AND teamId = ?', [type, teamId],
+  )
+  let excluded: string[] = []
+  try { excluded = JSON.parse(typeRow?.excludedMemberIds ?? '[]') } catch { /* nobody excluded */ }
   const members = dbAll<{ id: string }>(
     'SELECT id FROM members WHERE isActive = 1 AND teamId = ?', [teamId],
-  )
+  ).filter((m) => !excluded.includes(m.id))
   if (members.length === 0) return res.json({ memberId: null })
 
   const counts: Record<string, number> = {}

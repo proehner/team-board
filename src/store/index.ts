@@ -7,7 +7,7 @@ import type {
   TeamMember, MemberRole,
   Skill, MemberSkill, SkillLevel, SkillArea, SkillAreaCategory,
   Sprint, SprintStatus, SprintMemberCapacityUpdate, CapacityActivity,
-  ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig,
+  ResponsibilityAssignment, ResponsibilityTypeConfig,
   Retrospective, RetroItem, RetroItemType,
   PulseCheck,
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus,
@@ -78,12 +78,11 @@ interface AppState {
   addAssignment:    (data: Omit<ResponsibilityAssignment, 'id'>) => Promise<string>
   updateAssignment: (id: string, data: Partial<ResponsibilityAssignment>) => Promise<void>
   deleteAssignment: (id: string) => Promise<void>
-  suggestNextAssignee:    (type: ResponsibilityType) => Promise<string | null>
   archiveOldAssignments:  (before?: string) => Promise<number>
 
   // ─── Responsibility Types ──────────────────────────────────────────────────
   addResponsibilityType:    (data: { name: string; color: string }) => Promise<string>
-  updateResponsibilityType: (id: string, data: Partial<Pick<ResponsibilityTypeConfig, 'name' | 'color' | 'sortOrder' | 'documentation'>>) => Promise<void>
+  updateResponsibilityType: (id: string, data: Partial<Pick<ResponsibilityTypeConfig, 'name' | 'color' | 'sortOrder' | 'documentation' | 'excludedMemberIds'>>) => Promise<void>
   deleteResponsibilityType: (id: string) => Promise<void>
 
   // ─── Retrospectives ───────────────────────────────────────────────────────
@@ -405,11 +404,6 @@ export const useStore = create<AppState>()((set, _get) => ({
     set((s) => ({ assignments: s.assignments.filter((a) => a.id !== id) }))
   },
 
-  suggestNextAssignee: async (type) => {
-    const { memberId } = await assignmentsApi.suggest(type)
-    return memberId
-  },
-
   archiveOldAssignments: async (before) => {
     const { archived } = await assignmentsApi.archiveOld(before)
     if (archived > 0) {
@@ -429,7 +423,16 @@ export const useStore = create<AppState>()((set, _get) => ({
 
   updateResponsibilityType: async (id, data) => {
     const updated = await responsibilityTypesApi.update(id, data)
-    set((s) => ({ responsibilityTypes: s.responsibilityTypes.map((rt) => (rt.id === id ? updated : rt)).sort((a, b) => a.sortOrder - b.sortOrder) }))
+    set((s) => {
+      const oldName = s.responsibilityTypes.find((rt) => rt.id === id)?.name
+      return {
+        responsibilityTypes: s.responsibilityTypes.map((rt) => (rt.id === id ? updated : rt)).sort((a, b) => a.sortOrder - b.sortOrder),
+        // The server moves assignments along with a renamed type
+        assignments: oldName && oldName !== updated.name
+          ? s.assignments.map((a) => (a.type === oldName ? { ...a, type: updated.name } : a))
+          : s.assignments,
+      }
+    })
   },
 
   deleteResponsibilityType: async (id) => {

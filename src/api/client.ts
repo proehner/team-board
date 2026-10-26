@@ -2,7 +2,7 @@ import type {
   TeamMember, MemberRole,
   Skill, MemberSkill, SkillLevel, SkillArea, SkillAreaCategory,
   Sprint, SprintStatus, SprintGoalMet, SprintMemberCapacityUpdate, CapacityActivity,
-  ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig, ResponsibilityTypeAttachment,
+  ResponsibilityAssignment, ResponsibilityTypeConfig, ResponsibilityTypeAttachment,
   Retrospective, RetroItemType, RetroItem,
   PulseCheck,
   AppUser, AdminUser, PermissionGroup, PagePermission,
@@ -159,8 +159,6 @@ export const capacityActivitiesApi = {
 // ─── Assignments ──────────────────────────────────────────────────────────────
 export const assignmentsApi = {
   list:           () => get<ResponsibilityAssignment[]>('/assignments'),
-  suggest:        (type: ResponsibilityType) =>
-    get<{ memberId: string | null }>(`/assignments/suggest/${encodeURIComponent(type)}`),
   archivePreview: (before?: string) =>
     get<{ count: number; items: ResponsibilityAssignment[] }>(
       `/assignments/archive-preview${before ? `?before=${before}` : ''}`,
@@ -178,7 +176,7 @@ export const assignmentsApi = {
 export const responsibilityTypesApi = {
   list:   () => get<ResponsibilityTypeConfig[]>('/responsibility-types'),
   create: (data: { name: string; color: string }) => post<ResponsibilityTypeConfig>('/responsibility-types', data),
-  update: (id: string, data: Partial<Pick<ResponsibilityTypeConfig, 'name' | 'color' | 'sortOrder' | 'documentation'>>) =>
+  update: (id: string, data: Partial<Pick<ResponsibilityTypeConfig, 'name' | 'color' | 'sortOrder' | 'documentation' | 'excludedMemberIds'>>) =>
     patch<ResponsibilityTypeConfig>(`/responsibility-types/${id}`, data),
   delete: (id: string) => del(`/responsibility-types/${id}`),
 }

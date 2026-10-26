@@ -122,6 +122,7 @@ export interface ResponsibilityTypeConfig {
   color: string
   sortOrder: number
   documentation: string
+  excludedMemberIds: string[]  // members that don't take part in this rotation
 }
 
 export interface ResponsibilityTypeAttachment {
