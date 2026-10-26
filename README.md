@@ -23,8 +23,8 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 | **Dashboard** | Customizable overview tiles – active sprint, open action items, team metrics, custom URLs |
 | **Team** | Member management with roles, avatar upload, and active/inactive status |
 | **Competencies** | Competency matrix and hierarchical skill catalogue (areas → categories → skills) with rating levels 0–5; separate read / write-own / write permissions for the matrix |
-| **Sprints** | Sprint planning, per-member capacity management, velocity tracking, and sprint detail view |
-| **Rotation** | Assignment and rotation of configurable team responsibilities (e.g. on-call, Scrum Master) with color coding; list, grouped, and timeline views; automatic archiving of past assignments |
+| **Sprints** | Sprint planning with the next sprint prefilled from the previous one (name, period, capacity), one-click start/complete (incl. completing the still active sprint), progress and phase-aware detail view, velocity tracking; Azure DevOps-style capacity planning per member (working hours per day split into configurable activities such as development, reviews, team lead, PO or SM – only activities flagged as sprint capacity count as plannable hours; personal days off and team days off; copy from a previous sprint) plus a cross-sprint capacity overview |
+| **Rotation** | Assignment and rotation of configurable team responsibilities (e.g. on-call, Scrum Master) with color coding; plan all responsibilities for a sprint at once with fair suggestions (fewest turns, absences from the capacity planning, no parallel duties, configurable participants per responsibility); current and next holder per responsibility; list, grouped, and timeline views; automatic archiving of past assignments |
 | **Retrospectives** | Structured retro boards with voting, status tracking, and action item assignment |
 | **Team Health** | Bus factor analysis, workload distribution, and absence simulation |
 | **Pulse Check** | Anonymous satisfaction surveys within the team (session-based duplicate prevention) |

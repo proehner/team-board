@@ -50,6 +50,44 @@ export function seedResponsibilityTypesForAllTeams(): void {
   }
 }
 
+// countsToSprint = 1 → hours of this activity are plannable sprint capacity
+const DEFAULT_CAPACITY_ACTIVITIES = [
+  { name: 'Entwicklung',   color: '#6366f1', countsToSprint: 1, sortOrder: 0 },
+  { name: 'Review',        color: '#10b981', countsToSprint: 0, sortOrder: 1 },
+  { name: 'Teamleitung',   color: '#f59e0b', countsToSprint: 0, sortOrder: 2 },
+  { name: 'Product Owner', color: '#8b5cf6', countsToSprint: 0, sortOrder: 3 },
+  { name: 'Scrum Master',  color: '#14b8a6', countsToSprint: 0, sortOrder: 4 },
+]
+
+// Seed default capacity activities for a specific team (idempotent)
+export function seedCapacityActivities(teamId: string): void {
+  const existing = dbAll<{ name: string }>(
+    'SELECT name FROM capacity_activities WHERE teamId = ?', [teamId],
+  )
+  const existingNames = new Set(existing.map((r) => r.name))
+  for (const a of DEFAULT_CAPACITY_ACTIVITIES) {
+    if (!existingNames.has(a.name)) {
+      dbRun(
+        'INSERT INTO capacity_activities (id, name, teamId, color, countsToSprint, sortOrder) VALUES (?, ?, ?, ?, ?, ?)',
+        [uid(), a.name, teamId, a.color, a.countsToSprint, a.sortOrder],
+      )
+    }
+  }
+}
+
+// Seed all existing teams that have no capacity activities yet
+export function seedCapacityActivitiesForAllTeams(): void {
+  const teams = dbAll<{ id: string }>('SELECT id FROM teams')
+  for (const team of teams) {
+    const count = dbGet<{ n: number }>(
+      'SELECT COUNT(*) as n FROM capacity_activities WHERE teamId = ?', [team.id],
+    )
+    if ((count?.n ?? 0) === 0) {
+      seedCapacityActivities(team.id)
+    }
+  }
+}
+
 export function seedIfEmpty(): void {
   const row = dbGet<{ n: number }>('SELECT COUNT(*) as n FROM members')
   if ((row?.n ?? 0) > 0) return
@@ -186,6 +224,27 @@ export function seedIfEmpty(): void {
   // ─── Seed responsibility types for both teams ──────────────────────────────
   seedResponsibilityTypes(frontendTeamId)
   seedResponsibilityTypes(backendTeamId)
+
+  // ─── Capacity activities + hours per day for the demo sprint ──────────────
+  seedCapacityActivities(frontendTeamId)
+  seedCapacityActivities(backendTeamId)
+  const activityIds = new Map(
+    dbAll<{ id: string; name: string }>('SELECT id, name FROM capacity_activities WHERE teamId = ?', [frontendTeamId])
+      .map((a) => [a.name, a.id]),
+  )
+  const hoursData: Record<string, number>[] = [
+    { Entwicklung: 4, Review: 3, Teamleitung: 1 },
+    { Entwicklung: 5, Review: 3 },
+    { Entwicklung: 3, Review: 3, 'Scrum Master': 2 },
+    { Entwicklung: 5, Review: 3 },
+  ]
+  memberIds.forEach((mid, i) => {
+    const activities = Object.fromEntries(
+      Object.entries(hoursData[i]).map(([name, h]) => [activityIds.get(name), h]),
+    )
+    dbRun('UPDATE sprint_capacity SET hoursPerDay = 8, daysOff = ?, activities = ? WHERE sprintId = ? AND memberId = ?',
+      [i === 3 ? 2 : 0, JSON.stringify(activities), sprintId, mid])
+  })
 
   console.log('Seed data inserted successfully.')
 }

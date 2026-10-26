@@ -2,7 +2,7 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import path from 'path'
-import { seedIfEmpty, seedResponsibilityTypesForAllTeams } from './seed'
+import { seedIfEmpty, seedResponsibilityTypesForAllTeams, seedCapacityActivitiesForAllTeams } from './seed'
 import { requireAuth, requirePageAccess, requireTeam } from './middleware/auth'
 import authRouter, { seedAdminUser } from './routes/auth'
 import adminRouter from './routes/admin'
@@ -11,6 +11,7 @@ import membersRouter from './routes/members'
 import skillsRouter from './routes/skills'
 import skillAreasRouter from './routes/skill-areas'
 import sprintsRouter from './routes/sprints'
+import capacityActivitiesRouter from './routes/capacityActivities'
 import assignmentsRouter from './routes/assignments'
 import retrospectivesRouter from './routes/retrospectives'
 import responsibilityTypesRouter from './routes/responsibilityTypes'
@@ -83,6 +84,7 @@ app.use('/api/members',              ...teamGuard,  membersRouter)
 app.use('/api/skills',               ...teamGuard,  skillsRouter)
 app.use('/api/skill-areas',          ...teamGuard,  skillAreasRouter)
 app.use('/api/sprints',              ...teamGuard,  sprintsRouter)
+app.use('/api/capacity-activities',  ...teamGuard,  capacityActivitiesRouter)
 app.use('/api/assignments',          ...teamGuard,  assignmentsRouter)
 app.use('/api/retrospectives',       ...teamGuard,  retrospectivesRouter)
 app.use('/api/responsibility-types', ...teamGuard,  responsibilityTypesRouter)
@@ -110,6 +112,7 @@ app.get('*', (_req, res) => {
 // ─── Seed & Start ─────────────────────────────────────────────────────────────
 seedIfEmpty()
 seedResponsibilityTypesForAllTeams()
+seedCapacityActivitiesForAllTeams()
 seedAdminUser()
 
 app.listen(PORT, () => {

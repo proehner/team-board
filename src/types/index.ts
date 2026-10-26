@@ -68,10 +68,25 @@ export interface MemberSkill {
 export type SprintStatus = 'Geplant' | 'Aktiv' | 'Abgeschlossen' | 'Abgebrochen'
 export type SprintGoalMet = 'Ja' | 'Teilweise' | 'Nein'
 
+export interface CapacityActivity {
+  id: string
+  name: string
+  color: string
+  countsToSprint: boolean
+  sortOrder: number
+}
+
 export interface SprintMemberCapacity {
   memberId: string
-  availableDays: number
   plannedPoints: number
+  hoursPerDay: number
+  daysOff: number
+  activities: Record<string, number>  // capacityActivityId → hours per day
+  notes: string
+}
+
+export type SprintMemberCapacityUpdate = Partial<Pick<SprintMemberCapacity, 'hoursPerDay' | 'daysOff' | 'notes'>> & {
+  activities?: Record<string, number | null>  // merged per key; 0/null removes the entry
 }
 
 export interface Sprint {
@@ -91,6 +106,7 @@ export interface Sprint {
   capacityHours?: number
   remainingHours?: number
   averageBurndown?: number
+  teamDaysOff: number
   capacity: SprintMemberCapacity[]
   notes: string
   createdAt: string
@@ -106,6 +122,7 @@ export interface ResponsibilityTypeConfig {
   color: string
   sortOrder: number
   documentation: string
+  excludedMemberIds: string[]  // members that don't take part in this rotation
 }
 
 export interface ResponsibilityTypeAttachment {

@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import {
-  membersApi, skillsApi, skillAreasApi, sprintsApi, assignmentsApi, retrosApi, responsibilityTypesApi, pulseApi,
+  membersApi, skillsApi, skillAreasApi, sprintsApi, capacityActivitiesApi, assignmentsApi, retrosApi, responsibilityTypesApi, pulseApi,
   softwareApi, knownErrorsApi, meetingsApi, roadmapApi,
 } from '@/api/client'
 import type {
   TeamMember, MemberRole,
   Skill, MemberSkill, SkillLevel, SkillArea, SkillAreaCategory,
-  Sprint, SprintStatus,
-  ResponsibilityAssignment, ResponsibilityType, ResponsibilityTypeConfig,
+  Sprint, SprintStatus, SprintMemberCapacityUpdate, CapacityActivity,
+  ResponsibilityAssignment, ResponsibilityTypeConfig,
   Retrospective, RetroItem, RetroItemType,
   PulseCheck,
   Software, KnownError, KnownErrorSeverity, KnownErrorStatus,
@@ -24,6 +24,7 @@ interface AppState {
   memberSkills: MemberSkill[]
   skillAreas: SkillArea[]
   sprints: Sprint[]
+  capacityActivities: CapacityActivity[]
   assignments: ResponsibilityAssignment[]
   retrospectives: Retrospective[]
   responsibilityTypes: ResponsibilityTypeConfig[]
@@ -63,19 +64,25 @@ interface AppState {
   updateSprint:        (id: string, data: Partial<Sprint>) => Promise<void>
   deleteSprint:        (id: string) => Promise<void>
   setSprintStatus:     (id: string, status: SprintStatus) => Promise<void>
-  setMemberCapacity:   (sprintId: string, memberId: string, availableDays: number, plannedPoints: number) => Promise<void>
+  setMemberCapacity:   (sprintId: string, memberId: string, data: SprintMemberCapacityUpdate) => Promise<void>
+  addMembersToSprint:  (sprintId: string, memberIds: string[]) => Promise<void>
+  copySprintCapacity:  (sprintId: string, sourceSprintId: string) => Promise<void>
   removeMemberFromSprint: (sprintId: string, memberId: string) => Promise<void>
+
+  // ─── Capacity Activities ──────────────────────────────────────────────────
+  addCapacityActivity:    (data: { name: string; color: string; countsToSprint: boolean }) => Promise<string>
+  updateCapacityActivity: (id: string, data: Partial<Pick<CapacityActivity, 'name' | 'color' | 'countsToSprint' | 'sortOrder'>>) => Promise<void>
+  deleteCapacityActivity: (id: string) => Promise<void>
 
   // ─── Assignments ──────────────────────────────────────────────────────────
   addAssignment:    (data: Omit<ResponsibilityAssignment, 'id'>) => Promise<string>
   updateAssignment: (id: string, data: Partial<ResponsibilityAssignment>) => Promise<void>
   deleteAssignment: (id: string) => Promise<void>
-  suggestNextAssignee:    (type: ResponsibilityType) => Promise<string | null>
   archiveOldAssignments:  (before?: string) => Promise<number>
 
   // ─── Responsibility Types ──────────────────────────────────────────────────
   addResponsibilityType:    (data: { name: string; color: string }) => Promise<string>
-  updateResponsibilityType: (id: string, data: Partial<Pick<ResponsibilityTypeConfig, 'name' | 'color' | 'sortOrder' | 'documentation'>>) => Promise<void>
+  updateResponsibilityType: (id: string, data: Partial<Pick<ResponsibilityTypeConfig, 'name' | 'color' | 'sortOrder' | 'documentation' | 'excludedMemberIds'>>) => Promise<void>
   deleteResponsibilityType: (id: string) => Promise<void>
 
   // ─── Retrospectives ───────────────────────────────────────────────────────
@@ -154,6 +161,7 @@ export const useStore = create<AppState>()((set, _get) => ({
   memberSkills: [],
   skillAreas: [],
   sprints: [],
+  capacityActivities: [],
   assignments: [],
   retrospectives: [],
   responsibilityTypes: [],
@@ -173,13 +181,14 @@ export const useStore = create<AppState>()((set, _get) => ({
   loadAll: async () => {
     set({ loading: true, error: null })
     try {
-      const [members, allMembers, { skills, memberSkills }, skillAreas, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures] =
+      const [members, allMembers, { skills, memberSkills }, skillAreas, sprints, capacityActivities, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures] =
         await Promise.all([
           membersApi.list(),
           membersApi.listAll(),
           skillsApi.list(),
           skillAreasApi.list(),
           sprintsApi.list(),
+          capacityActivitiesApi.list(),
           assignmentsApi.list(),
           retrosApi.list(),
           responsibilityTypesApi.list(),
@@ -189,7 +198,7 @@ export const useStore = create<AppState>()((set, _get) => ({
           meetingsApi.list(),
           roadmapApi.listFeatures(),
         ])
-      set({ members, allMembers, skills, memberSkills, skillAreas, sprints, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures, loading: false })
+      set({ members, allMembers, skills, memberSkills, skillAreas, sprints, capacityActivities, assignments, retrospectives, responsibilityTypes, pulseChecks, software, knownErrors, meetings, roadmapFeatures, loading: false })
     } catch (err) {
       set({ loading: false, error: String(err) })
     }
@@ -330,17 +339,52 @@ export const useStore = create<AppState>()((set, _get) => ({
     set((s) => ({ sprints: s.sprints.map((sp) => (sp.id === id ? updated : sp)) }))
   },
 
-  setMemberCapacity: async (sprintId, memberId, availableDays, plannedPoints) => {
-    await sprintsApi.setCapacity(sprintId, memberId, availableDays, plannedPoints)
-    // Reload sprint to get updated plannedPoints total
-    const updated = await sprintsApi.get(sprintId)
+  setMemberCapacity: async (sprintId, memberId, data) => {
+    const updated = await sprintsApi.setCapacity(sprintId, memberId, data)
+    set((s) => ({ sprints: s.sprints.map((sp) => (sp.id === sprintId ? updated : sp)) }))
+  },
+
+  addMembersToSprint: async (sprintId, memberIds) => {
+    const updated = await sprintsApi.addCapacityMembers(sprintId, memberIds)
+    set((s) => ({ sprints: s.sprints.map((sp) => (sp.id === sprintId ? updated : sp)) }))
+  },
+
+  copySprintCapacity: async (sprintId, sourceSprintId) => {
+    const updated = await sprintsApi.copyCapacity(sprintId, sourceSprintId)
     set((s) => ({ sprints: s.sprints.map((sp) => (sp.id === sprintId ? updated : sp)) }))
   },
 
   removeMemberFromSprint: async (sprintId, memberId) => {
-    await sprintsApi.removeCapacity(sprintId, memberId)
-    const updated = await sprintsApi.get(sprintId)
+    const updated = await sprintsApi.removeCapacity(sprintId, memberId)
     set((s) => ({ sprints: s.sprints.map((sp) => (sp.id === sprintId ? updated : sp)) }))
+  },
+
+  // ─── Capacity Activities ──────────────────────────────────────────────────
+  addCapacityActivity: async (data) => {
+    const a = await capacityActivitiesApi.create(data)
+    set((s) => ({ capacityActivities: [...s.capacityActivities, a].sort((x, y) => x.sortOrder - y.sortOrder) }))
+    return a.id
+  },
+
+  updateCapacityActivity: async (id, data) => {
+    const updated = await capacityActivitiesApi.update(id, data)
+    set((s) => ({ capacityActivities: s.capacityActivities.map((a) => (a.id === id ? updated : a)).sort((x, y) => x.sortOrder - y.sortOrder) }))
+  },
+
+  deleteCapacityActivity: async (id) => {
+    await capacityActivitiesApi.delete(id)
+    // The server also strips the activity's hours from all sprint capacities
+    set((s) => ({
+      capacityActivities: s.capacityActivities.filter((a) => a.id !== id),
+      sprints: s.sprints.map((sp) => ({
+        ...sp,
+        capacity: sp.capacity.map((c) => {
+          if (!(id in c.activities)) return c
+          const { [id]: _removed, ...activities } = c.activities
+          return { ...c, activities }
+        }),
+      })),
+    }))
   },
 
   // ─── Assignments ──────────────────────────────────────────────────────────
@@ -358,11 +402,6 @@ export const useStore = create<AppState>()((set, _get) => ({
   deleteAssignment: async (id) => {
     await assignmentsApi.delete(id)
     set((s) => ({ assignments: s.assignments.filter((a) => a.id !== id) }))
-  },
-
-  suggestNextAssignee: async (type) => {
-    const { memberId } = await assignmentsApi.suggest(type)
-    return memberId
   },
 
   archiveOldAssignments: async (before) => {
@@ -384,7 +423,16 @@ export const useStore = create<AppState>()((set, _get) => ({
 
   updateResponsibilityType: async (id, data) => {
     const updated = await responsibilityTypesApi.update(id, data)
-    set((s) => ({ responsibilityTypes: s.responsibilityTypes.map((rt) => (rt.id === id ? updated : rt)).sort((a, b) => a.sortOrder - b.sortOrder) }))
+    set((s) => {
+      const oldName = s.responsibilityTypes.find((rt) => rt.id === id)?.name
+      return {
+        responsibilityTypes: s.responsibilityTypes.map((rt) => (rt.id === id ? updated : rt)).sort((a, b) => a.sortOrder - b.sortOrder),
+        // The server moves assignments along with a renamed type
+        assignments: oldName && oldName !== updated.name
+          ? s.assignments.map((a) => (a.type === oldName ? { ...a, type: updated.name } : a))
+          : s.assignments,
+      }
+    })
   },
 
   deleteResponsibilityType: async (id) => {

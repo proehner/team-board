@@ -50,7 +50,7 @@ export const PAGE_TO_API: Record<string, string[]> = {
   team:                 ['/api/members'],
   'kompetenzen-matrix': ['/api/skills/member-skill'],
   kompetenzen:          ['/api/skills', '/api/skill-areas'],
-  sprints:              ['/api/sprints'],
+  sprints:              ['/api/sprints', '/api/capacity-activities'],
   rotation:             ['/api/assignments', '/api/responsibility-types'],
   retro:                ['/api/retrospectives'],
   pulse:                ['/api/pulse'],
