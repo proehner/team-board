@@ -358,6 +358,9 @@ export const meetingsApi = {
     patch<MeetingTopic>(`/meetings/${meetingId}/topics/${topicId}`, data),
   deleteTopic:  (meetingId: string, topicId: string) =>
     del(`/meetings/${meetingId}/topics/${topicId}`),
+  /** Saves the agenda order (open topics in display order); returns all topics of the meeting. */
+  reorderTopics: (meetingId: string, ids: string[]) =>
+    put<MeetingTopic[]>(`/meetings/${meetingId}/topics/order`, { ids }),
 
   getTopicById:  (topicId: string) =>
     get<MeetingTopic>(`/meetings/topic-lookup/${topicId}`),

@@ -1462,6 +1462,19 @@
       "thursday": "Do",
       "friday": "Fr",
       "saturday": "Sa"
+    },
+    "moveToTop": "An den Anfang",
+    "moveToBottom": "Ans Ende",
+    "dragHandle": "Position {{pos}} – ziehen oder Leertaste drücken, um zu verschieben",
+    "dragHandleHint": "Ziehen zum Verschieben (Tastatur: Leertaste, dann Pfeiltasten)",
+    "reorderError": "Reihenfolge konnte nicht gespeichert werden",
+    "reorderFilterHint": "Sortieren ist nur ohne Suchfilter möglich",
+    "dnd": {
+      "instructions": "Zum Verschieben Leertaste oder Enter drücken, mit den Pfeiltasten nach oben oder unten bewegen und mit Leertaste oder Enter ablegen. Escape bricht ab.",
+      "start": "Thema „{{title}}“ aufgenommen, Position {{pos}} von {{total}}.",
+      "over": "Thema „{{title}}“ auf Position {{pos}} von {{total}}.",
+      "end": "Thema „{{title}}“ auf Position {{pos}} von {{total}} abgelegt.",
+      "cancel": "Verschieben abgebrochen. Thema „{{title}}“ bleibt auf Position {{pos}}."
     }
   },
   "tickets": {

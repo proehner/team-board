@@ -1676,6 +1676,19 @@
       "thursday": "Thu",
       "friday": "Fri",
       "saturday": "Sat"
+    },
+    "moveToTop": "Move to top",
+    "moveToBottom": "Move to bottom",
+    "dragHandle": "Position {{pos}} – drag or press space to move",
+    "dragHandleHint": "Drag to move (keyboard: space, then arrow keys)",
+    "reorderError": "Order could not be saved",
+    "reorderFilterHint": "Sorting is only possible without a search filter",
+    "dnd": {
+      "instructions": "To move, press space or enter, use the arrow keys to move up or down and press space or enter to drop. Escape cancels.",
+      "start": "Picked up topic “{{title}}”, position {{pos}} of {{total}}.",
+      "over": "Topic “{{title}}” at position {{pos}} of {{total}}.",
+      "end": "Dropped topic “{{title}}” at position {{pos}} of {{total}}.",
+      "cancel": "Moving cancelled. Topic “{{title}}” stays at position {{pos}}."
     }
   },
   "tickets": {

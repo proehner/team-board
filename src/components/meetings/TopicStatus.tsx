@@ -39,13 +39,21 @@ export const TOPIC_STATUS_CFG: Record<MeetingTopicStatus, { Icon: Icon; icon: st
 const pillBase =
   'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset [&_svg]:h-3.5 [&_svg]:w-3.5'
 
-export function TopicStatusBadge({ status, compact = false, className = '' }: { status: MeetingTopicStatus; compact?: boolean; className?: string }) {
+interface BadgeProps {
+  status: MeetingTopicStatus
+  compact?: boolean
+  /** Stretch to the parent's width (equal-width pills in lists) */
+  fill?: boolean
+  className?: string
+}
+
+export function TopicStatusBadge({ status, compact = false, fill = false, className = '' }: BadgeProps) {
   const { t } = useTranslation()
   const { Icon, pill } = TOPIC_STATUS_CFG[status]
   return (
-    <span className={`${pillBase} ${pill} ${compact ? 'py-1 sm:py-0.5' : ''} ${className}`} title={t(`meetings.status.${status}`)}>
+    <span className={`${pillBase} ${pill} ${compact ? 'py-1 sm:py-0.5' : ''} ${fill ? 'w-full' : ''} ${className}`} title={t(`meetings.status.${status}`)}>
       <Icon />
-      <span className={compact ? 'hidden sm:inline' : ''}>{t(`meetings.status.${status}`)}</span>
+      <span className={`${compact ? 'hidden sm:inline' : ''} ${fill ? 'truncate' : ''}`}>{t(`meetings.status.${status}`)}</span>
     </span>
   )
 }
@@ -57,30 +65,32 @@ interface TopicStatusMenuProps {
   align?: 'start' | 'end'
   /** Show only the icon below the `sm` breakpoint (dense lists on mobile) */
   compact?: boolean
+  /** Stretch to the parent's width (equal-width pills in lists) */
+  fill?: boolean
   className?: string
 }
 
 /** Status pill that opens a menu to change the status. Falls back to a static badge when disabled. */
-export function TopicStatusMenu({ status, onChange, disabled, align = 'start', compact = false, className = '' }: TopicStatusMenuProps) {
+export function TopicStatusMenu({ status, onChange, disabled, align = 'start', compact = false, fill = false, className = '' }: TopicStatusMenuProps) {
   const { t } = useTranslation()
-  if (disabled) return <TopicStatusBadge status={status} compact={compact} className={className} />
+  if (disabled) return <TopicStatusBadge status={status} compact={compact} fill={fill} className={className} />
   const { Icon, pill } = TOPIC_STATUS_CFG[status]
   return (
     <DropdownMenu
       align={align}
       width="w-52"
-      className={className}
+      className={`${fill ? 'w-full' : ''} ${className}`}
       trigger={(p) => (
         <button
           {...p}
           type="button"
           title={t('meetings.changeStatus')}
           aria-label={`${t('meetings.changeStatus')}: ${t(`meetings.status.${status}`)}`}
-          className={`${pillBase} ${pill} ${compact ? 'py-1 sm:py-0.5' : ''} pr-1.5 transition-[filter,box-shadow] hover:brightness-[0.97] hover:ring-2 dark:hover:brightness-125`}
+          className={`${pillBase} ${pill} ${compact ? 'py-1 sm:py-0.5' : ''} ${fill ? 'w-full' : ''} pr-1.5 transition-[filter,box-shadow] hover:brightness-[0.97] hover:ring-2 dark:hover:brightness-125`}
         >
           <Icon />
-          <span className={compact ? 'hidden sm:inline' : ''}>{t(`meetings.status.${status}`)}</span>
-          <ChevronDown className="!h-3 !w-3 opacity-60" />
+          <span className={`${compact ? 'hidden sm:inline' : ''} ${fill ? 'min-w-0 flex-1 truncate text-left' : ''}`}>{t(`meetings.status.${status}`)}</span>
+          <ChevronDown className={`!h-3 !w-3 opacity-60 ${fill ? 'ml-auto' : ''}`} />
         </button>
       )}
       items={[

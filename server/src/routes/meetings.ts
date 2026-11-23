@@ -152,6 +152,36 @@ router.post('/:meetingId/topics', (req, res) => {
   res.status(201).json(toTopic(dbGet<Row>('SELECT * FROM meeting_topics WHERE id = ?', [id])!))
 })
 
+// PUT /api/meetings/:meetingId/topics/order — saves the agenda order in one step
+// Body: { ids: string[] } — open topics in display order; they get sortOrder 0..n-1.
+router.put('/:meetingId/topics/order', (req, res) => {
+  const { meetingId } = req.params
+  if (!dbGet(`SELECT id FROM meetings WHERE id = ? AND ${meetingAccessClause()}`, [meetingId, req.teamId])) {
+    return res.status(404).json({ error: 'Meeting not found.' })
+  }
+  const ids: unknown = req.body?.ids
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length) {
+    return res.status(400).json({ error: 'ids must be a list of distinct topic ids.' })
+  }
+  const known = new Set(dbAll<{ id: string }>('SELECT id FROM meeting_topics WHERE meetingId = ?', [meetingId]).map((r) => r.id))
+  if (ids.some((id) => !known.has(id as string))) {
+    return res.status(400).json({ error: 'Unknown topic in ids.' })
+  }
+  // Pure reordering is not a content change → updatedAt stays untouched
+  dbRun('BEGIN')
+  try {
+    ids.forEach((id, index) => {
+      dbRun('UPDATE meeting_topics SET sortOrder = ? WHERE id = ? AND meetingId = ? AND sortOrder IS NOT ?', [index, id as string, meetingId, index])
+    })
+    dbRun('COMMIT')
+  } catch (err) {
+    dbRun('ROLLBACK')
+    throw err
+  }
+  const rows = dbAll<Row>('SELECT * FROM meeting_topics WHERE meetingId = ? ORDER BY sortOrder ASC, createdAt DESC', [meetingId])
+  res.json(rows.map(toTopic))
+})
+
 // PATCH /api/meetings/:meetingId/topics/:topicId
 router.patch('/:meetingId/topics/:topicId', (req, res) => {
   const { meetingId, topicId } = req.params
