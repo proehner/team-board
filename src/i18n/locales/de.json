@@ -1007,9 +1007,9 @@
     "configure": "Konfigurieren",
     "devHistory": "Verlauf",
     "historyLoading": "Verlauf wird geladen…",
-    "historyNoData": "Noch keine Verlaufsdaten – erst nach der nächsten Aktualisierung sichtbar.",
+    "historyNoData": "Noch keine Verlaufsdaten – der erste Punkt entsteht zum nächsten Monatsende.",
     "historySnapshots": "Aktualisierungen",
-    "historyOnlyOne": "Noch eine weitere Aktualisierung genügt, um Verbesserungen zu sehen.",
+    "historyOnlyOne": "Bisher ein Monatswert – mit jedem Monatsende kommt ein Punkt dazu.",
     "historyNoPeriodData": "Keine Daten für diesen Zeitraum.",
     "combined": "Kombiniert",
     "combinedScore": "Kombi-Score",
@@ -1101,10 +1101,8 @@
     "activeWeeks": "Aktive Wochen",
     "ofWeeks": "von {{count}}",
     "activeWeeksHint": "Wochen mit mindestens einer gezählten Aktivität im Zeitraum",
-    "historyPoints_one": "{{count}} Datenpunkt",
-    "historyPoints_other": "{{count}} Datenpunkte",
-    "historyLoadValue": "Datenstand",
-    "historyMonthValue": "Monatswert (berechnet)",
+    "historyPoints_one": "{{count}} Monat",
+    "historyPoints_other": "{{count}} Monate",
     "badges": {
       "first_pr": {
         "name": "Erster Schritt",
@@ -1168,7 +1166,9 @@
     "limitPorts": "gleiche Änderung, weiterer Branch",
     "reviewReplies": "Antworten in Reviews",
     "catReviewReplies": "Review-Antworten",
-    "prReviewReplyScoring": "Antwort in Review-Diskussion"
+    "prReviewReplyScoring": "Antwort in Review-Diskussion",
+    "historyAsOf": "Stand {{date}}",
+    "historyCaption": "Jeweils Stand Monatsende, berechnet aus den Azure-DevOps-Daten der letzten 12 Monate."
   },
   "admin": {
     "pageTitle": "Administration",

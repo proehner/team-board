@@ -1007,9 +1007,9 @@
     "configure": "Configure",
     "devHistory": "History",
     "historyLoading": "Loading history…",
-    "historyNoData": "No history yet – will appear after the next refresh.",
+    "historyNoData": "No history yet – the first point appears at the next month end.",
     "historySnapshots": "refreshes",
-    "historyOnlyOne": "One more refresh needed to show progress over time.",
+    "historyOnlyOne": "One month-end value so far – each month end adds a point.",
     "historyNoPeriodData": "No data for this time period.",
     "combined": "Combined",
     "combinedScore": "Combined Score",
@@ -1101,10 +1101,8 @@
     "activeWeeks": "Active weeks",
     "ofWeeks": "of {{count}}",
     "activeWeeksHint": "Weeks with at least one counted activity in the period",
-    "historyPoints_one": "{{count}} data point",
-    "historyPoints_other": "{{count}} data points",
-    "historyLoadValue": "Data refresh",
-    "historyMonthValue": "Month-end value (computed)",
+    "historyPoints_one": "{{count}} month",
+    "historyPoints_other": "{{count}} months",
     "badges": {
       "first_pr": {
         "name": "First Step",
@@ -1168,7 +1166,9 @@
     "limitPorts": "same change, another branch",
     "reviewReplies": "Review replies",
     "catReviewReplies": "Review replies",
-    "prReviewReplyScoring": "Reply in a review discussion"
+    "prReviewReplyScoring": "Reply in a review discussion",
+    "historyAsOf": "As of {{date}}",
+    "historyCaption": "Values at each month end, computed from the Azure DevOps data of the last 12 months."
   },
   "admin": {
     "pageTitle": "Administration",

@@ -72,10 +72,10 @@ export interface CacheStatus {
 
 export interface ConfigStatus { configured: boolean; organization: string; project: string }
 
-export interface DevHistorySnapshot {
-  loadedAt: string
-  /** 'load' = real data refresh, 'month' = value computed for a month end */
-  kind?: 'load' | 'month'
+/** Ranking of one developer at a month end (computed from the events). */
+export interface DevHistoryMonth {
+  /** Last day of the month (yyyy-MM-dd) */
+  date: string
   periods: Partial<Record<number, { points: number; rank: number }>>
 }
 

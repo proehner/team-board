@@ -58,35 +58,30 @@ export interface CacheFile {
 }
 
 // ─── History ──────────────────────────────────────────────────────────────────
+//
+// The history is derived data: one point per month end, computed from the events
+// (see RankingService.rebuild). The file is an export of that result and is rewritten
+// whenever the data or the scoring model changes.
+
+export const HISTORY_VERSION = 2
 
 export interface HistoryDevPoint {
   displayName: string
   periods: Partial<Record<number, { points: number; rank: number }>>
 }
 
-export interface HistorySnapshot {
-  loadedAt: string
+export interface HistoryMonth {
+  /** Last day of the month (yyyy-MM-dd, Europe/Berlin) */
+  date: string
+  /** Exact end of the month the values were computed for (ISO) */
+  at: string
   devStats: Record<string, HistoryDevPoint>
 }
 
 export interface HistoryFile {
-  scoringVersion?: number
-  snapshots: HistorySnapshot[]
-}
-
-/**
- * Reads the history; if the file is damaged (e.g. truncated by an interrupted write)
- * the load timestamps are recovered — the values are recomputed from the events anyway.
- */
-export function loadHistoryTolerant(): HistoryFile {
-  if (!fs.existsSync(FILES.history)) return { snapshots: [] }
-  const raw = fs.readFileSync(FILES.history, 'utf8')
-  try {
-    const parsed = JSON.parse(raw) as HistoryFile
-    return { scoringVersion: parsed.scoringVersion, snapshots: parsed.snapshots || [] }
-  } catch {
-    const dates = [...raw.matchAll(/"loadedAt"\s*:\s*"([^"]+)"/g)].map((m) => m[1]).filter((d) => !Number.isNaN(Date.parse(d)))
-    console.warn(`Azure ranking history was damaged — recovered ${dates.length} snapshot dates, values will be recomputed.`)
-    return { snapshots: [...new Set(dates)].sort().map((loadedAt) => ({ loadedAt, devStats: {} })) }
-  }
+  version: number
+  scoringVersion: number
+  /** Data state the months were computed from (= last refresh) */
+  dataAsOf: string | null
+  months: HistoryMonth[]
 }

@@ -6,20 +6,52 @@ import {
   PERIODS, SCORING_VERSION, buildLevelsForPeriod, computePeriod, covers, getLevel, prepareEvents, type PreparedEvents,
 } from './scoring'
 import {
-  FILES, loadHistoryTolerant, loadStore, newStore, readJson, writeJsonAtomic,
-  type CacheFile, type HistoryFile, type HistorySnapshot,
+  FILES, HISTORY_VERSION, loadStore, newStore, readJson, writeJsonAtomic,
+  type CacheFile, type HistoryFile, type HistoryMonth,
 } from './store'
 import type { AzureConfig, EventStore, PeriodData, Progress } from './types'
 
 const DAY = 86_400_000
-const MAX_SNAPSHOTS = 200
-/** Never keep events older than this (bounds file size; older history keeps only covered periods) */
-const MAX_STORE_DAYS = 2 * 365 + 7
+/** Number of month-end points in the history */
+const HISTORY_MONTHS = 12
+/** Longest ranking period: the oldest month-end point needs this many days of events before it */
+const MAX_PERIOD_DAYS = Math.max(...PERIODS)
+
+// ─── Month ends (Europe/Berlin) ───────────────────────────────────────────────
+
+const berlinParts = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Europe/Berlin', hourCycle: 'h23',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+})
+
+/** Offset of Europe/Berlin to UTC at the given instant (ms, e.g. +1h / +2h). */
+function berlinOffset(t: number): number {
+  const p = Object.fromEntries(berlinParts.formatToParts(t).map((x) => [x.type, x.value]))
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(t / 1000) * 1000
+}
+
+/** First instant of the given month in Europe/Berlin (month may overflow, e.g. 12 → January next year). */
+function berlinMonthStart(year: number, month: number): number {
+  const utc = Date.UTC(year, month, 1)
+  return utc - berlinOffset(utc)
+}
+
+/** The last `count` month ends (Europe/Berlin) that lie before `at`, oldest first. */
+function monthEndsBefore(at: number, count: number): { date: string; at: number }[] {
+  const local = new Date(at + berlinOffset(at))
+  const result: { date: string; at: number }[] = []
+  for (let i = 0; result.length < count && i <= count; i++) {
+    const end = berlinMonthStart(local.getUTCFullYear(), local.getUTCMonth() - i) - 1
+    if (end >= at) continue
+    const d = new Date(end + berlinOffset(end))
+    result.push({ date: d.toISOString().slice(0, 10), at: end })
+  }
+  return result.reverse()
+}
 
 export interface HistoryPoint {
-  loadedAt: string
-  /** 'load' = an actual data refresh, 'month' = computed month-end value */
-  kind: 'load' | 'month'
+  /** Last day of the month (yyyy-MM-dd) */
+  date: string
   periods: Partial<Record<number, { points: number; rank: number }>>
 }
 
@@ -28,8 +60,7 @@ class RankingService {
   private store: EventStore | null = null
   private prep: PreparedEvents | null = null
   private cache: CacheFile = { data: null, lastLoaded: null }
-  private history: HistoryFile = { snapshots: [] }
-  /** devId → chronological history points (real loads + month ends) */
+  /** devId → month-end points, oldest first */
   private trend = new Map<string, HistoryPoint[]>()
 
   loading = false
@@ -39,10 +70,11 @@ class RankingService {
   init() {
     this.config = { organization: '', project: '', pat: '', ...readJson<Partial<AzureConfig>>(FILES.config) }
     this.cache = readJson<CacheFile>(FILES.cache) ?? { data: null, lastLoaded: null }
-    this.history = loadHistoryTolerant()
     this.store = loadStore()
     if (this.store) {
-      const stale = this.cache.scoringVersion !== SCORING_VERSION || this.history.scoringVersion !== SCORING_VERSION
+      const history = readJson<Partial<HistoryFile>>(FILES.history)
+      const stale = this.cache.scoringVersion !== SCORING_VERSION
+        || history?.version !== HISTORY_VERSION || history?.scoringVersion !== SCORING_VERSION
       this.rebuild(stale)
       console.log(`📦 Azure ranking: ${Object.keys(this.store.wi).length + Object.values(this.store.prs).reduce((s, p) => s + p.e.length, 0)} events since ${this.store.storeStart.slice(0, 10)}${stale ? ' (recomputed with scoring v' + SCORING_VERSION + ')' : ''}`)
     } else if (this.cache.data) {
@@ -71,11 +103,13 @@ class RankingService {
   /** Results were computed with an older logic or from incomplete (migrated) data → one refresh needed */
   get outdated()   { return this.hasData && (this.cache.scoringVersion !== SCORING_VERSION || !!this.store?.needsRefresh) }
 
-  /** Earliest event date needed: one year (+ buffer) and the 365-day window of the oldest snapshot. */
+  /**
+   * Earliest event date needed: the longest period (365 days) before the oldest month-end point,
+   * so every history point is computed from complete data. Results in roughly two years.
+   */
   private desiredStoreStart(now: number): number {
-    const oldestSnap = this.history.snapshots.reduce((m, s) => Math.min(m, Date.parse(s.loadedAt)), now)
-    const wanted = Math.min(now - 372 * DAY, oldestSnap - 367 * DAY)
-    const start = Math.max(wanted, now - MAX_STORE_DAYS * DAY)
+    const oldest = monthEndsBefore(now, HISTORY_MONTHS)[0]?.at ?? now
+    const start = Math.min(oldest, now) - (MAX_PERIOD_DAYS + 2) * DAY
     return Date.UTC(new Date(start).getUTCFullYear(), new Date(start).getUTCMonth(), new Date(start).getUTCDate())
   }
 
@@ -113,13 +147,7 @@ class RankingService {
       writeJsonAtomic(FILES.events, store)
       this.store = store
 
-      const loadedAt = new Date().toISOString()
-      this.cache.lastLoaded = loadedAt
-      // One snapshot per day: a later refresh on the same day replaces the earlier one
-      const last = this.history.snapshots[this.history.snapshots.length - 1]
-      if (last && last.loadedAt.slice(0, 10) === loadedAt.slice(0, 10)) this.history.snapshots.pop()
-      this.history.snapshots.push({ loadedAt, devStats: {} })
-      if (this.history.snapshots.length > MAX_SNAPSHOTS) this.history.snapshots = this.history.snapshots.slice(-MAX_SNAPSHOTS)
+      this.cache.lastLoaded = new Date().toISOString()
       this.rebuild(true)
 
       const secs = ((Date.now() - started) / 1000).toFixed(1)
@@ -161,29 +189,17 @@ class RankingService {
     for (const days of PERIODS) periods[days] = computePeriod(prep, at, days)
     this.cache = { data: { periods }, lastLoaded: this.cache.lastLoaded ?? new Date(at).toISOString(), scoringVersion: SCORING_VERSION }
 
-    // History: every snapshot recomputed with the current evaluation (retroactive correction).
-    // Several loads on the same day collapse into the last one.
-    const byDay = new Map<string, string>()
-    for (const s of [...this.history.snapshots].sort((a, b) => a.loadedAt.localeCompare(b.loadedAt))) byDay.set(s.loadedAt.slice(0, 10), s.loadedAt)
-    const snapshots: HistorySnapshot[] = [...byDay.values()].map((loadedAt) => this.snapshotAt(prep, Date.parse(loadedAt), loadedAt))
-    this.history = { scoringVersion: SCORING_VERSION, snapshots }
+    // History: one point per month end of the last HISTORY_MONTHS months before the data state,
+    // always computed from the events (periods without complete data are left out).
+    const months: HistoryMonth[] = monthEndsBefore(at, HISTORY_MONTHS)
+      .map((m) => this.monthAt(prep, m.date, m.at))
+    const history: HistoryFile = { version: HISTORY_VERSION, scoringVersion: SCORING_VERSION, dataAsOf: this.cache.lastLoaded, months }
 
-    // Trend: real loads + computed month ends of the last 12 months
-    const points: { at: number; kind: HistoryPoint['kind']; snap: HistorySnapshot }[] =
-      snapshots.map((s) => ({ at: Date.parse(s.loadedAt), kind: 'load' as const, snap: s }))
-    const now = new Date(at)
-    for (let i = 1; i <= 12; i++) {
-      const monthEnd = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i + 1, 1) - 1
-      if (monthEnd < prep.storeStart + 7 * DAY) continue
-      if (points.some((p) => Math.abs(p.at - monthEnd) < 5 * DAY)) continue
-      points.push({ at: monthEnd, kind: 'month', snap: this.snapshotAt(prep, monthEnd, new Date(monthEnd).toISOString()) })
-    }
-    points.sort((a, b) => a.at - b.at)
     const trend = new Map<string, HistoryPoint[]>()
-    for (const p of points) {
-      for (const [devId, d] of Object.entries(p.snap.devStats)) {
+    for (const m of months) {
+      for (const [devId, d] of Object.entries(m.devStats)) {
         const list = trend.get(devId) ?? []
-        list.push({ loadedAt: p.snap.loadedAt, kind: p.kind, periods: d.periods })
+        list.push({ date: m.date, periods: d.periods })
         trend.set(devId, list)
       }
     }
@@ -192,15 +208,15 @@ class RankingService {
     if (persist) {
       try {
         writeJsonAtomic(FILES.cache, this.cache)
-        writeJsonAtomic(FILES.history, this.history)
+        writeJsonAtomic(FILES.history, history)
       } catch (e) {
         console.warn('Azure ranking cache/history could not be saved:', (e as Error).message)
       }
     }
   }
 
-  private snapshotAt(prep: PreparedEvents, at: number, loadedAt: string): HistorySnapshot {
-    const devStats: HistorySnapshot['devStats'] = {}
+  private monthAt(prep: PreparedEvents, date: string, at: number): HistoryMonth {
+    const devStats: HistoryMonth['devStats'] = {}
     for (const days of PERIODS) {
       if (!covers(prep, at, days)) continue
       for (const d of computePeriod(prep, at, days).developers) {
@@ -208,7 +224,7 @@ class RankingService {
         devStats[d.id].periods[days] = { points: d.points, rank: d.rank }
       }
     }
-    return { loadedAt, devStats }
+    return { date, at: new Date(at).toISOString(), devStats }
   }
 
   stats(days: number): (PeriodData & { outdated?: boolean }) | null {
@@ -228,11 +244,7 @@ class RankingService {
   }
 
   devHistory(devId: string): HistoryPoint[] {
-    if (this.trend.size) return this.trend.get(devId) ?? this.trend.get(devId.toLowerCase()) ?? []
-    // Legacy history (before the first refresh with the new evaluation)
-    return this.history.snapshots
-      .filter((s) => s.devStats[devId])
-      .map((s) => ({ loadedAt: s.loadedAt, kind: 'load' as const, periods: s.devStats[devId].periods }))
+    return this.trend.get(devId) ?? this.trend.get(devId.toLowerCase()) ?? []
   }
 }
 

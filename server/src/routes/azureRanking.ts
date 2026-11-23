@@ -4,7 +4,7 @@ import { rankingService } from '../azureRanking/service'
 // Azure DevOps ranking — evaluation logic lives in ../azureRanking/
 //   collect.ts  – read-only data collection (work item revision stream, PRs, threads)
 //   scoring.ts  – scoring model, caps, levels, badges (pure, reproducible)
-//   service.ts  – incremental loading, cache, retroactive history
+//   service.ts  – incremental loading, cache, month-end history (computed from the events)
 
 const router = Router()
 const VALID_PERIODS = [7, 30, 90, 365]
@@ -54,7 +54,7 @@ router.post('/cache/refresh', (req, res) => {
 router.get('/dev-history', (req, res) => {
   const devId = String(req.query.devId || '')
   if (!devId) return res.status(400).json({ error: 'devId is required' })
-  res.json({ snapshots: rankingService.devHistory(devId) })
+  res.json({ months: rankingService.devHistory(devId) })
 })
 
 router.get('/stats', (req, res) => {

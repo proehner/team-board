@@ -45,8 +45,8 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 All data is read from Azure DevOps with **GET requests only** (nothing is ever written to Azure DevOps). Code: `server/src/azureRanking/`.
 
 - **Sources:** the work item *reporting revision stream* (creations, real state changes, discussion comments) plus pull requests and their threads (votes with timestamps, review comments).
-- **Event store:** everything is normalised into events in `server/data/azure-ranking.events.json`. The first load builds the store (~2 min for 1½ years); later refreshes are **incremental** (continuation token + only new/changed PRs) and take a few seconds. *Settings → "Daten vollständig neu aufbauen"* rebuilds it from scratch.
-- **History:** ranking snapshots (`azure-ranking.history.json`, one per day) and month-end values are computed from the events, so a change of the scoring model recomputes the whole history automatically (`SCORING_VERSION` in `scoring.ts`). All files are written atomically.
+- **Event store:** everything is normalised into events in `server/data/azure-ranking.events.json`, covering about two years (the 365-day period before the oldest history point). The first load builds the store (~2½ min); later refreshes are **incremental** (continuation token + only new/changed PRs) and take a few seconds. *Settings → "Daten vollständig neu aufbauen"* rebuilds it from scratch.
+- **History:** one point per **month end** (Europe/Berlin) for the last 12 months, each computed from the events for all periods (7/30/90/365 days). `azure-ranking.history.json` is an export of these values; a change of the scoring model recomputes the whole history automatically (`SCORING_VERSION` in `scoring.ts`). All files are written atomically.
 
 | Activity | Points | Rule |
 | --- | --- | --- |

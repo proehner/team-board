@@ -6,7 +6,7 @@ import Avatar from '@/components/ui/Avatar'
 import Tabs from '@/components/ui/Tabs'
 import SectionHeader from '@/components/ui/SectionHeader'
 import Skeleton from '@/components/ui/Skeleton'
-import type { DevHistorySnapshot, DevStats, PeriodValue } from './shared'
+import type { DevHistoryMonth, DevStats, PeriodValue } from './shared'
 import {
   BREAKDOWN_DEFS, METRIC_GROUPS, PERIODS, apiFetch, avatarColor, avatarName, badgeIcon, badgeText, fmt, getNextLevelName,
   levelStyle, locale, metricPoints, progressPercent, weeksInPeriod,
@@ -30,9 +30,10 @@ function useElementWidth<T extends HTMLElement>() {
   return [ref, width] as const
 }
 
-interface ChartEntry { date: Date; points: number; rank: number; kind: 'load' | 'month' }
+interface ChartEntry { date: Date; points: number; rank: number }
 
-function HistoryLineChart({ snapshots, initialPeriod }: { snapshots: DevHistorySnapshot[]; initialPeriod: PeriodValue }) {
+/** Month-end values of the last months (one point per month). */
+function HistoryLineChart({ months, initialPeriod }: { months: DevHistoryMonth[]; initialPeriod: PeriodValue }) {
   const { t } = useTranslation()
   const gradId = useId().replace(/:/g, '')
   const [activePeriod, setActivePeriod] = useState<PeriodValue>(initialPeriod)
@@ -40,16 +41,13 @@ function HistoryLineChart({ snapshots, initialPeriod }: { snapshots: DevHistoryS
   const [boxRef, boxWidth] = useElementWidth<HTMLDivElement>()
   const period = Number(activePeriod)
 
-  const entries: ChartEntry[] = snapshots
-    .filter((s) => s.periods[period] !== undefined)
-    .map((s) => ({
-      date:   new Date(s.loadedAt),
-      points: s.periods[period]!.points,
-      rank:   s.periods[period]!.rank,
-      kind:   s.kind === 'month' ? 'month' : 'load',
+  const entries: ChartEntry[] = months
+    .filter((m) => m.periods[period] !== undefined)
+    .map((m) => ({
+      date:   new Date(`${m.date}T12:00:00`), // local noon: the calendar day never shifts with the time zone
+      points: m.periods[period]!.points,
+      rank:   m.periods[period]!.rank,
     }))
-  const hasMonth = entries.some((e) => e.kind === 'month')
-  const hasLoad  = entries.some((e) => e.kind === 'load')
 
   const W = Math.max(280, boxWidth || 460), H = 184
   const pad = { top: 26, right: 14, bottom: 26, left: 40 }
@@ -73,25 +71,16 @@ function HistoryLineChart({ snapshots, initialPeriod }: { snapshots: DevHistoryS
     i > 0 && i < entries.length - 1 && entries[i].points < entries[i - 1].points && entries[i].points < entries[i + 1].points
       && yPos(entries[i].points) + 18 < cH
 
-  // Date labels: as many as fit (~54px each), always the last one, never overlapping it.
-  const spanDays   = entries.length > 1 ? (entries[entries.length - 1].date.getTime() - entries[0].date.getTime()) / 864e5 : 0
-  const dateOpts: Intl.DateTimeFormatOptions = spanDays > 300
-    ? { day: '2-digit', month: '2-digit', year: '2-digit' }
-    : { day: '2-digit', month: '2-digit' }
-  // Month values are month ends in UTC (23:59:59Z) → format in UTC, otherwise they'd show as the 1st of the next month.
-  const tz         = (e: ChartEntry) => (e.kind === 'month' ? { timeZone: 'UTC' } : {})
-  const fmtDate    = (e: ChartEntry) => e.date.toLocaleDateString(locale(), { ...dateOpts, ...tz(e) })
-  const fmtLong    = (e: ChartEntry) => e.kind === 'month'
-    ? e.date.toLocaleDateString(locale(), { month: 'long', year: 'numeric', timeZone: 'UTC' })
-    : e.date.toLocaleDateString(locale())
-  const labelStep  = Math.max(1, Math.ceil(entries.length / Math.max(2, Math.floor(cW / 54))))
+  // Month labels ("Okt. 26"): as many as fit (~48px each), always the last one, never overlapping it.
+  const fmtDate    = (e: ChartEntry) => e.date.toLocaleDateString(locale(), { month: 'short', year: '2-digit' })
+  const fmtLong    = (e: ChartEntry) => e.date.toLocaleDateString(locale(), { day: '2-digit', month: 'long', year: 'numeric' })
+  const labelStep  = Math.max(1, Math.ceil(entries.length / Math.max(2, Math.floor(cW / 48))))
   const showDate   = (i: number) => {
     const last = entries.length - 1
     if (i === last) return true
     return i % labelStep === 0 && last - i >= labelStep * 0.75
   }
 
-  const kindLabel = (k: ChartEntry['kind']) => (k === 'month' ? t('azureRanking.historyMonthValue') : t('azureRanking.historyLoadValue'))
   const hovered = hover !== null ? entries[hover] : null
 
   return (
@@ -159,13 +148,8 @@ function HistoryLineChart({ snapshots, initialPeriod }: { snapshots: DevHistoryS
                   const r = (active ? 1.5 : 0) + (entries.length > 24 ? 3 : 4)
                   return (
                     <g key={i}>
-                      {e.kind === 'load' ? (
-                        <circle cx={xPos(i)} cy={yPos(e.points)} r={r}
-                          className="fill-indigo-500 stroke-white dark:fill-indigo-400 dark:stroke-slate-900" strokeWidth={1.5} />
-                      ) : (
-                        <circle cx={xPos(i)} cy={yPos(e.points)} r={r - 0.5}
-                          className="fill-white stroke-indigo-500 dark:fill-slate-900 dark:stroke-indigo-400" strokeWidth={1.75} />
-                      )}
+                      <circle cx={xPos(i)} cy={yPos(e.points)} r={r}
+                        className="fill-indigo-500 stroke-white dark:fill-indigo-400 dark:stroke-slate-900" strokeWidth={1.5} />
                       {showValue(i) && !active && (
                         <text x={xPos(i)} y={labelBelow(i) ? yPos(e.points) + 18 : yPos(e.points) - 9} textAnchor="middle"
                           className="fill-slate-600 dark:fill-slate-300" fontSize={11} fontWeight={600}>
@@ -189,7 +173,7 @@ function HistoryLineChart({ snapshots, initialPeriod }: { snapshots: DevHistoryS
                   return (
                     <rect key={`h${i}`} x={x0} y={-pad.top} width={Math.max(0, x1 - x0)} height={H} fill="transparent"
                       onMouseEnter={() => setHover(i)} onClick={() => setHover(i)}>
-                      <title>{`${fmtLong(e)} · ${kindLabel(e.kind)}: ${fmt(e.points)} ${t('azureRanking.ptsLabel')} · #${e.rank}`}</title>
+                      <title>{`${t('azureRanking.historyAsOf', { date: fmtLong(e) })}: ${fmt(e.points)} ${t('azureRanking.ptsLabel')} · #${e.rank}`}</title>
                     </rect>
                   )
                 })}
@@ -209,26 +193,12 @@ function HistoryLineChart({ snapshots, initialPeriod }: { snapshots: DevHistoryS
                   {fmt(hovered.points)} {t('azureRanking.ptsLabel')} <span className="font-normal text-slate-400">· #{hovered.rank}</span>
                 </p>
                 <p className="whitespace-nowrap text-2xs text-slate-500 dark:text-slate-400">
-                  {fmtLong(hovered)} · {kindLabel(hovered.kind)}
+                  {t('azureRanking.historyAsOf', { date: fmtLong(hovered) })}
                 </p>
               </div>
             )}
 
-            {/* Legend */}
-            {hasMonth && (
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-slate-500 dark:text-slate-400">
-                {hasLoad && (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 dark:bg-indigo-400" aria-hidden />
-                    {t('azureRanking.historyLoadValue')}
-                  </span>
-                )}
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full border-[1.75px] border-indigo-500 bg-white dark:border-indigo-400 dark:bg-slate-900" aria-hidden />
-                  {t('azureRanking.historyMonthValue')}
-                </span>
-              </div>
-            )}
+            <p className="mt-2 text-2xs text-slate-500 dark:text-slate-400">{t('azureRanking.historyCaption')}</p>
           </>
         )}
       </div>
@@ -261,13 +231,13 @@ function DevDetailBody({ dev, scoring, days }: { dev: DevStats; scoring: Record<
   const nextLevel = getNextLevelName(dev.level.name)
   const chartPeriod = (PERIODS as readonly string[]).includes(String(days)) ? (String(days) as PeriodValue) : '30'
 
-  const [history, setHistory]         = useState<DevHistorySnapshot[] | null>(null)
+  const [history, setHistory]         = useState<DevHistoryMonth[] | null>(null)
   const [histLoading, setHistLoading] = useState(true)
 
   useEffect(() => {
     setHistLoading(true)
-    apiFetch<{ snapshots: DevHistorySnapshot[] }>(`/api/azure-ranking/dev-history?devId=${encodeURIComponent(dev.id)}`)
-      .then((data) => setHistory(data.snapshots))
+    apiFetch<{ months: DevHistoryMonth[] }>(`/api/azure-ranking/dev-history?devId=${encodeURIComponent(dev.id)}`)
+      .then((data) => setHistory(data.months))
       .catch(() => setHistory(null))
       .finally(() => setHistLoading(false))
   }, [dev.id])
@@ -423,7 +393,7 @@ function DevDetailBody({ dev, scoring, days }: { dev: DevStats; scoring: Record<
           <Skeleton className="h-48 w-full rounded-xl" />
         ) : history && history.length > 0 ? (
           <div className="rounded-xl border border-slate-200/80 p-4 dark:border-slate-800">
-            <HistoryLineChart snapshots={history} initialPeriod={chartPeriod} />
+            <HistoryLineChart months={history} initialPeriod={chartPeriod} />
           </div>
         ) : (
           <p className="flex items-center gap-2 rounded-xl border border-dashed border-slate-200 px-4 py-5 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
