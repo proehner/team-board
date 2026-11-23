@@ -15,7 +15,9 @@ export type EventKind =
   | 'prCompleted'  // PR merged / completed            (u = author,   ref = PR id)
   | 'prReviewed'   // first review activity on a PR    (u = reviewer, ref = PR id)
   | 'prApproved'   // first approval (vote 10 or 5)    (u = reviewer, ref = PR id)
-  | 'prComment'    // review comment on someone else's PR (u = reviewer, ref = PR id)
+  | 'prComment'    // review comment on someone else's PR (u = reviewer, ref = PR id, x = 's'|'r' + text length:
+                   //   s = starts a new thread (finding), r = reply in a thread — e.g. "s302")
+  | 'prPorted'     // derived, never stored: completed backport of an earlier PR (u = author, ref = PR id)
   | 'wiCompleted'  // work item moved into a "Completed" state (u = assignee at that time, ref = WI id, x = type)
   | 'wiCreated'    // work item created                (u = creator,  ref = WI id, x = type)
   | 'wiComment'    // discussion comment on a work item (u = author,  ref = WI id)
@@ -48,6 +50,10 @@ export interface PrRecord {
   /** threads fetched at (ms) — 0 = never */
   f: number
   repo: string
+  /** short hash of the normalised PR title (backport detection) */
+  t?: string
+  /** target branch without refs/heads/ */
+  b?: string
   e: StoredEvent[]
 }
 
@@ -59,6 +65,8 @@ export interface EventStore {
   revisionsToken: string | null
   lastRunAt: string | null
   identities: Record<string, IdentityInfo>
+  /** Set when the store was migrated from an older format: data is complete only after the next refresh */
+  needsRefresh?: boolean
   /** Work item events keyed by a stable event id (dedupe) */
   wi: Record<string, StoredEvent>
   /** Pull requests keyed by PR id */
@@ -78,9 +86,14 @@ export interface DevStats {
   prsCompleted:    number
   prsReviewed:     number
   approvalsGiven:  number
-  /** Review comments counted for points (max. N per PR) */
+  /** Backports: completed PRs that repeat an earlier PR of the same author in another branch */
+  prsPorted:       number
+  /** New review threads (findings) counted for points (min. length, max. N per PR) */
   commentsGiven:   number
   commentsGivenRaw: number
+  /** Replies in review discussions counted for points (min. length, max. N per PR) */
+  commentReplies:    number
+  commentRepliesRaw: number
   // Work items
   workItemsCompleted:    number
   backlogItemsCompleted: number
@@ -96,6 +109,7 @@ export interface DevStats {
   // Result
   points:          number
   pointsByMetric:  Record<string, number>
+  /** Weeks with counted activity (the period is split into round(days / 7) weeks) */
   activeWeeks:     number
   pointsPerWeek:   number
   badges: Badge[]
@@ -108,9 +122,11 @@ export interface PeriodData {
   totals: {
     prs:            number
     prsCompleted:   number
+    ports:          number
     reviews:        number
     approvals:      number
     workItems:      number
+    /** all review comments incl. replies and uncounted ones */
     comments:       number
     ticketsCreated: number
     tasksCreated:   number

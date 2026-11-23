@@ -979,7 +979,7 @@
     "daysLabel": "Tage",
     "prCreatedScoring": "PR erstellt",
     "prMergedScoring": "PR gemergt",
-    "prReviewCommentScoring": "Review-Kommentar (PR)",
+    "prReviewCommentScoring": "Review-Anmerkung (neuer Thread)",
     "prApprovedScoring": "PR genehmigt",
     "ticketClosedScoring": "Ticket abgeschlossen",
     "ticketCreatedScoring": "Ticket erstellt",
@@ -1033,12 +1033,12 @@
     "nextLevelAt": "Nächstes Level: {{level}} ab {{points}} Pkt.",
     "overallRank": "Platz {{rank}} in der Gesamtwertung",
     "prsReviewed": "PRs reviewt",
-    "reviewComments": "Review-Kommentare",
+    "reviewComments": "Review-Anmerkungen",
     "backlogItemsDone": "PBIs/Bugs abgeschlossen",
     "tasksDone": "Tasks abgeschlossen",
     "tasksCreatedFull": "Tasks/Testfälle erstellt",
     "ticketDiscussions": "Ticket-Diskussionen",
-    "catReviewComments": "Review-Kommentare",
+    "catReviewComments": "Review-Anmerkungen",
     "catBacklogDone": "PBIs/Bugs",
     "catTasksDone": "Tasks erledigt",
     "catDiscussions": "Diskussionen",
@@ -1078,10 +1078,12 @@
       "once": "Abgeschlossene Work Items zählen genau einmal – beim tatsächlichen Wechsel nach Done/Closed, für die zu diesem Zeitpunkt zugewiesene Person. Spätere Änderungen (Board, Tags, Area-Pfad …) zählen nicht erneut.",
       "weights": "PBIs/Bugs zählen mehr als Tasks; Features, Epics und Testartefakte zählen nicht als abgeschlossene Arbeit.",
       "reviews": "Ein PR gilt als reviewt, sobald man abstimmt oder kommentiert; „Approved with suggestions“ zählt als Approval; eigene PRs zählen nicht.",
-      "caps": "Obergrenzen gegen reine Masse: max. {{prComments}} Review-Kommentare je PR, max. {{tickets}} erstellte Tickets bzw. {{tasks}} Tasks pro Tag, Ticket-Kommentare 1× je Ticket und Tag.",
+      "caps": "Obergrenzen gegen reine Masse: max. {{prComments}} Anmerkungen und {{replies}} Antworten je PR, max. {{tickets}} erstellte Tickets bzw. {{tasks}} Tasks pro Tag, Ticket-Kommentare 1× je Ticket und Tag.",
       "identities": "Bots, Service-Konten und Team-Gruppen werden ignoriert; Konten mit identischem Namen werden zusammengeführt.",
       "perWeek": "„Pro aktiver Woche“ gleicht Urlaub, Teilzeit und späteren Einstieg aus.",
-      "recalc": "Bei Änderungen der Logik wird die gesamte History automatisch neu berechnet."
+      "recalc": "Bei Änderungen der Logik wird die gesamte History automatisch neu berechnet.",
+      "reviewDepth": "Review-Tiefe zählt: Jede neue Anmerkung (eigener Thread) bringt Punkte, Antworten in der Diskussion etwas weniger. Reine Bestätigungen („ok“, „done“, „LGTM“, „Danke“) und Kommentare unter {{minLength}} Zeichen zählen nicht.",
+      "ports": "Backports zählen nicht als neuer PR: Ein PR mit gleichem Titel ins gleiche Repository, aber in einen anderen Ziel-Branch, innerhalb von {{portDays}} Tagen bringt nur die Backport-Punkte."
     },
     "levelThresholdsFor": "für {{days}} Tage",
     "outdatedHint": "Neue Auswertungslogik – bitte einmal aktualisieren, um die korrigierten Werte zu sehen.",
@@ -1160,7 +1162,13 @@
         "name": "Allrounder",
         "desc": "Code, Reviews und erledigte Arbeit"
       }
-    }
+    },
+    "prsPorted": "Backports",
+    "prPortedScoring": "Backport gemergt",
+    "limitPorts": "gleiche Änderung, weiterer Branch",
+    "reviewReplies": "Antworten in Reviews",
+    "catReviewReplies": "Review-Antworten",
+    "prReviewReplyScoring": "Antwort in Review-Diskussion"
   },
   "admin": {
     "pageTitle": "Administration",

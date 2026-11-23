@@ -12,16 +12,22 @@ import { buildAliasMap } from './identities'
 //  • Backlog items (PBI/Bug) weigh more than tasks, so teams that slice work into
 //    many small tasks don't get an advantage. Features/Epics/test artefacts are
 //    organisational containers and don't count as completed work.
-//  • Reviewing a PR (vote or comment) is valued close to authoring one.
-//    Review comments are capped per PR, created tickets per day, ticket comments
-//    count once per ticket and day.
+//  • Reviewing a PR (vote or comment) is valued close to authoring one. Review depth
+//    counts: every new review thread (a finding) earns points, replies in the
+//    discussion a little. Acknowledgements ("ok", "done", "LGTM") and very short comments
+//    don't count; findings
+//    and replies are capped per PR so that volume alone can't dominate.
+//  • Backports — the same change merged into further branches (same author, repo and
+//    title, other target branch, within PORT_WINDOW_DAYS) — count as a small extra,
+//    not as a new PR.
+//  • Created tickets are capped per day, ticket comments count once per ticket and day.
 //  • Bots, service accounts and team groups are excluded; accounts with the same
 //    display name are merged.
 //
 // Bump SCORING_VERSION whenever the model changes — cache and history are then
 // recomputed from the stored events automatically.
 
-export const SCORING_VERSION = 3
+export const SCORING_VERSION = 4
 
 // Weights calibrated on one year of real data so that the four areas contribute
 // roughly: writing code ~1/3, reviewing ~1/3, delivering work items ~1/5, tickets &
@@ -29,9 +35,11 @@ export const SCORING_VERSION = 3
 export const SCORING = {
   prCreated:            5,
   prCompleted:         20,
+  prPorted:             5,
   prReviewed:           6,
   prApproved:           2,
-  prComment:            2,
+  prComment:            3,
+  prReply:              1,
   backlogItemCompleted: 15,
   taskCompleted:        5,
   ticketCreated:        5,
@@ -40,8 +48,14 @@ export const SCORING = {
 } as const
 
 export const LIMITS = {
-  /** Review comments per reviewer and PR that count */
-  prCommentsPerPr: 10,
+  /** New review threads (findings) per reviewer and PR that count */
+  prCommentsPerPr: 25,
+  /** Replies in review discussions per reviewer and PR that count */
+  prRepliesPerPr:  10,
+  /** Review comments need at least this many characters of own text (acknowledgements never count) */
+  minCommentLength: 10,
+  /** A PR with the same title as an earlier PR (other target branch) within this many days is a backport */
+  portWindowDays: 60,
   /** Created tickets (PBI/Bug/Feature/…) per person and day that count */
   ticketsPerDay:  10,
   /** Created tasks / test cases per person and day that count */
@@ -52,9 +66,11 @@ export const LIMITS = {
 export const METRIC_SCORING: Record<string, keyof typeof SCORING> = {
   prsCreated:            'prCreated',
   prsCompleted:          'prCompleted',
+  prsPorted:             'prPorted',
   prsReviewed:           'prReviewed',
   approvalsGiven:        'prApproved',
   commentsGiven:         'prComment',
+  commentReplies:        'prReply',
   backlogItemsCompleted: 'backlogItemCompleted',
   tasksCompleted:        'taskCompleted',
   ticketsCreated:        'ticketCreated',
@@ -76,10 +92,10 @@ export const COUNTED_COMPLETION_TYPES = new Set([...BACKLOG_TYPES, ...TASK_TYPES
 // windows over one year of real data (active developers): Diamond ≈ top 5 %,
 // Platinum ≈ top 20 %, Gold ≈ upper half, Silver ≈ regular contributor.
 const PERIOD_THRESHOLDS: Record<number, readonly [number, number, number, number, number]> = {
-  7:   [500,   300,   150,  60,   0],
-  30:  [1700,  1050,  600,  250,  0],
-  90:  [4800,  3000,  1700, 700,  0],
-  365: [18000, 11000, 6000, 2500, 0],
+  7:   [470,   280,   150,  60,   0],
+  30:  [1600,  1000,  600,  250,  0],
+  90:  [4600,  2800,  1700, 700,  0],
+  365: [18500, 10500, 6000, 2500, 0],
 }
 
 const LEVEL_DEFS = [
@@ -109,7 +125,7 @@ export function buildLevelsForPeriod(days: number): PeriodData['levels'] {
 }
 
 type Counts = Pick<DevStats,
-  'prsCreated' | 'prsCompleted' | 'prsReviewed' | 'approvalsGiven' | 'commentsGiven' |
+  'prsCreated' | 'prsCompleted' | 'prsPorted' | 'prsReviewed' | 'approvalsGiven' | 'commentsGiven' | 'commentReplies' |
   'workItemsCompleted' | 'backlogItemsCompleted' | 'tasksCompleted' | 'ticketsCreated' | 'tasksCreated' | 'ticketComments'>
 
 interface BadgeDef extends Badge { cond: (s: Counts) => boolean }
@@ -141,7 +157,35 @@ export interface PreparedEvents {
 
 const toEv = ([k, u, t, ref, x]: StoredEvent): Ev => ({ k, u, t, ref, x })
 
-/** Flattens the store, drops bots, merges aliases and sorts chronologically. */
+/**
+ * PR ids that are backports: the same author already opened a (not abandoned) PR with the same
+ * normalised title in the same repository for another target branch within the port window.
+ */
+export function findPorts(store: EventStore, alias: Map<string, string> = new Map()): Set<string> {
+  const groups = new Map<string, { id: string; t: number; b: string }[]>()
+  for (const [id, pr] of Object.entries(store.prs)) {
+    if (!pr.t || !pr.b || pr.s === 'abandoned') continue
+    const created = pr.e.find((e) => e[0] === 'prCreated')
+    if (!created) continue
+    const author = alias.get(created[1]) ?? created[1]
+    const key = `${author}|${pr.repo}|${pr.t}`
+    const list = groups.get(key) ?? []
+    list.push({ id, t: created[2], b: pr.b })
+    groups.set(key, list)
+  }
+  const window = LIMITS.portWindowDays * DAY
+  const ports = new Set<string>()
+  for (const list of groups.values()) {
+    if (list.length < 2) continue
+    list.sort((a, b) => a.t - b.t)
+    list.forEach((p, i) => {
+      if (list.slice(0, i).some((o) => o.b !== p.b && p.t - o.t <= window)) ports.add(p.id)
+    })
+  }
+  return ports
+}
+
+/** Flattens the store, drops bots, merges aliases, marks backports and sorts chronologically. */
 export function prepareEvents(store: EventStore): PreparedEvents {
   const raw: Ev[] = []
   for (const e of Object.values(store.wi)) raw.push(toEv(e))
@@ -150,6 +194,15 @@ export function prepareEvents(store: EventStore): PreparedEvents {
   const activity = new Map<string, number>()
   for (const e of raw) activity.set(e.u, (activity.get(e.u) || 0) + 1)
   const alias = buildAliasMap(store.identities, activity)
+
+  // Backports: no "PR created" points, completion counts as "backport" instead of "PR merged"
+  const ports = findPorts(store, alias)
+  for (let i = raw.length - 1; i >= 0; i--) {
+    const e = raw[i]
+    if (!ports.has(e.ref) || (e.k !== 'prCreated' && e.k !== 'prCompleted')) continue
+    if (e.k === 'prCreated') raw.splice(i, 1)
+    else raw[i] = { ...e, k: 'prPorted' }
+  }
 
   const events: Ev[] = []
   for (const e of raw) {
@@ -170,12 +223,14 @@ const dayOf = (t: number) => Math.floor((t + 3_600_000) / DAY)
 
 interface Acc extends Counts {
   commentsGivenRaw: number
+  commentRepliesRaw: number
   ticketsCreatedRaw: number
   tasksCreatedRaw: number
   ticketCommentsRaw: number
   repos: Set<string>
   weeks: Set<number>
   prComments: Map<string, number>
+  prReplies: Map<string, number>
   ticketDays: Map<number, number>
   taskDays: Map<number, number>
   commentKeys: Set<string>
@@ -184,16 +239,21 @@ interface Acc extends Counts {
 }
 
 const newAcc = (): Acc => ({
-  prsCreated: 0, prsCompleted: 0, prsReviewed: 0, approvalsGiven: 0, commentsGiven: 0, commentsGivenRaw: 0,
+  prsCreated: 0, prsCompleted: 0, prsPorted: 0, prsReviewed: 0, approvalsGiven: 0,
+  commentsGiven: 0, commentsGivenRaw: 0, commentReplies: 0, commentRepliesRaw: 0,
   workItemsCompleted: 0, backlogItemsCompleted: 0, tasksCompleted: 0,
   ticketsCreated: 0, ticketsCreatedRaw: 0, tasksCreated: 0, tasksCreatedRaw: 0, ticketComments: 0, ticketCommentsRaw: 0,
-  repos: new Set(), weeks: new Set(), prComments: new Map(), ticketDays: new Map(), taskDays: new Map(),
+  repos: new Set(), weeks: new Set(), prComments: new Map(), prReplies: new Map(), ticketDays: new Map(), taskDays: new Map(),
   commentKeys: new Set(), reviewed: new Set(), approved: new Set(),
 })
 
 /** Computes the ranking for the window (at - days, at]. Events must be prepared (no bots, aliases merged). */
 export function computePeriod(prep: PreparedEvents, at: number, days: number): PeriodData {
   const fromTs = at - days * DAY
+  // The window is split into round(days / 7) weeks; the remaining days belong to the oldest week,
+  // so a 30-day window has 4 weeks (not 4 + a 2-day "week").
+  const weekCount = Math.max(1, Math.round(days / 7))
+  const weekOf = (t: number) => Math.min(Math.floor((at - t) / WEEK), weekCount - 1)
   const accs = new Map<string, Acc>()
   const acc = (u: string) => { let a = accs.get(u); if (!a) { a = newAcc(); accs.set(u, a) } return a }
 
@@ -205,6 +265,7 @@ export function computePeriod(prep: PreparedEvents, at: number, days: number): P
     switch (e.k) {
       case 'prCreated':   a.prsCreated++;   if (e.x) a.repos.add(e.x); break
       case 'prCompleted': a.prsCompleted++; if (e.x) a.repos.add(e.x); break
+      case 'prPorted':    a.prsPorted++;    if (e.x) a.repos.add(e.x); break
       case 'prReviewed':
         if (a.reviewed.has(e.ref)) { counted = false; break }
         a.reviewed.add(e.ref); a.prsReviewed++; break
@@ -212,10 +273,18 @@ export function computePeriod(prep: PreparedEvents, at: number, days: number): P
         if (a.approved.has(e.ref)) { counted = false; break }
         a.approved.add(e.ref); a.approvalsGiven++; break
       case 'prComment': {
-        a.commentsGivenRaw++
-        const n = (a.prComments.get(e.ref) || 0) + 1
-        a.prComments.set(e.ref, n)
-        if (n <= LIMITS.prCommentsPerPr) a.commentsGiven++
+        // x = 's'|'r' + text length (events without details count as a finding)
+        const reply  = e.x?.[0] === 'r'
+        const length = e.x ? Number(e.x.slice(1)) : Infinity
+        if (reply) a.commentRepliesRaw++
+        else       a.commentsGivenRaw++
+        if (!(length >= LIMITS.minCommentLength)) { counted = false; break }
+        const per = reply ? a.prReplies : a.prComments
+        const n = (per.get(e.ref) || 0) + 1
+        per.set(e.ref, n)
+        if (n > (reply ? LIMITS.prRepliesPerPr : LIMITS.prCommentsPerPr)) { counted = false; break }
+        if (reply) a.commentReplies++
+        else       a.commentsGiven++
         break
       }
       case 'wiCompleted':
@@ -245,7 +314,7 @@ export function computePeriod(prep: PreparedEvents, at: number, days: number): P
         break
       }
     }
-    if (counted) a.weeks.add(Math.floor((at - e.t) / WEEK))
+    if (counted) a.weeks.add(weekOf(e.t))
   }
 
   const developers: DevStats[] = []
@@ -260,11 +329,11 @@ export function computePeriod(prep: PreparedEvents, at: number, days: number): P
     if (points <= 0) continue
     const info = prep.identities[u]
     const counts: Counts = {
-      prsCreated: a.prsCreated, prsCompleted: a.prsCompleted, prsReviewed: a.prsReviewed, approvalsGiven: a.approvalsGiven,
-      commentsGiven: a.commentsGiven, workItemsCompleted: a.workItemsCompleted, backlogItemsCompleted: a.backlogItemsCompleted,
+      prsCreated: a.prsCreated, prsCompleted: a.prsCompleted, prsPorted: a.prsPorted, prsReviewed: a.prsReviewed,
+      approvalsGiven: a.approvalsGiven, commentsGiven: a.commentsGiven, commentReplies: a.commentReplies, workItemsCompleted: a.workItemsCompleted, backlogItemsCompleted: a.backlogItemsCompleted,
       tasksCompleted: a.tasksCompleted, ticketsCreated: a.ticketsCreated, tasksCreated: a.tasksCreated, ticketComments: a.ticketComments,
     }
-    const activeWeeks = Math.max(1, Math.min(a.weeks.size, Math.ceil(days / 7)))
+    const activeWeeks = Math.max(1, a.weeks.size)
     developers.push({
       id: u,
       displayName: info?.n || u,
@@ -272,6 +341,7 @@ export function computePeriod(prep: PreparedEvents, at: number, days: number): P
       repositories: [...a.repos].sort(),
       ...counts,
       commentsGivenRaw:  a.commentsGivenRaw,
+      commentRepliesRaw: a.commentRepliesRaw,
       ticketsCreatedRaw: a.ticketsCreatedRaw,
       tasksCreatedRaw:   a.tasksCreatedRaw,
       ticketCommentsRaw: a.ticketCommentsRaw,
@@ -293,10 +363,11 @@ export function computePeriod(prep: PreparedEvents, at: number, days: number): P
     totals: {
       prs:            sum((d) => d.prsCreated),
       prsCompleted:   sum((d) => d.prsCompleted),
+      ports:          sum((d) => d.prsPorted),
       reviews:        sum((d) => d.prsReviewed),
       approvals:      sum((d) => d.approvalsGiven),
       workItems:      sum((d) => d.workItemsCompleted),
-      comments:       sum((d) => d.commentsGivenRaw),
+      comments:       sum((d) => d.commentsGivenRaw + d.commentRepliesRaw),
       ticketsCreated: sum((d) => d.ticketsCreatedRaw),
       tasksCreated:   sum((d) => d.tasksCreatedRaw),
       ticketComments: sum((d) => d.ticketCommentsRaw),

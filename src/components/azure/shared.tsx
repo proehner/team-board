@@ -1,6 +1,6 @@
 import i18n from '@/i18n'
 import {
-  GitPullRequest, GitMerge, MessageSquareCode, ScanEye, ThumbsUp, CircleCheckBig, ListChecks, FilePlus, ListPlus, MessagesSquare,
+  GitPullRequest, GitMerge, GitFork, MessageSquareCode, Reply, ScanEye, ThumbsUp, CircleCheckBig, ListChecks, FilePlus, ListPlus, MessagesSquare,
   Medal, Award, Gem, Crown, Target, Zap, PartyPopper, ScanSearch, Eye, CheckCheck, Hammer, Dumbbell,
   FileText, Ticket, Lightbulb, Megaphone, Sparkles, Trophy, type LucideIcon,
 } from 'lucide-react'
@@ -14,11 +14,11 @@ export interface LevelDef { name: string; icon: string; color: string; min: numb
 
 /** Scored activities (field names of DevStats). */
 export type MetricField =
-  | 'prsCreated' | 'prsCompleted' | 'prsReviewed' | 'approvalsGiven' | 'commentsGiven'
+  | 'prsCreated' | 'prsCompleted' | 'prsPorted' | 'prsReviewed' | 'approvalsGiven' | 'commentsGiven' | 'commentReplies'
   | 'backlogItemsCompleted' | 'tasksCompleted' | 'ticketsCreated' | 'tasksCreated' | 'ticketComments'
 
 /** Uncapped counterparts of capped metrics. */
-export type RawField = 'commentsGivenRaw' | 'ticketsCreatedRaw' | 'tasksCreatedRaw' | 'ticketCommentsRaw'
+export type RawField = 'commentsGivenRaw' | 'commentRepliesRaw' | 'ticketsCreatedRaw' | 'tasksCreatedRaw' | 'ticketCommentsRaw'
 
 export interface DevStats extends Record<MetricField, number>, Record<RawField, number> {
   id:                 string
@@ -30,7 +30,7 @@ export interface DevStats extends Record<MetricField, number>, Record<RawField, 
   points:             number
   /** Authoritative points per metric (sum = points). Missing in legacy caches. */
   pointsByMetric?:    Partial<Record<MetricField, number>>
-  /** Weeks with at least one counted activity (0 = unknown / legacy cache). */
+  /** Weeks with at least one counted activity, max. round(days / 7) (0 = unknown / legacy cache). */
   activeWeeks:        number
   pointsPerWeek:      number
   badges:             AzBadge[]
@@ -39,12 +39,12 @@ export interface DevStats extends Record<MetricField, number>, Record<RawField, 
 }
 
 export interface PeriodTotals {
-  prs: number; prsCompleted: number; reviews: number; approvals: number; workItems: number
-  /** raw counts */
+  prs: number; prsCompleted: number; ports: number; reviews: number; approvals: number; workItems: number
+  /** raw counts (comments: all review comments incl. replies) */
   comments: number; ticketsCreated: number; tasksCreated: number; ticketComments: number
 }
 
-export type LimitKey = 'prCommentsPerPr' | 'ticketsPerDay' | 'tasksPerDay'
+export type LimitKey = 'prCommentsPerPr' | 'prRepliesPerPr' | 'minCommentLength' | 'portWindowDays' | 'ticketsPerDay' | 'tasksPerDay'
 
 export interface PeriodData {
   developers:  DevStats[]
@@ -109,6 +109,8 @@ export interface MetricDef {
   limit?:      { key?: LimitKey; tKey: string }
   /** Data color (bars / dots) that works on light and dark backgrounds */
   color:       string
+  /** Minor metric: not offered as a ranking category of its own */
+  noCategory?: boolean
   icon:        IconType
   tone:        StatTone
 }
@@ -117,10 +119,14 @@ export interface MetricDef {
 export const BREAKDOWN_DEFS: MetricDef[] = [
   { field: 'prsCreated',            group: 'code',    tKey: 'prsCreated',       catTKey: 'prsCreated',        scoringKey: 'prCreated',            scoringTKey: 'prCreatedScoring',            color: '#6366f1', icon: GitPullRequest, tone: 'indigo'  },
   { field: 'prsCompleted',          group: 'code',    tKey: 'prsMerged',        catTKey: 'prsMerged',         scoringKey: 'prCompleted',          scoringTKey: 'prMergedScoring',             color: '#8b5cf6', icon: GitMerge,       tone: 'violet'  },
+  { field: 'prsPorted',             group: 'code',    tKey: 'prsPorted',        catTKey: 'prsPorted',         scoringKey: 'prPorted',             scoringTKey: 'prPortedScoring',             color: '#d946ef', icon: GitFork,        tone: 'violet',
+    limit: { tKey: 'limitPorts' }, noCategory: true },
   { field: 'prsReviewed',           group: 'review',  tKey: 'prsReviewed',      catTKey: 'catPrReviews',      scoringKey: 'prReviewed',           scoringTKey: 'prReviewedScoring',           color: '#0ea5e9', icon: ScanEye,        tone: 'sky'     },
   { field: 'approvalsGiven',        group: 'review',  tKey: 'prApprovals',      catTKey: 'catApprovals',      scoringKey: 'prApproved',           scoringTKey: 'prApprovedScoring',           color: '#14b8a6', icon: ThumbsUp,       tone: 'sky'     },
   { field: 'commentsGiven',         group: 'review',  tKey: 'reviewComments',   catTKey: 'catReviewComments', scoringKey: 'prComment',            scoringTKey: 'prReviewCommentScoring',      color: '#3b82f6', icon: MessageSquareCode, tone: 'sky',
     rawField: 'commentsGivenRaw',  limit: { key: 'prCommentsPerPr', tKey: 'limitPerPr' } },
+  { field: 'commentReplies',        group: 'review',  tKey: 'reviewReplies',    catTKey: 'catReviewReplies',  scoringKey: 'prReply',              scoringTKey: 'prReviewReplyScoring',        color: '#06b6d4', icon: Reply,          tone: 'sky',
+    rawField: 'commentRepliesRaw', limit: { key: 'prRepliesPerPr',  tKey: 'limitPerPr' }, noCategory: true },
   { field: 'backlogItemsCompleted', group: 'work',    tKey: 'backlogItemsDone', catTKey: 'catBacklogDone',    scoringKey: 'backlogItemCompleted', scoringTKey: 'backlogItemCompletedScoring', color: '#10b981', icon: CircleCheckBig, tone: 'emerald' },
   { field: 'tasksCompleted',        group: 'work',    tKey: 'tasksDone',        catTKey: 'catTasksDone',      scoringKey: 'taskCompleted',        scoringTKey: 'taskCompletedScoring',        color: '#84cc16', icon: ListChecks,     tone: 'emerald' },
   { field: 'ticketsCreated',        group: 'tickets', tKey: 'ticketsCreated',   catTKey: 'ticketsCreated',    scoringKey: 'ticketCreated',        scoringTKey: 'ticketCreatedScoring',        color: '#f59e0b', icon: FilePlus,       tone: 'amber',
@@ -137,7 +143,7 @@ export const METRIC_BY_FIELD = Object.fromEntries(BREAKDOWN_DEFS.map((b) => [b.f
 
 export const CATEGORY_DEFS: { key: 'points' | MetricField; tKey: string; icon: IconType }[] = [
   { key: 'points', tKey: 'overall', icon: Trophy },
-  ...BREAKDOWN_DEFS.map((b) => ({ key: b.field, tKey: b.catTKey, icon: b.icon })),
+  ...BREAKDOWN_DEFS.filter((b) => !b.noCategory).map((b) => ({ key: b.field, tKey: b.catTKey, icon: b.icon })),
 ]
 
 export type CategoryKey = 'points' | MetricField | 'custom'
@@ -312,9 +318,9 @@ export function sortedDevs(
   )
 }
 
-/** Max. number of weeks in a period (= upper bound of activeWeeks). */
+/** Number of weeks a period is split into (= upper bound of activeWeeks; same rule as the server). */
 export function weeksInPeriod(days: number) {
-  return Math.max(1, Math.ceil(days / 7))
+  return Math.max(1, Math.round(days / 7))
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
@@ -343,7 +349,7 @@ export function normalizePeriodData(raw: PeriodData): PeriodData {
     ...raw,
     developers,
     totals: {
-      prs: total(tt.prs, 'prsCreated'), prsCompleted: total(tt.prsCompleted, 'prsCompleted'),
+      prs: total(tt.prs, 'prsCreated'), prsCompleted: total(tt.prsCompleted, 'prsCompleted'), ports: total(tt.ports, 'prsPorted'),
       reviews: total(tt.reviews, 'prsReviewed'), approvals: total(tt.approvals, 'approvalsGiven'),
       workItems: num(tt.workItems), comments: num(tt.comments), ticketsCreated: num(tt.ticketsCreated),
       tasksCreated: num(tt.tasksCreated), ticketComments: num(tt.ticketComments),

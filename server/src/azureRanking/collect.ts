@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { AzureClient, mapLimit } from './azureClient'
 import { IdentityRegistry, type AzureIdentity } from './identities'
 import type { EventStore, PrRecord, Progress, StoredEvent } from './types'
@@ -117,6 +118,8 @@ export async function collectWorkItems(client: AzureClient, store: EventStore, r
 interface GitPr {
   pullRequestId: number
   status: string
+  title?: string
+  targetRefName?: string
   creationDate: string
   closedDate?: string
   createdBy?: AzureIdentity
@@ -126,8 +129,54 @@ interface GitPr {
 interface PrThread {
   isDeleted?: boolean
   properties?: Record<string, { $value?: string }>
-  comments?: { commentType?: string; isDeleted?: boolean; author?: AzureIdentity; publishedDate?: string }[]
+  comments?: { commentType?: string; isDeleted?: boolean; author?: AzureIdentity; publishedDate?: string; content?: string }[]
 }
+
+/** Comments consisting only of these phrases are acknowledgements, not review findings. */
+const ACK_PHRASES = [
+  'ok', 'okay', 'oki', 'done', 'erledigt', 'fixed', 'gefixt', 'behoben', 'angepasst', 'geändert', 'korrigiert', 'umgesetzt',
+  'danke', 'vielen dank', 'danke schön', 'dankeschön', 'merci', 'thanks', 'thank you', 'thx', 'ty',
+  'lgtm', 'looks good', 'looks good to me', 'sieht gut aus', 'passt', 'passt so', 'alles klar', 'perfekt', 'super', 'top',
+  'nice', 'cool', 'prima', 'great', 'good job', 'well done', 'works', 'works as expected', 'funktioniert', 'funktioniert nun',
+  'code review ok', 'review ok', 'approved', 'ja', 'nein', 'yes', 'no', 'stimmt', 'genau', 'richtig', 'gerne', 'sorry',
+  'wrong pr', 'falscher pr', 'd', 'img', 'url',
+]
+const ACK_RE = new RegExp(`^(?:(?:${[...ACK_PHRASES].sort((a, b) => b.length - a.length).join('|')})\\s*)+$`)
+
+/**
+ * Length of a comment's own text — mentions (@<GUID>), image/link targets and whitespace don't
+ * count. Pure acknowledgements ("ok", "Done. Vielen Dank!", "LGTM 👍") return 0.
+ */
+export function commentLength(content: string | undefined): number {
+  if (!content) return 0
+  const text = content
+    .replace(/@<[^>]+>/g, '')                        // mentions
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' [img] ')      // images → short placeholder
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')          // links → label
+    .replace(/https?:\/\/\S+/g, ' [url] ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const words = text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  if (!words || ACK_RE.test(words)) return 0
+  return Math.min(text.length, 9999)
+}
+
+/**
+ * Short hash of the normalised PR title — backports of the same change into other branches
+ * carry the same title. Ticket references ("(DevOps-123)"), tags ("[5.18]") and words like
+ * "backport"/"cherry-pick" are ignored.
+ */
+export function titleKey(title: string | undefined): string | undefined {
+  if (!title) return undefined
+  const norm = title.toLowerCase()
+    .replace(/\((dev-?ops)[^)]*\)|\[[^\]]*\]/g, ' ')
+    .replace(/\b(backport(ed)?|cherry[- ]?pick(ed)?|ported?)\b/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+  return norm ? createHash('sha1').update(norm).digest('hex').slice(0, 12) : undefined
+}
+
+const branch = (ref: string | undefined) => ref?.replace(/^refs\/heads\//, '')
 
 /** Derives author, review and comment events for one PR. */
 export function buildPrEvents(pr: GitPr, repo: string, threads: PrThread[] | null, reg: IdentityRegistry): StoredEvent[] {
@@ -157,12 +206,16 @@ export function buildPrEvents(pr: GitPr, repo: string, threads: PrThread[] | nul
       }
       continue
     }
+    // The first text comment opens the thread (a finding), the others are replies in the discussion
+    let first = true
     for (const c of th.comments || []) {
       if (c.isDeleted || c.commentType !== 'text') continue
+      const starter = first
+      first = false
       const u = reg.fromAzure(c.author)
       const t = ts(c.publishedDate)
       if (!u || !t || u === author) continue
-      ev.push(['prComment', u, t, id])
+      ev.push(['prComment', u, t, id, `${starter ? 's' : 'r'}${commentLength(c.content)}`])
       earliest(firstReview, u, t)
     }
   }
@@ -231,11 +284,12 @@ export async function collectPullRequests(client: AzureClient, store: EventStore
       )).value || []
     } catch { /* keep previous data, retry next time */ }
     const prev = store.prs[key]
+    const meta = { t: titleKey(pr.title), b: branch(pr.targetRefName) }
     const rec: PrRecord = threads
-      ? { s: pr.status, c: pr.closedDate, f: Date.now(), repo, e: buildPrEvents(pr, repo, threads, reg) }
+      ? { s: pr.status, c: pr.closedDate, f: Date.now(), repo, ...meta, e: buildPrEvents(pr, repo, threads, reg) }
       : prev && prev.f
-        ? { ...prev, s: pr.status, c: pr.closedDate }
-        : { s: pr.status, c: pr.closedDate, f: 0, repo, e: buildPrEvents(pr, repo, null, reg) }
+        ? { ...prev, s: pr.status, c: pr.closedDate, ...meta }
+        : { s: pr.status, c: pr.closedDate, f: 0, repo, ...meta, e: buildPrEvents(pr, repo, null, reg) }
     store.prs[key] = rec
     threadsDone++
     if (threadsDone % 25 === 0 || threadsDone === needThreads.length) {
@@ -244,10 +298,13 @@ export async function collectPullRequests(client: AzureClient, store: EventStore
   })
 
   // 3. PRs that didn't need threads: refresh status-derived events cheaply (votes may change)
+  //    and keep title/branch up to date (backport detection)
   for (const { pr, repo } of listed) {
     const key = String(pr.pullRequestId)
     const rec = store.prs[key]
-    if (!rec) store.prs[key] = { s: pr.status, c: pr.closedDate, f: 0, repo, e: buildPrEvents(pr, repo, null, reg) }
+    const meta = { t: titleKey(pr.title), b: branch(pr.targetRefName) }
+    if (!rec) store.prs[key] = { s: pr.status, c: pr.closedDate, f: 0, repo, ...meta, e: buildPrEvents(pr, repo, null, reg) }
+    else Object.assign(rec, meta)
   }
   return { repos: repos.length, prs: listed.length, threadsFetched: needThreads.length }
 }

@@ -51,15 +51,17 @@ All data is read from Azure DevOps with **GET requests only** (nothing is ever w
 | Activity | Points | Rule |
 | --- | --- | --- |
 | PR created / merged | 5 / 20 | credited to the author |
+| Backport merged | 5 | instead of 5 + 20: same author, repository and title as an earlier PR, other target branch, within 60 days |
 | PR reviewed | 6 | per PR of someone else you voted on or commented on |
 | Approval | 2 | "Approved" or "Approved with suggestions" |
-| Review comment | 2 | max. 10 per PR |
+| Review finding | 3 | a new comment thread on someone else's PR; max. 25 per PR |
+| Review reply | 1 | a reply in a review discussion; max. 10 per PR |
 | PBI / Bug completed | 15 | counted once, when the state really changes to *Done/Closed*, for the assignee at that moment |
 | Task completed | 5 | same rule; Features, Epics and test artefacts don't count |
 | Ticket created / Task or Test Case created | 5 / 1 | max. 10 per person and day each |
 | Ticket discussion | 3 | once per ticket and day |
 
-Bots, service accounts and team groups are ignored; accounts with identical display names are merged. Besides total points the UI offers **points per active week** to compensate for vacation, part-time work and later joiners.
+Review comments only count with at least 10 characters of own text; pure acknowledgements ("ok", "done", "LGTM", "Danke") never count. Bots, service accounts and team groups are ignored; accounts with identical display names are merged. Besides total points the UI offers **points per active week** to compensate for vacation, part-time work and later joiners (a period is split into round(days / 7) weeks, e.g. 4 weeks for 30 days).
 
 ---
 

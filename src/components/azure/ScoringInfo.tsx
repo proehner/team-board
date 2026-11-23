@@ -6,7 +6,7 @@ import { BREAKDOWN_DEFS, METRIC_GROUPS, fmt } from './shared'
 import { LevelBadge } from './bits'
 
 /** Fairness rules shown in "So wird gezählt" (azureRanking.fairness.*). */
-const FAIRNESS_RULES = ['once', 'weights', 'reviews', 'caps', 'identities', 'perWeek', 'recalc'] as const
+const FAIRNESS_RULES = ['once', 'weights', 'reviews', 'reviewDepth', 'ports', 'caps', 'identities', 'perWeek', 'recalc'] as const
 
 interface ScoringInfoProps {
   data: PeriodData
@@ -17,6 +17,14 @@ interface ScoringInfoProps {
 /** Collapsible "So wird gezählt" section: points per action (grouped, with caps), fairness rules and level thresholds. */
 const ScoringInfo = forwardRef<HTMLDetailsElement, ScoringInfoProps>(function ScoringInfo({ data, open, onOpenChange }, ref) {
   const { t } = useTranslation()
+  const vars = {
+    prComments: data.limits.prCommentsPerPr ?? 25,
+    replies:    data.limits.prRepliesPerPr ?? 10,
+    minLength:  data.limits.minCommentLength ?? 25,
+    portDays:   data.limits.portWindowDays ?? 60,
+    tickets:    data.limits.ticketsPerDay ?? 10,
+    tasks:      data.limits.tasksPerDay ?? 10,
+  }
 
   return (
     <details
@@ -64,7 +72,7 @@ const ScoringInfo = forwardRef<HTMLDetailsElement, ScoringInfoProps>(function Sc
                             <span>{t(`azureRanking.${b.scoringTKey}`)}</span>
                             {limit && b.limit && (
                               <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-50 px-1.5 py-px text-2xs font-medium text-amber-700 ring-1 ring-inset ring-amber-500/20 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20">
-                                {t(`azureRanking.${b.limit.tKey}`, { n: typeof limit === 'number' ? limit : undefined })}
+                                {t(`azureRanking.${b.limit.tKey}`, { ...vars, n: typeof limit === 'number' ? limit : undefined })}
                               </span>
                             )}
                           </span>
@@ -88,11 +96,7 @@ const ScoringInfo = forwardRef<HTMLDetailsElement, ScoringInfoProps>(function Sc
                 <li key={r} className="flex gap-2.5 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
                   <CircleCheck className="mt-[3px] h-4 w-4 shrink-0 text-emerald-500 dark:text-emerald-400" />
                   <span>
-                    {t(`azureRanking.fairness.${r}`, {
-                      prComments: data.limits.prCommentsPerPr ?? 10,
-                      tickets:    data.limits.ticketsPerDay ?? 10,
-                      tasks:      data.limits.tasksPerDay ?? 10,
-                    })}
+                    {t(`azureRanking.fairness.${r}`, vars)}
                   </span>
                 </li>
               ))}

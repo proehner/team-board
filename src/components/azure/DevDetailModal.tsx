@@ -398,7 +398,7 @@ function DevDetailBody({ dev, scoring, days }: { dev: DevStats; scoring: Record<
       {/* Activity overview */}
       <section>
         <SectionHeader title={t('azureRanking.activityOverview')} icon={<BarChart3 />} />
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {BREAKDOWN_DEFS.map((b) => {
             const Icon = b.icon
             return (

@@ -10,7 +10,12 @@ export const FILES = {
   events:  path.join(DATA_DIR, 'azure-ranking.events.json'),
 }
 
-export const STORE_VERSION = 1
+/**
+ * 1 → 2: review comments carry thread role + text length, PRs carry title hash + target branch.
+ * 2 → 3: acknowledgement-only comments ("ok", "done", "LGTM") are stored with length 0.
+ * Older stores are migrated in place: work item data is kept, PR threads are re-fetched on the next refresh.
+ */
+export const STORE_VERSION = 3
 
 /** Writes JSON atomically (temp file + rename) so a crash can never leave a truncated file. */
 export function writeJsonAtomic(file: string, data: unknown) {
@@ -35,7 +40,13 @@ export function newStore(storeStart: string): EventStore {
 
 export function loadStore(): EventStore | null {
   const s = readJson<EventStore>(FILES.events)
-  return s && s.version === STORE_VERSION ? s : null
+  if (!s) return null
+  if (s.version >= 1 && s.version < STORE_VERSION) {
+    for (const pr of Object.values(s.prs)) pr.f = 0 // → threads are loaded again (comment details)
+    s.version = STORE_VERSION
+    s.needsRefresh = true
+  }
+  return s.version === STORE_VERSION ? s : null
 }
 
 // ─── Cache ────────────────────────────────────────────────────────────────────

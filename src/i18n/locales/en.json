@@ -979,7 +979,7 @@
     "daysLabel": "Days",
     "prCreatedScoring": "PR created",
     "prMergedScoring": "PR merged",
-    "prReviewCommentScoring": "Review comment (PR)",
+    "prReviewCommentScoring": "Review finding (new thread)",
     "prApprovedScoring": "PR approved",
     "ticketClosedScoring": "Ticket closed",
     "ticketCreatedScoring": "Ticket created",
@@ -1033,12 +1033,12 @@
     "nextLevelAt": "Next level: {{level}} at {{points}} pts.",
     "overallRank": "Rank {{rank}} overall",
     "prsReviewed": "PRs reviewed",
-    "reviewComments": "Review comments",
+    "reviewComments": "Review findings",
     "backlogItemsDone": "PBIs/bugs completed",
     "tasksDone": "Tasks completed",
     "tasksCreatedFull": "Tasks/test cases created",
     "ticketDiscussions": "Ticket discussions",
-    "catReviewComments": "Review comments",
+    "catReviewComments": "Review findings",
     "catBacklogDone": "PBIs/Bugs",
     "catTasksDone": "Tasks done",
     "catDiscussions": "Discussions",
@@ -1078,10 +1078,12 @@
       "once": "Completed work items count exactly once – at the actual transition to Done/Closed, for the person assigned at that moment. Later changes (board, tags, area path …) don't count again.",
       "weights": "PBIs/bugs count more than tasks; features, epics and test artifacts don't count as completed work.",
       "reviews": "A PR counts as reviewed as soon as you vote or comment; “Approved with suggestions” counts as an approval; your own PRs don't count.",
-      "caps": "Caps against sheer volume: max. {{prComments}} review comments per PR, max. {{tickets}} created tickets and {{tasks}} tasks per day, ticket comments once per ticket and day.",
+      "caps": "Caps against sheer volume: max. {{prComments}} findings and {{replies}} replies per PR, max. {{tickets}} created tickets and {{tasks}} tasks per day, ticket comments once per ticket and day.",
       "identities": "Bots, service accounts and team groups are ignored; accounts with identical names are merged.",
       "perWeek": "“Per active week” evens out vacation, part-time work and joining later.",
-      "recalc": "Whenever the logic changes, the entire history is recalculated automatically."
+      "recalc": "Whenever the logic changes, the entire history is recalculated automatically.",
+      "reviewDepth": "Review depth counts: every new finding (its own thread) earns points, replies in the discussion a little less. Pure acknowledgements (“ok”, “done”, “LGTM”, “thanks”) and comments under {{minLength}} characters don't count.",
+      "ports": "Backports don't count as a new PR: a PR with the same title in the same repository but for another target branch within {{portDays}} days only earns the backport points."
     },
     "levelThresholdsFor": "for {{days}} days",
     "outdatedHint": "New evaluation logic – please refresh once to see the corrected values.",
@@ -1160,7 +1162,13 @@
         "name": "All-Rounder",
         "desc": "Authored, reviewed and completed work"
       }
-    }
+    },
+    "prsPorted": "Backports",
+    "prPortedScoring": "Backport merged",
+    "limitPorts": "same change, another branch",
+    "reviewReplies": "Review replies",
+    "catReviewReplies": "Review replies",
+    "prReviewReplyScoring": "Reply in a review discussion"
   },
   "admin": {
     "pageTitle": "Administration",

@@ -68,7 +68,8 @@ class RankingService {
 
   get lastLoaded() { return this.cache.lastLoaded }
   get hasData()    { return !!this.cache.data?.periods }
-  get outdated()   { return this.hasData && this.cache.scoringVersion !== SCORING_VERSION }
+  /** Results were computed with an older logic or from incomplete (migrated) data → one refresh needed */
+  get outdated()   { return this.hasData && (this.cache.scoringVersion !== SCORING_VERSION || !!this.store?.needsRefresh) }
 
   /** Earliest event date needed: one year (+ buffer) and the 365-day window of the oldest snapshot. */
   private desiredStoreStart(now: number): number {
@@ -107,6 +108,7 @@ class RankingService {
 
       this.setProgress({ step: 'done', message: 'Calculating results…', done: 0, total: 0 })
       this.prune(store, desired)
+      delete store.needsRefresh
       store.lastRunAt = new Date().toISOString()
       writeJsonAtomic(FILES.events, store)
       this.store = store
