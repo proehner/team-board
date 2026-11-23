@@ -13,7 +13,8 @@ function applyTheme(isDark: boolean) {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set) => ({
-      isDark: false,
+      // First visit: follow the OS preference. Afterwards the persisted choice wins.
+      isDark: typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches,
       toggle: () =>
         set((s) => {
           const next = !s.isDark

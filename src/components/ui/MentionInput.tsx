@@ -1,7 +1,9 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useId } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { TeamMember } from '@/types'
 import { useAuthStore } from '@/store/auth'
 import { getMemberDisplayNames } from '@/utils/members'
+import Avatar from './Avatar'
 
 interface Props {
   value:       string
@@ -10,11 +12,19 @@ interface Props {
   members:     TeamMember[]
   placeholder?: string
   rows?:        number
+  /** Classes for the textarea. Defaults to the standard `form-textarea` look. */
   className?:   string
+  id?:          string
+  autoFocus?:   boolean
+  disabled?:    boolean
 }
 
 /** Textarea with @mention autocomplete dropdown. */
-export default function MentionInput({ value, onChange, onKeyDown, members, placeholder, rows = 2, className }: Props) {
+export default function MentionInput({
+  value, onChange, onKeyDown, members, placeholder, rows = 2, className, id, autoFocus, disabled,
+}: Props) {
+  const { t } = useTranslation()
+  const listId       = useId()
   const textareaRef  = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -69,25 +79,31 @@ export default function MentionInput({ value, onChange, onKeyDown, members, plac
     }, 0)
   }
 
+  const showList = open && filtered.length > 0
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (open && filtered.length > 0) {
+    if (showList) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setActiveIdx((i) => Math.min(i + 1, filtered.length - 1))
+        setActiveIdx((i) => (i + 1) % filtered.length)
         return
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setActiveIdx((i) => Math.max(i - 1, 0))
+        setActiveIdx((i) => (i - 1 + filtered.length) % filtered.length)
         return
       }
       if (e.key === 'Escape') {
+        // Close only the popover — don't let a surrounding modal close as well
+        e.preventDefault()
+        e.stopPropagation()
+        e.nativeEvent.stopImmediatePropagation()
         setOpen(false)
         return
       }
       if (e.key === 'Tab' || e.key === 'Enter') {
         e.preventDefault()
-        selectMember(filtered[activeIdx])
+        selectMember(filtered[Math.min(activeIdx, filtered.length - 1)])
         return
       }
     }
@@ -108,37 +124,56 @@ export default function MentionInput({ value, onChange, onKeyDown, members, plac
     <div ref={containerRef} className="relative flex-1">
       <textarea
         ref={textareaRef}
+        id={id}
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onBlur={() => setOpen(false)}
         rows={rows}
         placeholder={placeholder}
-        className={className}
+        autoFocus={autoFocus}
+        disabled={disabled}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={showList}
+        aria-controls={showList ? listId : undefined}
+        aria-activedescendant={showList ? `${listId}-${activeIdx}` : undefined}
+        className={className ?? 'form-textarea resize-none leading-relaxed'}
       />
 
-      {open && filtered.length > 0 && (
-        <div className="absolute bottom-full left-0 mb-1.5 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 overflow-hidden">
-          {filtered.map((m, i) => (
-            <button
-              key={m.id}
-              type="button"
-              // Use onMouseDown + preventDefault to keep textarea focus
-              onMouseDown={(e) => { e.preventDefault(); selectMember(m) }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
-                i === activeIdx
-                  ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
-                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
-              }`}
-            >
-              <span
-                className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white"
-                style={{ backgroundColor: m.avatarColor ?? '#6366f1' }}
-              >
-                {m.name.charAt(0).toUpperCase()}
-              </span>
-              <span className="truncate font-medium">{memberDisplayNames.get(m.id) ?? m.name}</span>
-            </button>
-          ))}
+      {showList && (
+        <div
+          className="absolute bottom-full left-0 z-50 mb-1.5 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-popover animate-slide-up dark:border-slate-700 dark:bg-slate-900"
+        >
+          <p className="px-2.5 pb-1 pt-1.5 section-label">{t('mentionInput.title')}</p>
+          <ul id={listId} role="listbox" aria-label={t('mentionInput.title')}>
+            {filtered.map((m, i) => {
+              const active = i === activeIdx
+              return (
+                <li
+                  key={m.id}
+                  id={`${listId}-${i}`}
+                  role="option"
+                  aria-selected={active}
+                  // Use onMouseDown + preventDefault to keep textarea focus
+                  onMouseDown={(e) => { e.preventDefault(); selectMember(m) }}
+                  onMouseEnter={() => setActiveIdx(i)}
+                  className={`flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                    active
+                      ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200'
+                      : 'text-slate-700 dark:text-slate-200'
+                  }`}
+                >
+                  <Avatar name={m.name} color={m.avatarColor ?? '#6366f1'} size="xs" />
+                  <span className="truncate font-medium">{memberDisplayNames.get(m.id) ?? m.name}</span>
+                </li>
+              )
+            })}
+          </ul>
+          <p className="mt-1 flex items-center gap-1.5 border-t border-slate-100 px-2.5 pb-1 pt-1.5 text-2xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
+            <kbd className="kbd">↑</kbd><kbd className="kbd">↓</kbd> {t('mentionInput.navigate')}
+            <kbd className="kbd ml-1.5">Enter</kbd> {t('mentionInput.select')}
+          </p>
         </div>
       )}
     </div>
@@ -167,7 +202,10 @@ export function renderWithMentions(content: string, members: TeamMember[]): Reac
       parts.push(<span key={last}>{content.slice(last, match.index)}</span>)
     }
     parts.push(
-      <span key={match.index} className="text-indigo-600 dark:text-indigo-400 font-semibold">
+      <span
+        key={match.index}
+        className="rounded bg-indigo-50 px-1 py-px font-medium text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
+      >
         @{match[1]}
       </span>,
     )

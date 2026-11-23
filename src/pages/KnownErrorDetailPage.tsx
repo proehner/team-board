@@ -1,364 +1,99 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { useState, useMemo, useEffect, useCallback, useId, useRef, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { usePagePermission } from '@/hooks/usePagePermission'
-import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import {
-  ArrowLeft, Bug, Pencil, Trash2, Tag, Monitor, Ticket,
-  AlertTriangle, AlertCircle, Info, CheckCircle2, Wrench, Save, X,
-  Paperclip, Upload, Download, File, ImageIcon, Loader2, MessageSquare, Send,
+  Bug, Pencil, Trash2, Tag, Monitor, Ticket, AlertCircle, CheckCircle2, Wrench,
+  MoreHorizontal, Copy, CalendarPlus, History, Info, ArrowLeft, CircleDot,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { format } from 'date-fns'
 import { useStore } from '@/store'
-import type { KnownErrorSeverity, KnownErrorStatus, KnownErrorAttachment, KnownErrorComment } from '@/types'
+import type { KnownErrorSeverity, KnownErrorStatus, KnownErrorComment } from '@/types'
+import Page from '@/components/ui/Page'
+import PageHeader from '@/components/ui/PageHeader'
+import Card from '@/components/ui/Card'
+import Panel from '@/components/knownErrors/Panel'
+import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
+import IconButton from '@/components/ui/IconButton'
+import DropdownMenu from '@/components/ui/DropdownMenu'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import EmptyState from '@/components/ui/EmptyState'
+import Field from '@/components/ui/Field'
+import Select from '@/components/ui/Select'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import MarkdownEditor from '@/components/ui/MarkdownEditor'
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer'
 import { attachmentsApi, knownErrorCommentsApi } from '@/api/client'
 import { useAuthStore } from '@/store/auth'
-import MentionInput, { renderWithMentions } from '@/components/ui/MentionInput'
-import { format } from 'date-fns'
+import { toast, errorMessage } from '@/store/toast'
+import {
+  SEVERITY_ORDER, STATUS_ORDER, SeverityBadge, StatusBadge,
+} from '@/components/knownErrors/KnownErrorBadges'
+import SoftwarePicker from '@/components/knownErrors/SoftwarePicker'
+import AttachmentsCard from '@/components/knownErrors/AttachmentsCard'
+import CommentThread from '@/components/knownErrors/CommentThread'
 
-// ─── Severity & Status badges ─────────────────────────────────────────────────
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 
-function SeverityBadge({ severity }: { severity: KnownErrorSeverity }) {
-  const { t } = useTranslation()
-  const cfg = {
-    critical: { cls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', Icon: AlertCircle },
-    high:     { cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', Icon: AlertTriangle },
-    medium:   { cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', Icon: Info },
-    low:      { cls: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300', Icon: Info },
-  }[severity]
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${cfg.cls}`}>
-      <cfg.Icon className="w-4 h-4" />
-      {t(`knownErrors.severity.${severity}`)}
-    </span>
-  )
-}
-
-function StatusBadge({ status }: { status: KnownErrorStatus }) {
-  const { t } = useTranslation()
-  const cfg = {
-    open:       { cls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', Icon: AlertCircle },
-    workaround: { cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', Icon: Wrench },
-    resolved:   { cls: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300', Icon: CheckCircle2 },
-  }[status]
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${cfg.cls}`}>
-      <cfg.Icon className="w-4 h-4" />
-      {t(`knownErrors.status.${status}`)}
-    </span>
-  )
-}
-
-const SEVERITY_ORDER: KnownErrorSeverity[] = ['critical', 'high', 'medium', 'low']
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function isImageMime(mimeType: string) {
-  return mimeType.startsWith('image/')
-}
-
-// ─── Attachments Panel ────────────────────────────────────────────────────────
-
-function AttachmentsPanel({ knownErrorId, refreshKey, canWrite }: { knownErrorId: string; refreshKey: number; canWrite: boolean }) {
-  const { t } = useTranslation()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const [attachments,    setAttachments]    = useState<KnownErrorAttachment[]>([])
-  const [loading,        setLoading]        = useState(true)
-  const [uploading,      setUploading]      = useState(false)
-  const [deletingId,     setDeletingId]     = useState<string | null>(null)
-  const [confirmDelete,  setConfirmDelete]  = useState<KnownErrorAttachment | null>(null)
-
-  const loadAttachments = useCallback(async () => {
-    try {
-      const data = await attachmentsApi.list(knownErrorId)
-      setAttachments(data)
-    } finally {
-      setLoading(false)
-    }
-  }, [knownErrorId])
-
-  useEffect(() => { loadAttachments() }, [loadAttachments, refreshKey])
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? [])
-    e.target.value = ''
-    if (!files.length) return
-    setUploading(true)
-    try {
-      for (const file of files) {
-        await attachmentsApi.upload(knownErrorId, file)
-      }
-      await loadAttachments()
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  async function handleDelete(att: KnownErrorAttachment) {
-    setDeletingId(att.id)
-    try {
-      await attachmentsApi.delete(knownErrorId, att.id)
-      setAttachments((prev) => prev.filter((a) => a.id !== att.id))
-    } finally {
-      setDeletingId(null)
-      setConfirmDelete(null)
-    }
-  }
-
-  return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-          <Paperclip className="w-4 h-4" />
-          {t('knownErrors.attachments.title')}
-          {attachments.length > 0 && (
-            <span className="text-xs font-normal text-slate-400">({attachments.length})</span>
-          )}
-        </h2>
-        {canWrite && (
-          <>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50"
-            >
-              {uploading
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : <Upload className="w-3.5 h-3.5" />}
-              {t('knownErrors.attachments.upload')}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={handleFileChange}
-            />
-          </>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="flex items-center justify-center py-6 text-slate-400">
-          <Loader2 className="w-5 h-5 animate-spin" />
-        </div>
-      ) : attachments.length === 0 ? (
-        <p className="text-sm text-slate-400 italic text-center py-4">
-          {t('knownErrors.attachments.empty')}
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {attachments.map((att) => {
-            const url = attachmentsApi.fileUrl(att.filename)
-            const isImg = isImageMime(att.mimeType)
-            return (
-              <li
-                key={att.id}
-                className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 group transition-colors"
-              >
-                {/* Icon */}
-                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
-                  {isImg
-                    ? <ImageIcon className="w-4 h-4 text-indigo-500" />
-                    : <File className="w-4 h-4 text-slate-500" />}
-                </div>
-
-                {/* Thumbnail for images */}
-                {isImg && (
-                  <a href={url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                    <img
-                      src={url}
-                      alt={att.originalName}
-                      className="w-10 h-10 rounded object-cover border border-slate-200 dark:border-slate-600"
-                    />
-                  </a>
-                )}
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{att.originalName}</p>
-                  <p className="text-xs text-slate-400">
-                    {formatFileSize(att.size)} · {format(new Date(att.uploadedAt), 'dd.MM.yyyy')}
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <a
-                    href={url}
-                    download={att.originalName}
-                    className="p-1.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
-                    title={t('knownErrors.attachments.download')}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </a>
-                  {canWrite && (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDelete(att)}
-                      disabled={deletingId === att.id}
-                      className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50"
-                      title={t('common.delete')}
-                    >
-                      {deletingId === att.id
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <Trash2 className="w-3.5 h-3.5" />}
-                    </button>
-                  )}
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-
-      <ConfirmDialog
-        isOpen={!!confirmDelete}
-        title={t('knownErrors.attachments.deleteTitle')}
-        message={t('knownErrors.attachments.deleteConfirm', { name: confirmDelete?.originalName ?? '' })}
-        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
-        onClose={() => setConfirmDelete(null)}
-        variant="danger"
-      />
-    </div>
-  )
-}
-
-// ─── Comments Panel ───────────────────────────────────────────────────────────
+// ─── Comments ─────────────────────────────────────────────────────────────────
 
 function CommentsPanel({ knownErrorId, canWrite }: { knownErrorId: string; canWrite: boolean }) {
-  const { t }      = useTranslation()
-  const members    = useStore((s) => s.members)
-  const allMembers = useStore((s) => s.allMembers)
-  const user       = useAuthStore((s) => s.user)
-
-  const [comments,      setComments]      = useState<KnownErrorComment[]>([])
-  const [loading,       setLoading]       = useState(true)
-  const [newComment,    setNewComment]    = useState('')
-  const [sending,       setSending]       = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState<KnownErrorComment | null>(null)
+  const { t }  = useTranslation()
+  const user   = useAuthStore((s) => s.user)
+  const [comments, setComments] = useState<KnownErrorComment[]>([])
+  const [loading,  setLoading]  = useState(true)
 
   const load = useCallback(async () => {
     try { setComments(await knownErrorCommentsApi.list(knownErrorId)) }
+    catch (err) { toast.error(t('common.loadError'), { description: errorMessage(err) }) }
     finally { setLoading(false) }
-  }, [knownErrorId])
+  }, [knownErrorId, t])
 
   useEffect(() => { load() }, [load])
 
-  async function handleSend() {
-    if (!newComment.trim()) return
-    setSending(true)
-    try {
-      const c = await knownErrorCommentsApi.create(knownErrorId, newComment.trim(), user?.displayName ?? '')
-      setComments((prev) => [...prev, c])
-      setNewComment('')
-    } finally { setSending(false) }
-  }
-
-  async function handleDelete(c: KnownErrorComment) {
-    await knownErrorCommentsApi.delete(knownErrorId, c.id)
-    setComments((prev) => prev.filter((x) => x.id !== c.id))
-    setConfirmDelete(null)
-  }
-
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 space-y-4">
-      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-        <MessageSquare className="w-4 h-4" />
-        {t('knownErrors.comments.title')}
-        <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">
-          {comments.length}
-        </span>
-      </h2>
+    <CommentThread
+      comments={comments}
+      loading={loading}
+      canWrite={canWrite}
+      onSend={async (content) => {
+        const c = await knownErrorCommentsApi.create(knownErrorId, content, user?.displayName ?? '')
+        setComments((prev) => [...prev, c])
+      }}
+      onDelete={async (c) => {
+        await knownErrorCommentsApi.delete(knownErrorId, c.id)
+        setComments((prev) => prev.filter((x) => x.id !== c.id))
+      }}
+      labels={{
+        title:         t('knownErrors.comments.title'),
+        empty:         t('knownErrors.comments.empty'),
+        placeholder:   t('commentThread.placeholder'),
+        anonymous:     t('knownErrors.comments.anonymous'),
+        deleteTitle:   t('knownErrors.comments.deleteTitle'),
+        deleteConfirm: t('knownErrors.comments.deleteConfirm'),
+      }}
+    />
+  )
+}
 
-      {loading ? (
-        <div className="flex justify-center py-4 text-slate-400">
-          <Loader2 className="w-5 h-5 animate-spin" />
-        </div>
-      ) : comments.length === 0 ? (
-        <p className="text-sm text-slate-400 italic text-center py-2">{t('knownErrors.comments.empty')}</p>
-      ) : (
-        <div className="space-y-3">
-          {comments.map((c) => (
-            <div key={c.id} className="group flex gap-3">
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold text-white"
-                style={{ backgroundColor: members.find((m) => m.name === c.authorName)?.avatarColor ?? '#6366f1' }}
-              >
-                {(c.authorName || '?').charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{c.authorName || t('knownErrors.comments.anonymous')}</span>
-                  <span className="text-xs text-slate-400">{format(new Date(c.createdAt), 'dd.MM.yyyy HH:mm')}</span>
-                </div>
-                <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5">{renderWithMentions(c.content, allMembers)}</p>
-              </div>
-              {canWrite && (
-                <button
-                  onClick={() => setConfirmDelete(c)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 self-start mt-1 p-1 text-slate-400 hover:text-red-600 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+// ─── Small layout helpers ─────────────────────────────────────────────────────
 
-      {/* New comment input */}
-      {canWrite && (
-        <div className="flex gap-2 pt-1">
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold text-white"
-            style={{ backgroundColor: members.find((m) => m.name === user?.displayName)?.avatarColor ?? '#6366f1' }}
-          >
-            {(user?.displayName || '?').charAt(0).toUpperCase()}
-          </div>
-          <div className="flex-1 flex gap-2">
-            <MentionInput
-              value={newComment}
-              onChange={setNewComment}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-              members={allMembers}
-              rows={2}
-              placeholder={t('knownErrors.comments.placeholder')}
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!newComment.trim() || sending}
-              className="self-end px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      <ConfirmDialog
-        isOpen={!!confirmDelete}
-        title={t('knownErrors.comments.deleteTitle')}
-        message={t('knownErrors.comments.deleteConfirm')}
-        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
-        onClose={() => setConfirmDelete(null)}
-        variant="danger"
-      />
+function MetaRow({ label, icon, children }: { label: string; icon: ReactNode; children: ReactNode }) {
+  return (
+    <div className="px-4 py-3">
+      <dt className="mb-1.5 flex items-center gap-1.5 section-label [&_svg]:h-3.5 [&_svg]:w-3.5">
+        {icon}
+        {label}
+      </dt>
+      <dd className="text-sm text-slate-700 dark:text-slate-300">{children}</dd>
     </div>
   )
+}
+
+function Muted({ children }: { children: ReactNode }) {
+  return <p className="text-sm italic text-slate-400 dark:text-slate-500">{children}</p>
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -367,6 +102,7 @@ export default function KnownErrorDetailPage() {
   const { errorId } = useParams<{ errorId: string }>()
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const uid = useId()
 
   const knownErrors      = useStore((s) => s.knownErrors)
   const software         = useStore((s) => s.software)
@@ -382,7 +118,7 @@ export default function KnownErrorDetailPage() {
   const [saving,        setSaving]        = useState(false)
   const { isBlocked, confirmLeave, cancelLeave, guardedNavigate } = useUnsavedChanges(editing)
   const [attachRefresh, setAttachRefresh] = useState(0)
-  const [saveError,     setSaveError]     = useState('')
+  const [titleError,    setTitleError]    = useState('')
 
   const [editTitle,        setEditTitle]        = useState('')
   const [editTicketNumber, setEditTicketNumber] = useState('')
@@ -399,15 +135,36 @@ export default function KnownErrorDetailPage() {
     [software],
   )
 
+  // Ctrl/Cmd+S saves while editing
+  const saveRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    if (!editing) return
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        saveRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editing])
+
   if (!ke) {
     return (
-      <div className="p-4 sm:p-6">
-        <button onClick={() => navigate('/known-errors')} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 mb-4 transition-colors">
-          <ArrowLeft className="w-4 h-4" />
-          {t('knownErrors.backToList')}
-        </button>
-        <p className="text-slate-500">{t('knownErrors.notFound')}</p>
-      </div>
+      <Page size="narrow">
+        <PageHeader back={{ to: '/known-errors', label: t('knownErrors.backToList') }} title={t('knownErrors.title')} />
+        <div className="surface">
+          <EmptyState
+            icon={<Bug />}
+            title={t('knownErrors.notFound')}
+            action={
+              <Button variant="secondary" icon={<ArrowLeft />} onClick={() => navigate('/known-errors')}>
+                {t('knownErrors.backToList')}
+              </Button>
+            }
+          />
+        </div>
+      </Page>
     )
   }
 
@@ -421,12 +178,13 @@ export default function KnownErrorDetailPage() {
     setEditStatus(ke!.status)
     setEditSoftwareIds([...ke!.softwareIds])
     setEditTags(ke!.tags.join(', '))
-    setSaveError('')
+    setTitleError('')
     setEditing(true)
   }
 
   async function saveEdit() {
-    if (!editTitle.trim()) { setSaveError(t('knownErrors.titleRequired')); return }
+    if (saving) return
+    if (!editTitle.trim()) { setTitleError(t('knownErrors.titleRequired')); return }
     setSaving(true)
     try {
       await updateKnownError(ke!.id, {
@@ -438,19 +196,27 @@ export default function KnownErrorDetailPage() {
         severity:     editSeverity,
         status:       editStatus,
         softwareIds:  editSoftwareIds,
-        tags:         editTags.split(',').map((t) => t.trim()).filter(Boolean),
+        tags:         editTags.split(',').map((x) => x.trim()).filter(Boolean),
       })
       setEditing(false)
-    } catch {
-      setSaveError(t('knownErrors.saveError'))
+      toast.success(t('common.saved'))
+    } catch (err) {
+      toast.error(t('knownErrors.saveError'), { description: errorMessage(err) })
     } finally {
       setSaving(false)
     }
   }
+  saveRef.current = saveEdit
 
   async function handleDelete() {
-    await deleteKnownError(ke!.id)
-    navigate('/known-errors')
+    try {
+      await deleteKnownError(ke!.id)
+      toast.success(t('common.deleted'), { description: ke!.title })
+      navigate('/known-errors')
+    } catch (err) {
+      toast.error(t('common.deleteError'), { description: errorMessage(err) })
+      throw err
+    }
   }
 
   function toggleSoftware(id: string) {
@@ -466,251 +232,294 @@ export default function KnownErrorDetailPage() {
     return att.filename
   }
 
-  const inputCls = 'w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500'
-  const labelCls = 'block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1'
+  async function copyTicket() {
+    if (!ke?.ticketNumber) return
+    try {
+      await navigator.clipboard.writeText(ke.ticketNumber)
+      toast.success(t('common.copied'), { description: ke.ticketNumber })
+    } catch {
+      toast.error(t('common.unknownError'))
+    }
+  }
+
+  const fmt = (d: string) => format(new Date(d), 'dd.MM.yyyy HH:mm')
+
+  // ─── Sections ──────────────────────────────────────────────────────────────
+  const sections: {
+    key: string
+    title: string
+    icon: ReactNode
+    value: string
+    edit: string
+    setEdit: (v: string) => void
+    placeholder: string
+    rows: number
+    show: boolean
+  }[] = [
+    {
+      key: 'description',
+      title: t('knownErrors.fields.description'),
+      icon: <AlertCircle className="text-slate-500 dark:text-slate-400" />,
+      value: ke.description, edit: editDescription, setEdit: setEditDescription,
+      placeholder: t('knownErrors.fields.descriptionPlaceholder'), rows: 6, show: true,
+    },
+    {
+      key: 'solution',
+      title: t('knownErrors.fields.solution'),
+      icon: <CheckCircle2 className="text-emerald-500 dark:text-emerald-400" />,
+      value: ke.solution, edit: editSolution, setEdit: setEditSolution,
+      placeholder: t('knownErrors.fields.solutionPlaceholder'), rows: 10, show: true,
+    },
+    {
+      key: 'workaround',
+      title: t('knownErrors.fields.workaround'),
+      icon: <Wrench className="text-amber-500 dark:text-amber-400" />,
+      value: ke.workaround ?? '', edit: editWorkaround, setEdit: setEditWorkaround,
+      placeholder: t('knownErrors.fields.workaroundPlaceholder'), rows: 5, show: editing || !!ke.workaround,
+    },
+  ]
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
-      {isReadOnly && <ReadOnlyBanner />}
-      {/* Back */}
-      <button
-        onClick={() => guardedNavigate('/known-errors')}
-        className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        {t('knownErrors.backToList')}
-      </button>
-
-      {/* Header card */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 space-y-4">
-        {editing ? (
-          <>
-            {saveError && (
-              <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{saveError}</p>
+    <Page size="default">
+      <PageHeader
+        back={{ onClick: () => guardedNavigate('/known-errors'), label: t('knownErrors.backToList') }}
+        title={ke.title}
+        documentTitle={ke.title}
+        meta={editing && <Badge variant="indigo" dot label={t('knownErrors.editMode')} />}
+        subtitle={
+          <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="flex items-center gap-1.5">
+              <SeverityBadge severity={ke.severity} />
+              <StatusBadge status={ke.status} />
+            </span>
+            {ke.ticketNumber && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700 ring-1 ring-inset ring-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700/70">
+                <Ticket className="h-3 w-3 text-slate-400" />
+                {ke.ticketNumber}
+              </span>
             )}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <label className={labelCls}>{t('knownErrors.fields.title')} *</label>
-                <input autoFocus value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>{t('knownErrors.fields.ticketNumber')}</label>
-                <input
-                  value={editTicketNumber}
-                  onChange={(e) => setEditTicketNumber(e.target.value)}
-                  placeholder={t('knownErrors.fields.ticketNumberPlaceholder')}
-                  className={`${inputCls} font-mono`}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>{t('knownErrors.fields.severity')}</label>
-                <select value={editSeverity} onChange={(e) => setEditSeverity(e.target.value as KnownErrorSeverity)} className={inputCls}>
-                  {SEVERITY_ORDER.map((s) => <option key={s} value={s}>{t(`knownErrors.severity.${s}`)}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>{t('knownErrors.fields.status')}</label>
-                <select value={editStatus} onChange={(e) => setEditStatus(e.target.value as KnownErrorStatus)} className={inputCls}>
-                  <option value="open">{t('knownErrors.status.open')}</option>
-                  <option value="workaround">{t('knownErrors.status.workaround')}</option>
-                  <option value="resolved">{t('knownErrors.status.resolved')}</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="secondary" onClick={() => setEditing(false)}><X className="w-4 h-4" />{t('common.cancel')}</Button>
-              <Button variant="primary" onClick={saveEdit} disabled={saving}><Save className="w-4 h-4" />{saving ? t('knownErrors.saving') : t('common.save')}</Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center shrink-0">
-                <Bug className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">{ke.title}</h1>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <SeverityBadge severity={ke.severity} />
-                  <StatusBadge status={ke.status} />
-                  {ke.ticketNumber && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-mono bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                      <Ticket className="w-4 h-4" />
-                      {ke.ticketNumber}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {canWrite && (
-                <div className="flex gap-2 shrink-0">
-                  <Button variant="ghost" size="sm" onClick={startEdit}>
-                    <Pencil className="w-4 h-4" />
-                    {t('common.edit')}
-                  </Button>
-                  <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>
-                    <Trash2 className="w-4 h-4" />
-                    {t('common.delete')}
-                  </Button>
-                </div>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-4 text-xs text-slate-400 border-t border-slate-100 dark:border-slate-700 pt-3">
-              <span>{t('knownErrors.createdAt')}: {format(new Date(ke.createdAt), 'dd.MM.yyyy HH:mm')}</span>
-              <span>{t('knownErrors.updatedAt')}: {format(new Date(ke.updatedAt), 'dd.MM.yyyy HH:mm')}</span>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Problem description — Markdown */}
-          <Section title={t('knownErrors.fields.description')} icon={<AlertCircle className="w-4 h-4" />}>
-            {editing ? (
-              <MarkdownEditor
-                value={editDescription}
-                onChange={setEditDescription}
-                placeholder={t('knownErrors.fields.descriptionPlaceholder')}
-                rows={6}
-                onImageUpload={handleImageUpload}
+            <span className="text-xs text-slate-400 dark:text-slate-500">
+              {t('knownErrors.updatedAgo', { date: format(new Date(ke.updatedAt), 'dd.MM.yyyy') })}
+            </span>
+          </span>
+        }
+        actions={
+          canWrite && !editing && (
+            <>
+              <Button variant="secondary" icon={<Pencil />} onClick={startEdit}>
+                {t('common.edit')}
+              </Button>
+              <DropdownMenu
+                trigger={(p) => (
+                  <IconButton {...p} variant="secondary" size="md" icon={<MoreHorizontal />} label={t('common.moreActions')} />
+                )}
+                items={[
+                  ...(ke.ticketNumber
+                    ? [{ label: t('knownErrors.copyTicket'), icon: <Copy />, onClick: copyTicket }, { type: 'divider' as const }]
+                    : []),
+                  { label: t('knownErrors.deleteEntry'), icon: <Trash2 />, danger: true, onClick: () => setConfirmDelete(true) },
+                ]}
               />
-            ) : ke.description ? (
-              <MarkdownRenderer content={ke.description} />
-            ) : (
-              <p className="text-sm text-slate-400 italic">{t('knownErrors.noContent')}</p>
-            )}
-          </Section>
+            </>
+          )
+        }
+      />
 
-          {/* Solution — Markdown */}
-          <Section title={t('knownErrors.fields.solution')} icon={<CheckCircle2 className="w-4 h-4 text-green-500" />}>
-            {editing ? (
-              <MarkdownEditor
-                value={editSolution}
-                onChange={setEditSolution}
-                placeholder={t('knownErrors.fields.solutionPlaceholder')}
-                rows={10}
-                onImageUpload={handleImageUpload}
-              />
-            ) : ke.solution ? (
-              <MarkdownRenderer content={ke.solution} />
-            ) : (
-              <p className="text-sm text-slate-400 italic">{t('knownErrors.noContent')}</p>
-            )}
-          </Section>
+      {isReadOnly && <ReadOnlyBanner className="-mt-1 mb-6" />}
 
-          {/* Workaround — Markdown */}
-          {(editing || ke.workaround) && (
-            <Section title={t('knownErrors.fields.workaround')} icon={<Wrench className="w-4 h-4 text-amber-500" />}>
+      {editing && (
+        <Card className="mb-6">
+          <Field label={t('knownErrors.fields.title')} htmlFor={`${uid}-title`} required error={titleError}>
+            <input
+              id={`${uid}-title`}
+              autoFocus
+              value={editTitle}
+              onChange={(e) => { setEditTitle(e.target.value); if (titleError) setTitleError('') }}
+              aria-invalid={!!titleError}
+              className="form-input text-base font-medium"
+            />
+          </Field>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_288px]">
+        {/* ── Main content ──────────────────────────────────────────────── */}
+        <div className="min-w-0 space-y-6">
+          {sections.filter((s) => s.show).map((s) => (
+            <Panel key={s.key} title={s.title} icon={s.icon}>
               {editing ? (
                 <MarkdownEditor
-                  value={editWorkaround}
-                  onChange={setEditWorkaround}
-                  placeholder={t('knownErrors.fields.workaroundPlaceholder')}
-                  rows={5}
+                  value={s.edit}
+                  onChange={s.setEdit}
+                  placeholder={s.placeholder}
+                  rows={s.rows}
                   onImageUpload={handleImageUpload}
                 />
-              ) : ke.workaround ? (
-                <MarkdownRenderer content={ke.workaround} />
-              ) : null}
-            </Section>
-          )}
+              ) : s.value ? (
+                <MarkdownRenderer content={s.value} />
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <Muted>{t('knownErrors.noContent')}</Muted>
+                  {canWrite && (
+                    <Button size="xs" variant="ghost" icon={<Pencil />} onClick={startEdit}>{t('common.edit')}</Button>
+                  )}
+                </div>
+              )}
+            </Panel>
+          ))}
 
-          {/* Attachments */}
-          <AttachmentsPanel knownErrorId={ke.id} refreshKey={attachRefresh} canWrite={canWrite} />
+          <AttachmentsCard
+            key={`att-${ke.id}`}
+            ns="knownErrors.attachments"
+            load={() => attachmentsApi.list(ke.id)}
+            upload={(file) => attachmentsApi.upload(ke.id, file)}
+            remove={(att) => attachmentsApi.delete(ke.id, att.id)}
+            fileUrl={attachmentsApi.fileUrl}
+            canWrite={canWrite}
+            refreshKey={attachRefresh}
+          />
 
-          {/* Comments */}
-          <CommentsPanel knownErrorId={ke.id} canWrite={canWrite} />
+          <CommentsPanel key={`com-${ke.id}`} knownErrorId={ke.id} canWrite={canWrite} />
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-4">
-          {/* Affected Software */}
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
-            <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Monitor className="w-3.5 h-3.5" />
-              {t('knownErrors.fields.affectedSoftware')}
-            </h3>
-            {editing ? (
-              <div className="flex flex-wrap gap-2">
-                {software.map((sw) => (
-                  <button
-                    key={sw.id}
-                    type="button"
-                    onClick={() => toggleSoftware(sw.id)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                      editSoftwareIds.includes(sw.id)
-                        ? 'bg-indigo-600 text-white border-indigo-600'
-                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-400'
-                    }`}
-                  >
-                    {sw.name}
-                    {sw.version && <span className="opacity-60">v{sw.version}</span>}
-                  </button>
-                ))}
-                {software.length === 0 && (
-                  <p className="text-xs text-slate-400">{t('knownErrors.noSoftwareConfigured')}</p>
+        {/* ── Side panel (meta) ─────────────────────────────────────────── */}
+        <aside className={`space-y-4 lg:sticky lg:top-6 lg:self-start ${editing ? 'order-first lg:order-none' : ''}`}>
+          {editing ? (
+            <Panel title={t('knownErrors.details')} icon={<Info />} bodyClassName="p-4">
+              <div className="space-y-4">
+                <Field label={t('knownErrors.fields.status')} htmlFor={`${uid}-status`}>
+                  <Select id={`${uid}-status`} value={editStatus} onChange={(e) => setEditStatus(e.target.value as KnownErrorStatus)}>
+                    {STATUS_ORDER.map((s) => <option key={s} value={s}>{t(`knownErrors.status.${s}`)}</option>)}
+                  </Select>
+                </Field>
+                <Field label={t('knownErrors.fields.severity')} htmlFor={`${uid}-sev`}>
+                  <Select id={`${uid}-sev`} value={editSeverity} onChange={(e) => setEditSeverity(e.target.value as KnownErrorSeverity)}>
+                    {SEVERITY_ORDER.map((s) => <option key={s} value={s}>{t(`knownErrors.severity.${s}`)}</option>)}
+                  </Select>
+                </Field>
+                <Field label={t('knownErrors.fields.ticketNumber')} htmlFor={`${uid}-ticket`} optional>
+                  <input
+                    id={`${uid}-ticket`}
+                    value={editTicketNumber}
+                    onChange={(e) => setEditTicketNumber(e.target.value)}
+                    placeholder={t('knownErrors.fields.ticketNumberPlaceholder')}
+                    className="form-input font-mono"
+                  />
+                </Field>
+                <div>
+                  <p className="form-label">{t('knownErrors.fields.affectedSoftware')}</p>
+                  {software.length > 0 ? (
+                    <SoftwarePicker software={software} selected={editSoftwareIds} onToggle={toggleSoftware} />
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{t('knownErrors.noSoftwareConfigured')}</p>
+                  )}
+                </div>
+                <Field label={t('knownErrors.fields.tags')} htmlFor={`${uid}-tags`} hint={t('knownErrors.tagsHint')}>
+                  <input
+                    id={`${uid}-tags`}
+                    value={editTags}
+                    onChange={(e) => setEditTags(e.target.value)}
+                    placeholder={t('knownErrors.fields.tagsPlaceholder')}
+                    className="form-input"
+                  />
+                </Field>
+              </div>
+            </Panel>
+          ) : (
+            <Panel title={t('knownErrors.details')} icon={<Info />} bodyClassName="">
+              <dl className="divide-y divide-slate-100 dark:divide-slate-800">
+                <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-800">
+                  <MetaRow label={t('knownErrors.fields.status')} icon={<CircleDot />}>
+                    <StatusBadge status={ke.status} />
+                  </MetaRow>
+                  <MetaRow label={t('knownErrors.fields.severity')} icon={<AlertCircle />}>
+                    <SeverityBadge severity={ke.severity} />
+                  </MetaRow>
+                </div>
+                {ke.ticketNumber && (
+                  <MetaRow label={t('knownErrors.fields.ticketNumber')} icon={<Ticket />}>
+                    <span className="flex items-center gap-1">
+                      <span className="truncate font-mono text-sm text-slate-800 dark:text-slate-200">{ke.ticketNumber}</span>
+                      <IconButton size="xs" icon={<Copy />} label={t('knownErrors.copyTicket')} onClick={copyTicket} />
+                    </span>
+                  </MetaRow>
                 )}
-              </div>
-            ) : ke.softwareIds.length > 0 ? (
-              <div className="space-y-2">
-                {ke.softwareIds.map((id) => {
-                  const sw = softwareMap[id]
-                  if (!sw) return null
-                  return (
-                    <div key={id} className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{sw.name}</p>
-                        {(sw.vendor || sw.version) && (
-                          <p className="text-xs text-slate-400">
-                            {[sw.vendor, sw.version ? `v${sw.version}` : undefined].filter(Boolean).join(' · ')}
-                          </p>
-                        )}
-                      </div>
+                <MetaRow label={t('knownErrors.fields.affectedSoftware')} icon={<Monitor />}>
+                  {ke.softwareIds.length > 0 ? (
+                    <ul className="space-y-2">
+                      {ke.softwareIds.map((id) => {
+                        const sw = softwareMap[id]
+                        if (!sw) return null
+                        return (
+                          <li key={id} className="flex items-start gap-2">
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
+                            <div className="min-w-0">
+                              <p className="font-medium text-slate-800 dark:text-slate-200">{sw.name}</p>
+                              {(sw.vendor || sw.version) && (
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  {[sw.vendor, sw.version ? `v${sw.version}` : undefined].filter(Boolean).join(' · ')}
+                                </p>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  ) : (
+                    <Muted>{t('knownErrors.noSoftwareAssigned')}</Muted>
+                  )}
+                </MetaRow>
+                <MetaRow label={t('knownErrors.fields.tags')} icon={<Tag />}>
+                  {ke.tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {ke.tags.map((tag) => (
+                        <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-500/10 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/10">
+                          {tag}
+                        </span>
+                      ))}
                     </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400 italic">{t('knownErrors.noSoftwareAssigned')}</p>
-            )}
-          </div>
+                  ) : (
+                    <Muted>{t('knownErrors.noTags')}</Muted>
+                  )}
+                </MetaRow>
+                <div className="space-y-1.5 px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="flex items-center gap-1.5">
+                    <CalendarPlus className="h-3.5 w-3.5 text-slate-400" />
+                    {t('knownErrors.createdAt')} <span className="tabular-nums text-slate-700 dark:text-slate-300">{fmt(ke.createdAt)}</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <History className="h-3.5 w-3.5 text-slate-400" />
+                    {t('knownErrors.updatedAt')} <span className="tabular-nums text-slate-700 dark:text-slate-300">{fmt(ke.updatedAt)}</span>
+                  </p>
+                </div>
+              </dl>
+            </Panel>
+          )}
+        </aside>
+      </div>
 
-          {/* Tags */}
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
-            <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Tag className="w-3.5 h-3.5" />
-              {t('knownErrors.fields.tags')}
-            </h3>
-            {editing ? (
-              <input
-                value={editTags}
-                onChange={(e) => setEditTags(e.target.value)}
-                placeholder={t('knownErrors.fields.tagsPlaceholder')}
-                className={inputCls}
-              />
-            ) : ke.tags.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {ke.tags.map((tag) => (
-                  <span key={tag} className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs rounded-full">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400 italic">{t('knownErrors.noTags')}</p>
-            )}
+      {/* Sticky save bar while editing */}
+      {editing && (
+        <div className="sticky bottom-4 z-20 mt-6 animate-slide-up">
+          <div className="mx-auto flex max-w-2xl items-center gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-2.5 shadow-popover backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+            <span className="hidden h-2 w-2 shrink-0 rounded-full bg-amber-500 sm:block" aria-hidden />
+            <div className="hidden min-w-0 flex-1 sm:block">
+              <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{t('knownErrors.unsavedChanges')}</p>
+              <p className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">
+                <kbd className="kbd">{isMac ? '⌘' : 'Ctrl'}</kbd>+<kbd className="kbd">S</kbd> {t('knownErrors.toSave')}
+              </p>
+            </div>
+            <Button variant="ghost" onClick={() => setEditing(false)} disabled={saving} className="flex-1 sm:flex-none">{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={saveEdit} loading={saving} className="flex-1 sm:flex-none">{t('common.save')}</Button>
           </div>
         </div>
-      </div>
+      )}
 
       <ConfirmDialog
         isOpen={confirmDelete}
         title={t('knownErrors.deleteEntry')}
         message={t('knownErrors.deleteConfirm', { title: ke.title })}
+        confirmLabel={t('common.delete')}
         onConfirm={handleDelete}
         onClose={() => setConfirmDelete(false)}
         variant="danger"
@@ -726,18 +535,6 @@ export default function KnownErrorDetailPage() {
         cancelLabel={t('confirmDialog.unsavedStay')}
         variant="warning"
       />
-    </div>
-  )
-}
-
-function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2 mb-3">
-        {icon}
-        {title}
-      </h2>
-      {children}
-    </div>
+    </Page>
   )
 }

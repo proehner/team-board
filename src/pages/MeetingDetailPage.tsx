@@ -1,29 +1,33 @@
-import { useState, useEffect, useCallback } from 'react'
-import { createPortal } from 'react-dom'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { usePagePermission } from '@/hooks/usePagePermission'
-import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { format } from 'date-fns'
 import {
-  CalendarClock, ArrowLeft, Plus, Archive,
-  ChevronRight, Trash2, RefreshCw, MapPin, Clock,
-  ChevronUp, ChevronDown, Search,
+  CalendarClock, Plus, Archive, Trash2, RefreshCw, MapPin, Clock, Globe, ListTodo, MoreHorizontal, Pencil, SearchX, ArrowLeft, CheckCircle2,
 } from 'lucide-react'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import { useStore } from '@/store'
 import { useAuthStore } from '@/store/auth'
-import { getMemberDisplayNames } from '@/utils/members'
 import { meetingsApi } from '@/api/client'
-import type { MeetingTopic, MeetingTopicStatus, TeamMember, Team } from '@/types'
+import type { MeetingTopic, MeetingTopicStatus } from '@/types'
+import Page from '@/components/ui/Page'
+import PageHeader from '@/components/ui/PageHeader'
+import Tabs from '@/components/ui/Tabs'
+import Button from '@/components/ui/Button'
+import IconButton from '@/components/ui/IconButton'
+import Badge from '@/components/ui/Badge'
+import DropdownMenu from '@/components/ui/DropdownMenu'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import EmptyState from '@/components/ui/EmptyState'
+import SearchInput from '@/components/ui/SearchInput'
+import Skeleton from '@/components/ui/Skeleton'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { toast, errorMessage } from '@/store/toast'
+import AgendaList from '@/components/meetings/AgendaList'
+import MeetingFormModal, { type MeetingPayload } from '@/components/meetings/MeetingFormModal'
+import { formatSchedule } from '@/components/meetings/meetingUtils'
 
-const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-
-const STATUS_CONFIG: Record<MeetingTopicStatus, { label: string; className: string }> = {
-  todo:        { label: 'meetings.status.todo',        className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
-  in_progress: { label: 'meetings.status.in_progress', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
-  deferred:    { label: 'meetings.status.deferred',    className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
-  fixed:       { label: 'meetings.status.fixed',       className: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' },
-  done:        { label: 'meetings.status.done',        className: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
-}
+type TabKey = 'open' | 'done'
 
 export default function MeetingDetailPage() {
   const { t }           = useTranslation()
@@ -32,444 +36,357 @@ export default function MeetingDetailPage() {
   const meetings        = useStore((s) => s.meetings)
   const members         = useStore((s) => s.members)
   const allMembers      = useStore((s) => s.allMembers)
+  const updateMeeting   = useStore((s) => s.updateMeeting)
+  const deleteMeeting   = useStore((s) => s.deleteMeeting)
   const teams           = useAuthStore((s) => s.teams)
 
   const { canWrite, isReadOnly } = usePagePermission('meetings')
 
   const meeting = meetings.find((m) => m.id === meetingId)
 
-  const [topics, setTopics]             = useState<MeetingTopic[]>([])
-  const [showArchived, setShowArchived] = useState(false)
+  const [topics, setTopics]               = useState<MeetingTopic[]>([])
+  const [tab, setTab]                     = useState<TabKey>('open')
   const [loadingTopics, setLoadingTopics] = useState(true)
-  const [topicFilter, setTopicFilter]   = useState('')
-  const [newTitle, setNewTitle]         = useState('')
-  const [adding, setAdding]             = useState(false)
-  const [showAddForm, setShowAddForm]   = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<MeetingTopic | null>(null)
+  const [topicFilter, setTopicFilter]     = useState('')
+  const [newTitle, setNewTitle]           = useState('')
+  const [adding, setAdding]               = useState(false)
+  const [showAddForm, setShowAddForm]     = useState(false)
+  const [deleteTarget, setDeleteTarget]   = useState<MeetingTopic | null>(null)
+  const [editOpen, setEditOpen]           = useState(false)
+  const [confirmDeleteMeeting, setConfirmDeleteMeeting] = useState(false)
+  const addInputRef = useRef<HTMLInputElement>(null)
 
+  // Load all topics (open + done) once; the tabs split them client-side.
   const loadTopics = useCallback(async () => {
     if (!meetingId) return
     setLoadingTopics(true)
     try {
-      const data = await meetingsApi.listTopics(meetingId, showArchived)
-      setTopics(data)
+      setTopics(await meetingsApi.listTopics(meetingId, true))
+    } catch (err) {
+      toast.error(t('common.loadError'), { description: errorMessage(err) })
     } finally {
       setLoadingTopics(false)
     }
-  }, [meetingId, showArchived])
+  }, [meetingId, t])
 
   useEffect(() => { loadTopics() }, [loadTopics])
 
+  function openAddForm() {
+    setTab('open')
+    setShowAddForm(true)
+    requestAnimationFrame(() => addInputRef.current?.focus())
+  }
+
   async function handleAddTopic() {
-    if (!newTitle.trim() || !meetingId) return
+    if (!newTitle.trim() || !meetingId || adding) return
     setAdding(true)
     try {
       const topic = await meetingsApi.createTopic(meetingId, { title: newTitle.trim() })
       setTopics((prev) => [...prev, topic])
       setNewTitle('')
-      setShowAddForm(false)
+      toast.success(t('meetings.topicAdded'), { description: topic.title })
+      // Keep the form open for quick consecutive entries
+      requestAnimationFrame(() => addInputRef.current?.focus())
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
     } finally {
       setAdding(false)
     }
   }
 
-  async function handleStatusChange(topic: MeetingTopic, newStatus: MeetingTopicStatus) {
+  async function handleStatusChange(topic: MeetingTopic, newStatus: MeetingTopicStatus, silent = false) {
     if (!meetingId) return
-    const updated = await meetingsApi.updateTopic(meetingId, topic.id, { status: newStatus })
-    setTopics((prev) => {
-      const next = prev.map((tp) => (tp.id === topic.id ? updated : tp))
-      return showArchived ? next : next.filter((tp) => tp.status !== 'done')
-    })
+    const previous = topic.status
+    try {
+      const updated = await meetingsApi.updateTopic(meetingId, topic.id, { status: newStatus })
+      setTopics((prev) => prev.map((tp) => (tp.id === topic.id ? updated : tp)))
+      if (silent) return
+      if (newStatus === 'done' || previous === 'done') {
+        toast.success(
+          newStatus === 'done' ? t('meetings.topicDone') : t('meetings.topicReopened'),
+          {
+            description: topic.title,
+            action: { label: t('meetings.undo'), onClick: () => handleStatusChange(updated, previous, true) },
+          },
+        )
+      }
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+    }
   }
 
-  async function handleMove(topic: MeetingTopic, direction: 'up' | 'down') {
+  /** Saves a new agenda order (open topics in display order) — optimistic, reverted on error. */
+  async function handleReorder(orderedIds: string[]) {
     if (!meetingId) return
-    const active = topics.filter((tp) => tp.status !== 'done')
-    const idx    = active.findIndex((tp) => tp.id === topic.id)
-    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
-    if (swapIdx < 0 || swapIdx >= active.length) return
-
-    const swapTopic = active[swapIdx]
-    const [updA, updB] = await Promise.all([
-      meetingsApi.updateTopic(meetingId, topic.id,     { sortOrder: swapTopic.sortOrder }),
-      meetingsApi.updateTopic(meetingId, swapTopic.id, { sortOrder: topic.sortOrder }),
-    ])
+    const previous = topics
+    const position = new Map(orderedIds.map((id, i) => [id, i]))
     setTopics((prev) => prev
-      .map((tp) => {
-        if (tp.id === updA.id) return updA
-        if (tp.id === updB.id) return updB
-        return tp
-      })
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-    )
+      .map((tp) => (position.has(tp.id) ? { ...tp, sortOrder: position.get(tp.id)! } : tp))
+      .sort((a, b) => a.sortOrder - b.sortOrder))
+    try {
+      setTopics(await meetingsApi.reorderTopics(meetingId, orderedIds))
+    } catch (err) {
+      setTopics(previous)
+      toast.error(t('meetings.reorderError'), { description: errorMessage(err) })
+    }
   }
 
   async function handleDeleteTopic() {
     if (!deleteTarget || !meetingId) return
-    await meetingsApi.deleteTopic(meetingId, deleteTarget.id)
-    setTopics((prev) => prev.filter((tp) => tp.id !== deleteTarget.id))
-    setDeleteTarget(null)
+    try {
+      await meetingsApi.deleteTopic(meetingId, deleteTarget.id)
+      setTopics((prev) => prev.filter((tp) => tp.id !== deleteTarget.id))
+      toast.success(t('common.deleted'), { description: deleteTarget.title })
+    } catch (err) {
+      toast.error(t('common.deleteError'), { description: errorMessage(err) })
+      throw err
+    }
   }
+
+  async function handleUpdateMeeting(payload: MeetingPayload) {
+    try {
+      await updateMeeting(meeting!.id, payload)
+      toast.success(t('common.saved'))
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+      throw err
+    }
+  }
+
+  async function handleDeleteMeeting() {
+    try {
+      await deleteMeeting(meeting!.id)
+      toast.success(t('common.deleted'), { description: meeting!.title })
+      navigate('/meetings')
+    } catch (err) {
+      toast.error(t('common.deleteError'), { description: errorMessage(err) })
+      throw err
+    }
+  }
+
+  const activeTopics = useMemo(() => topics.filter((tp) => tp.status !== 'done'), [topics])
+  const doneTopics   = useMemo(
+    () => topics
+      .filter((tp) => tp.status === 'done')
+      .sort((a, b) => new Date(b.closedAt ?? b.updatedAt).getTime() - new Date(a.closedAt ?? a.updatedAt).getTime()),
+    [topics],
+  )
 
   if (!meeting) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-slate-500">{t('meetings.notFound')}</p>
-      </div>
+      <Page size="narrow">
+        <PageHeader back={{ to: '/meetings', label: t('meetings.title') }} title={t('meetings.title')} />
+        <div className="surface">
+          <EmptyState
+            icon={<CalendarClock />}
+            title={t('meetings.notFound')}
+            action={<Button variant="secondary" icon={<ArrowLeft />} onClick={() => navigate('/meetings')}>{t('meetings.backToList')}</Button>}
+          />
+        </div>
+      </Page>
     )
   }
 
-  const activeTopics = topics.filter((tp) => tp.status !== 'done')
-  const doneTopics   = topics.filter((tp) => tp.status === 'done')
-
   const filterQuery = topicFilter.trim().toLowerCase()
-  const filteredActiveTopics = filterQuery
-    ? activeTopics.filter((tp) =>
-        tp.title.toLowerCase().includes(filterQuery) ||
-        (tp.description ?? '').toLowerCase().includes(filterQuery),
-      )
-    : activeTopics
-  const filteredDoneTopics = filterQuery
-    ? doneTopics.filter((tp) =>
-        tp.title.toLowerCase().includes(filterQuery) ||
-        (tp.description ?? '').toLowerCase().includes(filterQuery),
-      )
-    : doneTopics
+  const matches = (tp: MeetingTopic) =>
+    !filterQuery ||
+    tp.title.toLowerCase().includes(filterQuery) ||
+    (tp.description ?? '').toLowerCase().includes(filterQuery)
 
-  function formatSchedule() {
-    const parts: string[] = []
-    if (meeting!.dayOfWeek != null) parts.push(t(`meetings.days.${DAY_KEYS[meeting!.dayOfWeek]}`))
-    if (meeting!.meetingTime) parts.push(meeting!.meetingTime)
-    return parts.join(', ')
-  }
+  const list = (tab === 'open' ? activeTopics : doneTopics).filter(matches)
+  // Agenda positions stay visible while filtering (they refer to the full agenda)
+  const positions = tab === 'open' ? new Map(activeTopics.map((tp, i) => [tp.id, i + 1])) : undefined
+  const schedule = formatSchedule(t, meeting)
+  const memberPool = meeting.isGlobal ? allMembers : members
+
+  const inProgressCount = activeTopics.filter((tp) => tp.status === 'in_progress').length
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
-      {isReadOnly && <ReadOnlyBanner />}
-      {/* Back + Header */}
-      <div className="space-y-3">
-        <button
-          onClick={() => navigate('/meetings')}
-          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          {t('meetings.title')}
-        </button>
-
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-violet-500 flex items-center justify-center shrink-0 mt-0.5">
-            <CalendarClock className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">{meeting.title}</h1>
-            {meeting.description && (
-              <p className="text-sm text-slate-500 mt-0.5">{meeting.description}</p>
-            )}
-            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-              <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                <RefreshCw className="w-3.5 h-3.5" />
-                {t(`meetings.recurrence.${meeting.recurrence}`)}
+    <Page size="default">
+      <PageHeader
+        back={{ to: '/meetings', label: t('meetings.title') }}
+        title={meeting.title}
+        meta={meeting.isGlobal && <Badge variant="success" icon={<Globe />} label={t('meetings.global')} />}
+        subtitle={
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="inline-flex items-center gap-1.5">
+              <RefreshCw className="h-3.5 w-3.5 text-slate-400" />
+              {t(`meetings.recurrence.${meeting.recurrence}`)}
+            </span>
+            {schedule && (
+              <span className="inline-flex items-center gap-1.5 tabular-nums">
+                <Clock className="h-3.5 w-3.5 text-slate-400" />
+                {schedule}
               </span>
-              {formatSchedule() && (
-                <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <Clock className="w-3.5 h-3.5" />
-                  {formatSchedule()}
-                </span>
-              )}
-              {meeting.location && (
-                <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <MapPin className="w-3.5 h-3.5" />
-                  {meeting.location}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Agenda Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('meetings.agenda')}</h2>
-          <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-            {activeTopics.length} {t('meetings.openTopics')}
+            )}
+            {meeting.location && (
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                {meeting.location}
+              </span>
+            )}
           </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowArchived((v) => !v)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
-              showArchived
-                ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-                : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Archive className="w-3.5 h-3.5" />
-            {t('meetings.showArchived')}
-            {doneTopics.length > 0 && !showArchived && (
-              <span className="bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-full px-1.5 py-0 text-xs">
-                {doneTopics.length}
-              </span>
-            )}
-          </button>
-          {canWrite && (
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              {t('meetings.addTopic')}
-            </button>
-          )}
-        </div>
-      </div>
+        }
+        actions={
+          canWrite && (
+            <>
+              <Button variant="primary" icon={<Plus />} onClick={openAddForm}>
+                {t('meetings.addTopic')}
+              </Button>
+              <DropdownMenu
+                trigger={(p) => (
+                  <IconButton {...p} variant="secondary" size="md" icon={<MoreHorizontal />} label={t('common.moreActions')} />
+                )}
+                items={[
+                  { label: t('meetings.editMeeting'), icon: <Pencil />, onClick: () => setEditOpen(true) },
+                  { type: 'divider' },
+                  { label: t('meetings.deleteTitle'), icon: <Trash2 />, danger: true, onClick: () => setConfirmDeleteMeeting(true) },
+                ]}
+              />
+            </>
+          )
+        }
+      >
+        {isReadOnly && <ReadOnlyBanner className="mb-5" />}
+        {meeting.description && (
+          <p className="mb-5 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            {meeting.description}
+          </p>
+        )}
+        <Tabs<TabKey>
+          aria-label={t('meetings.agenda')}
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'open', label: t('meetings.agenda'), icon: ListTodo, count: loadingTopics ? undefined : activeTopics.length },
+            { value: 'done', label: t('meetings.archivedTopics'), icon: Archive, count: loadingTopics ? undefined : doneTopics.length },
+          ]}
+        />
+      </PageHeader>
 
-      {/* Topic filter */}
+      {/* Toolbar */}
       {topics.length > 0 && (
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
+        <div className="-mt-1 mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <SearchInput
             value={topicFilter}
-            onChange={(e) => setTopicFilter(e.target.value)}
-            placeholder={t('common.search')}
-            className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            onChange={setTopicFilter}
+            size="sm"
+            placeholder={t('meetings.searchTopics')}
+            className="w-full sm:w-72"
+            aria-label={t('common.search')}
           />
+          <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400 sm:ml-auto">
+            {tab === 'open' && filterQuery && canWrite
+              ? t('meetings.reorderFilterHint')
+              : tab === 'open'
+                ? t('meetings.agendaSummary', { open: activeTopics.length, inProgress: inProgressCount })
+                : t('meetings.doneSummary', { count: doneTopics.length })}
+          </span>
         </div>
       )}
 
       {/* Add topic form */}
-      {showAddForm && (
-        <div className="flex gap-2">
+      {showAddForm && tab === 'open' && (
+        <form
+          onSubmit={(e) => { e.preventDefault(); handleAddTopic() }}
+          className="surface mb-4 flex flex-col gap-2 p-3 animate-slide-down sm:flex-row sm:items-center"
+        >
           <input
+            ref={addInputRef}
             autoFocus
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleAddTopic(); if (e.key === 'Escape') setShowAddForm(false) }}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setShowAddForm(false); setNewTitle('') } }}
             placeholder={t('meetings.topicTitlePlaceholder')}
-            className="flex-1 px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-violet-300 dark:border-violet-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            aria-label={t('meetings.addTopic')}
+            className="form-input flex-1"
           />
-          <button
-            onClick={handleAddTopic}
-            disabled={!newTitle.trim() || adding}
-            className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            {adding ? '…' : t('common.add')}
-          </button>
-          <button
-            onClick={() => { setShowAddForm(false); setNewTitle('') }}
-            className="px-3 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-        </div>
+          <div className="flex items-center gap-2">
+            <span className="hidden text-2xs text-slate-400 lg:inline">
+              <kbd className="kbd">Enter</kbd> {t('meetings.toAdd')} · <kbd className="kbd">Esc</kbd> {t('meetings.toClose')}
+            </span>
+            <Button variant="ghost" onClick={() => { setShowAddForm(false); setNewTitle('') }} className="ml-auto sm:ml-0">
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" variant="primary" icon={<Plus />} loading={adding} disabled={!newTitle.trim()}>
+              {t('common.add')}
+            </Button>
+          </div>
+        </form>
       )}
 
       {/* Topics list */}
       {loadingTopics ? (
-        <div className="text-center py-8 text-slate-400 text-sm">{t('meetings.loading')}</div>
-      ) : topics.length === 0 ? (
-        <div className="text-center py-12 text-slate-400">
-          <CalendarClock className="w-8 h-8 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">{t('meetings.emptyAgenda')}</p>
+        <div className="surface divide-y divide-slate-100 dark:divide-slate-800">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3.5">
+              <Skeleton className="h-5 w-24 rounded-full" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-1/2" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : list.length === 0 ? (
+        <div className="surface">
+          {filterQuery ? (
+            <EmptyState
+              compact
+              icon={<SearchX />}
+              title={t('meetings.noResults')}
+              action={<Button variant="secondary" size="sm" onClick={() => setTopicFilter('')}>{t('common.resetFilters')}</Button>}
+            />
+          ) : tab === 'open' ? (
+            <EmptyState
+              icon={<CheckCircle2 />}
+              title={t('meetings.emptyAgenda')}
+              description={t('meetings.emptyAgendaHint')}
+              action={canWrite && !showAddForm && (
+                <Button variant="primary" icon={<Plus />} onClick={openAddForm}>{t('meetings.addTopic')}</Button>
+              )}
+            />
+          ) : (
+            <EmptyState icon={<Archive />} title={t('meetings.emptyDone')} />
+          )}
         </div>
       ) : (
-        <div className="space-y-1.5">
-          {/* Active topics */}
-          {filteredActiveTopics.map((topic, idx) => (
-            <TopicRow
-              key={topic.id}
-              topic={topic}
-              meetingId={meeting.id}
-              members={meeting.isGlobal ? allMembers : members}
-              teams={teams}
-              isFirst={idx === 0}
-              isLast={idx === filteredActiveTopics.length - 1}
-              canWrite={canWrite}
-              onStatusChange={handleStatusChange}
-              onMove={handleMove}
-              onDelete={() => setDeleteTarget(topic)}
-              onNavigate={() => navigate(`/meetings/${meeting.id}/topics/${topic.id}`)}
-              t={t}
-            />
-          ))}
-
-          {/* Empty filter result */}
-          {filterQuery && filteredActiveTopics.length === 0 && filteredDoneTopics.length === 0 && (
-            <div className="text-center py-8 text-slate-400 text-sm">{t('meetings.noResults')}</div>
-          )}
-
-          {/* Done / archived section */}
-          {showArchived && filteredDoneTopics.length > 0 && (
-            <>
-              <div className="flex items-center gap-2 py-2">
-                <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-                <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
-                  <Archive className="w-3 h-3" /> {t('meetings.archivedTopics')}
-                </span>
-                <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-              </div>
-              {filteredDoneTopics.map((topic) => (
-                <TopicRow
-                  key={topic.id}
-                  topic={topic}
-                  meetingId={meeting.id}
-                  members={meeting.isGlobal ? allMembers : members}
-                  teams={teams}
-                  isFirst={false}
-                  isLast={false}
-                  canWrite={canWrite}
-                  onStatusChange={handleStatusChange}
-                  onMove={() => {/* no sorting in archive */}}
-                  onDelete={() => setDeleteTarget(topic)}
-                  onNavigate={() => navigate(`/meetings/${meeting.id}/topics/${topic.id}`)}
-                  t={t}
-                />
-              ))}
-            </>
-          )}
-        </div>
+        <AgendaList
+          topics={list}
+          positions={positions}
+          sortable={canWrite && tab === 'open' && !filterQuery && list.length > 1}
+          canWrite={canWrite}
+          members={memberPool}
+          teams={teams}
+          topicHref={(topic) => `/meetings/${meeting.id}/topics/${topic.id}`}
+          onReorder={handleReorder}
+          onStatusChange={handleStatusChange}
+          onDelete={setDeleteTarget}
+        />
       )}
 
-      {/* Delete confirm */}
-      {deleteTarget && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
-          <div className="relative bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">{t('meetings.deleteTopicTitle')}</h2>
-            <p className="text-sm text-slate-500">{t('meetings.deleteTopicConfirm', { title: deleteTarget.title })}</p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 transition-colors">
-                {t('common.cancel')}
-              </button>
-              <button onClick={handleDeleteTopic} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors">
-                {t('common.delete')}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
-    </div>
-  )
-}
+      {/* Delete topic */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        title={t('meetings.deleteTopicTitle')}
+        message={t('meetings.deleteTopicConfirm', { title: deleteTarget?.title ?? '' })}
+        confirmLabel={t('common.delete')}
+        onConfirm={handleDeleteTopic}
+        onClose={() => setDeleteTarget(null)}
+        variant="danger"
+      />
 
-interface TopicRowProps {
-  topic: MeetingTopic
-  meetingId: string
-  members: TeamMember[]
-  teams: Team[]
-  isFirst: boolean
-  isLast: boolean
-  canWrite: boolean
-  onStatusChange: (topic: MeetingTopic, status: MeetingTopicStatus) => void
-  onMove: (topic: MeetingTopic, dir: 'up' | 'down') => void
-  onDelete: () => void
-  onNavigate: () => void
-  t: (key: string, opts?: Record<string, unknown>) => string
-}
-
-function TopicRow({ topic, members, teams, isFirst, isLast, canWrite, onStatusChange, onMove, onDelete, onNavigate, t }: TopicRowProps) {
-  const isDone    = topic.status === 'done'
-  const assignees = members.filter((m) => topic.assigneeIds?.includes(m.id))
-  const assigneeDisplayNames = getMemberDisplayNames(assignees, teams)
-  const cfg       = STATUS_CONFIG[topic.status]
-
-  const STATUSES: MeetingTopicStatus[] = ['todo', 'in_progress', 'deferred', 'fixed', 'done']
-
-  return (
-    <div
-      onClick={onNavigate}
-      className={`group flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all ${
-        isDone
-          ? 'bg-slate-50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-800 opacity-60'
-          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-sm'
-      }`}
-    >
-      {/* Sort arrows (only for active topics with write permission) */}
-      {!isDone && canWrite && (
-        <div className="flex flex-col gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={(e) => { e.stopPropagation(); onMove(topic, 'up') }}
-            disabled={isFirst}
-            className="p-0.5 rounded text-slate-400 hover:text-violet-600 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronUp className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onMove(topic, 'down') }}
-            disabled={isLast}
-            className="p-0.5 rounded text-slate-400 hover:text-violet-600 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronDown className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-      {(isDone || !canWrite) && <div className="w-5 shrink-0" />}
-
-      {/* Status badge (clickable dropdown) */}
-      <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-        <select
-          value={topic.status}
-          onChange={(e) => onStatusChange(topic, e.target.value as MeetingTopicStatus)}
-          disabled={!canWrite}
-          className={`text-xs font-medium px-2 py-1 rounded-full border-0 ${canWrite ? 'cursor-pointer' : 'cursor-default'} appearance-none focus:outline-none focus:ring-2 focus:ring-violet-500 ${cfg.className}`}
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>{t(`meetings.status.${s}`)}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Title + description */}
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${isDone ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
-          {topic.title}
-        </p>
-        {topic.description && (
-          <p className="text-xs text-slate-400 truncate mt-0.5">{topic.description.replace(/[#*`_>\-]/g, '').slice(0, 100)}</p>
-        )}
-      </div>
-
-      {/* Ticket count badge */}
-      {topic.ticketIds?.length > 0 && (
-        <span className="shrink-0 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded-full">
-          🎫 {topic.ticketIds.length}
-        </span>
-      )}
-
-      {/* Assignees */}
-      {assignees.length > 0 && (
-        <div className="flex items-center -space-x-1.5 shrink-0">
-          {assignees.slice(0, 3).map((m) => (
-            <div
-              key={m.id}
-              title={assigneeDisplayNames.get(m.id) ?? m.name}
-              className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center text-xs font-bold text-white shrink-0"
-              style={{ backgroundColor: m.avatarColor }}
-            >
-              {m.name.charAt(0).toUpperCase()}
-            </div>
-          ))}
-          {assignees.length > 3 && (
-            <div className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-900 bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-medium text-slate-600 dark:text-slate-300">
-              +{assignees.length - 3}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Actions */}
-      {canWrite && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete() }}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-      <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0 group-hover:text-violet-400 transition-colors" />
-    </div>
+      {/* Edit / delete meeting */}
+      <MeetingFormModal isOpen={editOpen} onClose={() => setEditOpen(false)} meeting={meeting} onSubmit={handleUpdateMeeting} />
+      <ConfirmDialog
+        isOpen={confirmDeleteMeeting}
+        title={t('meetings.deleteTitle')}
+        message={t('meetings.deleteConfirm', { title: meeting.title })}
+        confirmLabel={t('common.delete')}
+        onConfirm={handleDeleteMeeting}
+        onClose={() => setConfirmDeleteMeeting(false)}
+        variant="danger"
+      />
+    </Page>
   )
 }

@@ -1,82 +1,58 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, Star, Zap, RefreshCw, MessageSquare, Shield,
-  HeartPulse, Activity, Eye, Trophy, Settings, LogOut, ChevronDown,
-  Sun, Moon, Bug, X, ChevronRight, CalendarClock, Map, Search,
-  Ticket, KeyRound,
+  Shield, LogOut, ChevronsUpDown, Sun, Moon, X, Search, Check,
+  KeyRound, PanelLeftClose, PanelLeftOpen, Languages,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { useStore } from '@/store'
 import i18n from '@/i18n'
 import ChangePasswordDialog from '@/components/ui/ChangePasswordDialog'
+import DropdownMenu from '@/components/ui/DropdownMenu'
+import { useClickOutside } from '@/hooks/useClickOutside'
+import { useNavGroups } from './navItems'
 
 interface SidebarProps {
   onClose?: () => void
   onOpenSearch?: () => void
+  collapsed?: boolean
+  onToggleCollapsed?: () => void
 }
 
-export default function Sidebar({ onClose, onOpenSearch }: SidebarProps) {
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+
+export default function Sidebar({ onClose, onOpenSearch, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { t } = useTranslation()
   const user          = useAuthStore((s) => s.user)
   const logout        = useAuthStore((s) => s.logout)
-  const isAllowed     = useAuthStore((s) => s.isAllowed)
   const teams         = useAuthStore((s) => s.teams)
   const currentTeamId = useAuthStore((s) => s.currentTeamId)
   const selectTeam    = useAuthStore((s) => s.selectTeam)
   const navigate      = useNavigate()
   const isDark        = useThemeStore((s) => s.isDark)
-  const toggle        = useThemeStore((s) => s.toggle)
+  const toggleTheme   = useThemeStore((s) => s.toggle)
   const loadAll       = useStore((s) => s.loadAll)
 
-  const [teamMenuOpen, setTeamMenuOpen]         = useState(false)
+  const [teamMenuOpen, setTeamMenuOpen]             = useState(false)
   const [changePasswordOpen, setChangePasswordOpen] = useState(false)
+  const teamRef = useRef<HTMLDivElement>(null)
+  const closeTeamMenu = useCallback(() => setTeamMenuOpen(false), [])
+  useClickOutside(teamRef, closeTeamMenu, teamMenuOpen)
 
-  const currentTeam = teams.find((t) => t.id === currentTeamId)
+  const currentTeam = teams.find((tm) => tm.id === currentTeamId)
 
   function handleSelectTeam(teamId: string) {
-    selectTeam(teamId)
     setTeamMenuOpen(false)
+    if (teamId === currentTeamId) return
+    selectTeam(teamId)
     loadAll()
     navigate('/dashboard', { replace: true })
     onClose?.()
   }
 
-  const allNavGroups = [
-    {
-      items: [
-        { to: '/dashboard',     icon: LayoutDashboard, label: t('nav.dashboard'),     page: 'dashboard' },
-        { to: '/team',          icon: Users,           label: t('nav.team'),           page: 'team' },
-        { to: '/kompetenzen',   icon: Star,            label: t('nav.competencies'),   page: 'kompetenzen' },
-      ],
-    },
-    {
-      items: [
-        { to: '/sprints',       icon: Zap,             label: t('nav.sprints'),        page: 'sprints' },
-        { to: '/rotation',      icon: RefreshCw,       label: t('nav.rotation'),       page: 'rotation' },
-        { to: '/retro',         icon: MessageSquare,   label: t('nav.retrospectives'), page: 'retro' },
-        { to: '/health',        icon: HeartPulse,      label: t('nav.teamHealth'),     page: 'health' },
-        { to: '/pulse',         icon: Activity,        label: t('nav.pulseCheck'),     page: 'pulse' },
-        { to: '/stakeholder',   icon: Eye,             label: t('nav.stakeholder'),    page: 'stakeholder' },
-      ],
-    },
-    {
-      items: [
-        { to: '/azure-ranking', icon: Trophy,          label: t('nav.azureRankings'), page: 'azure-ranking' },
-        { to: '/known-errors',  icon: Bug,             label: t('nav.knownErrors'),   page: 'known-errors' },
-        { to: '/meetings',      icon: CalendarClock,   label: t('nav.meetings'),      page: 'meetings' },
-        { to: '/tickets',       icon: Ticket,          label: t('nav.tickets'),       page: 'tickets' },
-        { to: '/roadmap',       icon: Map,             label: t('nav.roadmap'),       page: 'roadmap' },
-      ],
-    },
-  ]
-
-  // Filter out pages with 'none' permission so they are completely hidden
-  const navGroups = allNavGroups
-    .map((g) => ({ items: g.items.filter((item) => isAllowed(item.page)) }))
-    .filter((g) => g.items.length > 0)
+  const navGroups = useNavGroups()
 
   function handleLogout() {
     logout()
@@ -84,166 +60,237 @@ export default function Sidebar({ onClose, onOpenSearch }: SidebarProps) {
   }
 
   const navLinkCls = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+    `group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors ${
+      collapsed ? 'justify-center h-9 w-9 mx-auto' : 'h-8 px-2.5'
+    } ${
       isActive
-        ? 'bg-indigo-600 text-white'
-        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+        ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100'
     }`
 
+  const shortcut = isMac ? '⌘K' : 'Ctrl K'
+
   return (
-    <aside className="w-60 shrink-0 bg-slate-900 flex flex-col h-full">
-      {/* Logo + close button (mobile) */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
-        <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center shrink-0">
-          <Shield className="w-4 h-4 text-white" />
+    <aside
+      className={`flex h-full shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 ease-out dark:border-slate-800 dark:bg-slate-900 ${
+        collapsed ? 'w-[72px]' : 'w-64'
+      }`}
+    >
+      {/* ── Brand ──────────────────────────────────────────────────────────── */}
+      <div className={`flex h-16 shrink-0 items-center gap-3 ${collapsed ? 'justify-center px-2' : 'px-4'}`}>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-sm shadow-indigo-500/30 ring-1 ring-inset ring-white/10">
+          <Shield className="h-[18px] w-[18px] text-white" />
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white leading-tight">Team Board</p>
-          <p className="text-xs text-slate-400 leading-tight">Scrum Management</p>
-        </div>
+        {!collapsed && (
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold leading-tight text-slate-900 dark:text-white">Team Board</p>
+            <p className="text-xs leading-tight text-slate-500 dark:text-slate-400">Scrum Management</p>
+          </div>
+        )}
         {onClose && (
           <button
             onClick={onClose}
-            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-            aria-label="Navigation schließen"
+            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 md:hidden"
+            aria-label={t('sidebar.closeNavigation')}
           >
-            <X className="w-4 h-4" />
+            <X className="h-4 w-4" />
           </button>
         )}
       </div>
 
-      {/* ── Team Switcher ──────────────────────────────────────────────────── */}
-      {teams.length > 0 && (
-        <div className="px-3 py-2 border-b border-slate-800 relative">
-          <button
-            onClick={() => setTeamMenuOpen((o) => !o)}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-left"
-          >
-            <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center shrink-0">
-              <span className="text-white text-xs font-bold">
+      {/* ── Team Switcher + Search ─────────────────────────────────────────── */}
+      <div className={`space-y-2 pb-3 ${collapsed ? 'px-3' : 'px-3'}`}>
+        {teams.length > 0 && (
+          <div ref={teamRef} className="relative">
+            <button
+              onClick={() => setTeamMenuOpen((o) => !o)}
+              aria-expanded={teamMenuOpen}
+              aria-haspopup="listbox"
+              title={collapsed ? currentTeam?.name : undefined}
+              className={`flex w-full items-center gap-2.5 rounded-lg border border-slate-200 bg-white text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-800/60 dark:hover:border-slate-600 dark:hover:bg-slate-800 ${
+                collapsed ? 'justify-center p-1.5' : 'px-2 py-1.5'
+              }`}
+            >
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-slate-700 to-slate-900 text-xs font-bold text-white dark:from-slate-600 dark:to-slate-700">
                 {currentTeam?.name.charAt(0).toUpperCase() ?? '?'}
-              </span>
-            </div>
-            <span className="flex-1 text-xs font-medium text-white truncate">
-              {currentTeam?.name ?? t('teams.selectTitle')}
-            </span>
-            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${teamMenuOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          {teamMenuOpen && (
-            <div className="absolute left-3 right-3 top-full mt-1 z-50 bg-slate-800 border border-slate-700 rounded-lg shadow-lg overflow-hidden">
-              {teams.map((team) => (
-                <button
-                  key={team.id}
-                  onClick={() => handleSelectTeam(team.id)}
-                  className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
-                    team.id === currentTeamId
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-300 hover:bg-slate-700'
-                  }`}
-                >
-                  <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 text-xs font-bold ${
-                    team.id === currentTeamId ? 'bg-white/20 text-white' : 'bg-slate-600 text-slate-300'
-                  }`}>
-                    {team.name.charAt(0).toUpperCase()}
+              </div>
+              {!collapsed && (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-2xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500 leading-none mb-0.5">{t('sidebar.team')}</p>
+                    <p className="truncate text-sm font-semibold leading-tight text-slate-800 dark:text-slate-100">
+                      {currentTeam?.name ?? t('teams.selectTitle')}
+                    </p>
                   </div>
-                  <span className="flex-1 text-xs font-medium truncate">{team.name}</span>
-                  {team.id === currentTeamId && <ChevronRight className="w-3 h-3 shrink-0" />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                  <ChevronsUpDown className="h-4 w-4 shrink-0 text-slate-400" />
+                </>
+              )}
+            </button>
 
-      {/* ── Search trigger ─────────────────────────────────────────────────── */}
-      <div className="px-3 py-2 border-b border-slate-800">
+            {teamMenuOpen && (
+              <div
+                role="listbox"
+                className={`absolute z-50 mt-1.5 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-popover animate-slide-down dark:border-slate-700 dark:bg-slate-900 ${
+                  collapsed ? 'left-0 w-60' : 'left-0 right-0'
+                }`}
+              >
+                <p className="px-2.5 pb-1 pt-2 section-label">{t('sidebar.switchTeam')}</p>
+                {teams.map((team) => {
+                  const active = team.id === currentTeamId
+                  return (
+                    <button
+                      key={team.id}
+                      role="option"
+                      aria-selected={active}
+                      onClick={() => handleSelectTeam(team.id)}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                        active
+                          ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+                          : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
+                        active ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                      }`}>
+                        {team.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{team.name}</p>
+                        {team.description && <p className="truncate text-xs text-slate-500 dark:text-slate-400">{team.description}</p>}
+                      </div>
+                      {active && <Check className="h-4 w-4 shrink-0" />}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           onClick={onOpenSearch}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-800/60 hover:bg-slate-800 transition-colors text-left"
+          title={collapsed ? `${t('sidebar.search')} (${shortcut})` : undefined}
+          aria-label={t('sidebar.search')}
+          className={`group flex w-full items-center gap-2.5 rounded-lg bg-slate-100 text-left transition-colors hover:bg-slate-200/70 dark:bg-slate-800/60 dark:hover:bg-slate-800 ${
+            collapsed ? 'justify-center h-10' : 'h-9 px-2.5'
+          }`}
         >
-          <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <span className="flex-1 text-xs text-slate-400">Suchen…</span>
-          <kbd className="text-[10px] text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded font-mono">⌃K</kbd>
+          <Search className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300" />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-sm text-slate-500 dark:text-slate-400">{t('sidebar.search')}</span>
+              <kbd className="kbd [@media(hover:none)]:hidden">{shortcut}</kbd>
+            </>
+          )}
         </button>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-3 py-3 overflow-y-auto scrollbar-thin">
-        {navGroups.map((group, gi) => {
-          const visible = group.items.filter((item) => isAllowed(item.page))
-          if (visible.length === 0) return null
-          return (
-            <div key={gi} className={gi > 0 ? 'mt-1 pt-1 border-t border-slate-800' : ''}>
-              {visible.map(({ to, icon: Icon, label }) => (
-                <NavLink key={to} to={to} onClick={onClose} className={navLinkCls}>
-                  <Icon className="w-4 h-4 shrink-0" />
-                  {label}
+      {/* ── Navigation ─────────────────────────────────────────────────────── */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin px-3 pb-3" aria-label={t('sidebar.mainNavigation')}>
+        {navGroups.map((group, gi) => (
+          <div key={gi} className={gi > 0 ? 'mt-4' : 'mt-1'}>
+            {collapsed ? (
+              gi > 0 && <div className="mx-auto mb-2 h-px w-8 bg-slate-200 dark:bg-slate-800" />
+            ) : (
+              <p className="mb-1 px-2.5 section-label !text-slate-400 dark:!text-slate-500">{group.label}</p>
+            )}
+            <div className="space-y-0.5">
+              {group.items.map(({ to, icon: Icon, label }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  onClick={onClose}
+                  className={navLinkCls}
+                  title={collapsed ? label : undefined}
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && !collapsed && (
+                        <span className="absolute -left-3 top-1 bottom-1 w-[3px] rounded-r-full bg-indigo-600 dark:bg-indigo-400" aria-hidden />
+                      )}
+                      <Icon
+                        className={`h-4 w-4 shrink-0 transition-colors ${
+                          isActive
+                            ? 'text-indigo-600 dark:text-indigo-400'
+                            : 'text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300'
+                        }`}
+                      />
+                      {!collapsed && <span className="truncate">{label}</span>}
+                    </>
+                  )}
                 </NavLink>
               ))}
             </div>
-          )
-        })}
-
-        {/* Admin section */}
-        {user?.role === 'admin' && (
-          <div className="mt-1 pt-1 border-t border-slate-800">
-            <NavLink to="/admin" onClick={onClose} className={navLinkCls}>
-              <Settings className="w-4 h-4 shrink-0" />
-              {t('nav.userManagement')}
-            </NavLink>
           </div>
-        )}
+        ))}
       </nav>
 
-      {/* User + controls */}
-      <div className="px-3 py-3 border-t border-slate-800">
+      {/* ── Footer: user menu + collapse toggle ────────────────────────────── */}
+      <div className={`flex gap-1 border-t border-slate-200 p-3 dark:border-slate-800 ${collapsed ? 'flex-col-reverse items-center' : 'items-center'}`}>
         {user && (
-          <div className="flex items-start gap-2 px-2 py-1.5 mb-1">
-            <div className="w-7 h-7 rounded-full bg-indigo-500 flex items-center justify-center text-white text-xs font-semibold shrink-0 mt-0.5">
-              {user.displayName.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-white truncate leading-tight">{user.displayName}</p>
-              {/* Role label + controls on one line */}
-              <div className="flex items-center justify-between mt-0.5">
-                <p className="text-xs text-slate-500 truncate">
-                  {user.role === 'admin' ? t('sidebar.administrator') : t('sidebar.user')}
-                </p>
-                <div className="flex items-center gap-0.5 shrink-0 ml-1">
-                  <button
-                    onClick={toggle}
-                    title={isDark ? t('sidebar.enableLightMode') : t('sidebar.enableDarkMode')}
-                    className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                  >
-                    {isDark ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
-                  </button>
-                  <button
-                    onClick={() => i18n.changeLanguage(i18n.language === 'de' ? 'en' : 'de')}
-                    title={t('sidebar.switchLanguage')}
-                    className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors text-[10px] font-medium leading-none"
-                  >
-                    {i18n.language === 'de' ? 'EN' : 'DE'}
-                  </button>
-                  <button
-                    onClick={() => setChangePasswordOpen(true)}
-                    title={t('changePassword.title')}
-                    className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                  >
-                    <KeyRound className="w-3 h-3" />
-                  </button>
+          <DropdownMenu
+            side="top"
+            align="start"
+            width="w-60"
+            className={collapsed ? '' : 'min-w-0 flex-1'}
+            trigger={(p) => (
+              <button
+                {...p}
+                title={collapsed ? user.displayName : undefined}
+                className={`flex w-full items-center gap-2.5 rounded-lg text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                  collapsed ? 'justify-center p-1' : 'px-2 py-1.5'
+                } ${p['aria-expanded'] ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 text-xs font-semibold text-white">
+                  {user.displayName.charAt(0).toUpperCase()}
                 </div>
-              </div>
-            </div>
-          </div>
+                {!collapsed && (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium leading-tight text-slate-800 dark:text-slate-100">{user.displayName}</p>
+                      <p className="truncate text-xs leading-tight text-slate-500 dark:text-slate-400">
+                        {user.role === 'admin' ? t('sidebar.administrator') : t('sidebar.user')}
+                      </p>
+                    </div>
+                    <ChevronsUpDown className="h-4 w-4 shrink-0 text-slate-400" />
+                  </>
+                )}
+              </button>
+            )}
+            items={[
+              { type: 'label', label: `@${user.username}` },
+              {
+                label: isDark ? t('sidebar.lightMode') : t('sidebar.darkMode'),
+                icon: isDark ? <Sun /> : <Moon />,
+                onClick: toggleTheme,
+              },
+              {
+                label: i18n.language?.startsWith('de') ? 'English' : 'Deutsch',
+                icon: <Languages />,
+                hint: i18n.language?.startsWith('de') ? 'EN' : 'DE',
+                onClick: () => i18n.changeLanguage(i18n.language?.startsWith('de') ? 'en' : 'de'),
+              },
+              {
+                label: t('changePassword.title'),
+                icon: <KeyRound />,
+                onClick: () => setChangePasswordOpen(true),
+              },
+              { type: 'divider' },
+              { label: t('sidebar.logout'), icon: <LogOut />, onClick: handleLogout, danger: true },
+            ]}
+          />
         )}
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-        >
-          <LogOut className="w-4 h-4 shrink-0" />
-          {t('sidebar.logout')}
-        </button>
+
+        {onToggleCollapsed && (
+          <button
+            onClick={onToggleCollapsed}
+            title={`${collapsed ? t('sidebar.expand') : t('sidebar.collapse')} (${isMac ? '⌘' : 'Ctrl'}+B)`}
+            aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 md:flex"
+          >
+            {collapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
+          </button>
+        )}
       </div>
 
       <ChangePasswordDialog

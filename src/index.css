@@ -2,54 +2,120 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Theme variables ──────────────────────────────────────────────────────── */
-/* Used by AzureRankingPage (inline styles) and can be used anywhere via var() */
-:root {
-  --az-bg:          #f8fafc;
-  --az-surface:     #ffffff;
-  --az-surface2:    #f1f5f9;
-  --az-border:      #e2e8f0;
-  --az-text:        #0f172a;
-  --az-text-muted:  #64748b;
-  --az-text-dim:    #94a3b8;
-  --az-accent:      #4f46e5;
-  --az-accent-on:   #ffffff;
-  --az-green:       #16a34a;
-  --az-green-on:    #ffffff;
-  --az-red:         #dc2626;
-}
-
-.dark {
-  --az-bg:          #0d1117;
-  --az-surface:     #161b22;
-  --az-surface2:    #21262d;
-  --az-border:      #30363d;
-  --az-text:        #e6edf3;
-  --az-text-muted:  #8b949e;
-  --az-text-dim:    #484f58;
-  --az-accent:      #58a6ff;
-  --az-accent-on:   #000000;
-  --az-green:       #3fb950;
-  --az-green-on:    #000000;
-  --az-red:         #f85149;
-}
-
 @layer base {
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    /* Native controls (select popups, date pickers, scrollbars) follow the theme */
+    color-scheme: dark;
+  }
   * {
     box-sizing: border-box;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
   body {
-    @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    @apply bg-slate-50 text-slate-900 antialiased font-sans dark:bg-slate-950 dark:text-slate-100;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+  ::selection {
+    @apply bg-indigo-500/20 text-inherit;
+  }
+  /* Consistent, visible keyboard focus for interactive elements — but no ring for mouse clicks.
+     Text fields are excluded: they carry their own focus styling (see .form-input). */
+  :focus-visible:where(:not(input, textarea, select, [contenteditable], [tabindex='-1'])) {
+    @apply outline-none ring-2 ring-indigo-500/70 ring-offset-2 ring-offset-white dark:ring-offset-slate-950;
+  }
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='range'],
+  progress {
+    accent-color: theme('colors.indigo.600');
+  }
+  .dark input[type='checkbox'],
+  .dark input[type='radio'],
+  .dark input[type='range'] {
+    accent-color: theme('colors.indigo.400');
+  }
+  kbd {
+    @apply font-sans;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer components {
-  .form-input {
-    @apply w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-slate-900 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400;
+  /* ── Form controls ─────────────────────────────────────────────────────── */
+  .form-input,
+  .form-textarea,
+  .form-select {
+    @apply w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 shadow-sm
+           placeholder:text-slate-400 transition-[border-color,box-shadow] duration-150
+           hover:border-slate-400
+           focus:outline-none focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-500 focus:hover:border-indigo-500
+           disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 disabled:hover:border-slate-300
+           dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500
+           dark:hover:border-slate-600 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20
+           dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500;
   }
   .form-textarea {
-    @apply w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-slate-900 resize-none dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400;
+    @apply resize-y min-h-[2.5rem];
+  }
+  .form-select {
+    @apply appearance-none pr-9 cursor-pointer bg-no-repeat;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.6' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.6rem center;
+    background-size: 1.1rem 1.1rem;
+  }
+  .dark .form-select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.6' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  }
+  /* Compact variant for toolbars / filter rows */
+  .form-sm {
+    @apply py-1.5 text-xs rounded-md;
+  }
+  .form-select.form-sm {
+    @apply pr-8;
+    background-position: right 0.45rem center;
+    background-size: 1rem 1rem;
+  }
+  .form-label {
+    @apply block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5;
+  }
+  .form-hint {
+    @apply mt-1.5 text-xs text-slate-500 dark:text-slate-400;
+  }
+  .form-error {
+    @apply mt-1.5 text-xs font-medium text-red-600 dark:text-red-400;
+  }
+
+  /* ── Surfaces ──────────────────────────────────────────────────────────── */
+  .surface {
+    @apply bg-white border border-slate-200/80 rounded-xl shadow-card dark:bg-slate-900 dark:border-slate-800;
+  }
+  .surface-interactive {
+    @apply surface transition-[box-shadow,border-color,transform] duration-150
+           hover:border-slate-300 hover:shadow-card-hover dark:hover:border-slate-700;
+  }
+
+  /* ── Small uppercase section label ─────────────────────────────────────── */
+  .section-label {
+    @apply text-2xs font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400;
+  }
+
+  /* ── Keyboard key ──────────────────────────────────────────────────────── */
+  .kbd {
+    @apply inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded border border-slate-200 bg-slate-50
+           text-2xs font-medium text-slate-500 shadow-[inset_0_-1px_0_0_rgb(226_232_240)]
+           dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:shadow-[inset_0_-1px_0_0_rgb(51_65_85)];
   }
 }
 
@@ -62,12 +128,21 @@
     scrollbar-color: #334155 transparent;
   }
   .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
+    height: 8px;
   }
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
     @apply bg-slate-300 rounded-full dark:bg-slate-700;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }

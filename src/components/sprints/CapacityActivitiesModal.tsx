@@ -1,10 +1,14 @@
-import { useState } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
+import { toast, errorMessage } from '@/store/toast'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
+import IconButton from '@/components/ui/IconButton'
+import Field from '@/components/ui/Field'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
-import { Plus, Edit2, Trash2 } from 'lucide-react'
+import EmptyState from '@/components/ui/EmptyState'
+import { Plus, Pencil, Trash2, Layers, Check, Info } from 'lucide-react'
 import type { CapacityActivity } from '@/types'
 
 const COLOR_OPTIONS = [
@@ -21,6 +25,7 @@ interface ActivityFormData {
 
 export default function CapacityActivitiesModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { t } = useTranslation()
+  const uid = useId()
   const activities = useStore((s) => s.capacityActivities)
   const addCapacityActivity = useStore((s) => s.addCapacityActivity)
   const updateCapacityActivity = useStore((s) => s.updateCapacityActivity)
@@ -30,6 +35,7 @@ export default function CapacityActivitiesModal({ isOpen, onClose }: { isOpen: b
   const [deleteTarget, setDeleteTarget] = useState<CapacityActivity | null>(null)
   const [form, setForm] = useState<ActivityFormData>(emptyForm())
   const [formError, setFormError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   function emptyForm(): ActivityFormData {
     return { name: '', color: COLOR_OPTIONS[activities.length % COLOR_OPTIONS.length], countsToSprint: false }
@@ -45,112 +51,165 @@ export default function CapacityActivitiesModal({ isOpen, onClose }: { isOpen: b
     setEditTarget(a)
     setForm({ name: a.name, color: a.color, countsToSprint: a.countsToSprint })
     setFormError('')
+    requestAnimationFrame(() => document.getElementById(`${uid}-name`)?.focus())
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(e?: FormEvent) {
+    e?.preventDefault()
+    if (saving) return
     if (!form.name.trim()) { setFormError(t('capacity.nameRequired')); return }
+    setSaving(true)
     try {
-      if (editTarget) await updateCapacityActivity(editTarget.id, form)
-      else            await addCapacityActivity(form)
+      if (editTarget) {
+        await updateCapacityActivity(editTarget.id, form)
+        toast.success(t('common.saved'))
+      } else {
+        await addCapacityActivity(form)
+        toast.success(t('capacity.activityAdded', { name: form.name.trim() }))
+      }
       resetForm()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = errorMessage(err, String(err))
       setFormError(msg.includes('already exists') ? t('capacity.nameExists') : t('common.saveError'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function toggleCountsToSprint(a: CapacityActivity, value: boolean) {
+    try {
+      await updateCapacityActivity(a.id, { countsToSprint: value })
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
     }
   }
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={() => { resetForm(); onClose() }} title={t('capacity.activities')} size="lg">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-500 dark:text-slate-400">{t('capacity.activitiesHint')}</p>
-          <div className="space-y-2">
-            {activities.map((a) => (
-              <div key={a.id} className="flex items-center gap-3 bg-slate-50 dark:bg-slate-950 rounded-lg px-3 py-2.5">
-                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: a.color }} />
-                <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-300">{a.name}</span>
-                <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={a.countsToSprint}
-                    onChange={(e) => updateCapacityActivity(a.id, { countsToSprint: e.target.checked }).catch(() => {})}
-                    className="rounded border-slate-300 text-indigo-600"
-                  />
-                  {t('capacity.countsToSprint')}
-                </label>
-                <button onClick={() => openEdit(a)} className="p-1.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors">
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={() => setDeleteTarget(a)} className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-            {activities.length === 0 && (
-              <p className="text-sm text-slate-400 text-center py-4">{t('capacity.noActivities')}</p>
-            )}
-          </div>
+      <Modal
+        isOpen={isOpen}
+        onClose={() => { resetForm(); onClose() }}
+        title={t('capacity.activities')}
+        description={t('capacity.activitiesDescription')}
+        icon={<Layers />}
+        size="lg"
+        footer={<Button variant="secondary" onClick={() => { resetForm(); onClose() }}>{t('common.close')}</Button>}
+      >
+        <div className="space-y-6">
+          <p className="flex items-start gap-2 rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-600 ring-1 ring-inset ring-slate-200/70 dark:bg-slate-800/40 dark:text-slate-400 dark:ring-slate-700/50">
+            <Info className="mt-px h-3.5 w-3.5 shrink-0 text-slate-400" />
+            {t('capacity.activitiesHint')}
+          </p>
+          {activities.length === 0 ? (
+            <EmptyState compact icon={<Layers />} title={t('capacity.noActivities')} className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700" />
+          ) : (
+            <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+              {activities.map((a) => {
+                const isEditing = editTarget?.id === a.id
+                return (
+                  <li
+                    key={a.id}
+                    className={`group flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 transition-colors ${
+                      isEditing ? 'bg-indigo-50/60 dark:bg-indigo-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                    }`}
+                  >
+                    <span className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white dark:ring-slate-900" style={{ backgroundColor: a.color }} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-200">{a.name}</span>
+                    <label className="inline-flex cursor-pointer select-none items-center gap-2 rounded-md px-1.5 py-1 text-xs text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
+                      <input
+                        type="checkbox"
+                        checked={a.countsToSprint}
+                        onChange={(e) => toggleCountsToSprint(a, e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600"
+                      />
+                      {t('capacity.countsToSprint')}
+                    </label>
+                    <div className="flex items-center gap-0.5">
+                      <IconButton size="xs" icon={<Pencil />} label={t('common.edit')} onClick={() => openEdit(a)} active={isEditing} />
+                      <IconButton size="xs" variant="danger" icon={<Trash2 />} label={t('common.delete')} onClick={() => setDeleteTarget(a)} />
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
 
-          <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {editTarget ? editTarget.name : t('capacity.addActivity')}
+          <form onSubmit={handleSubmit} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/30">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+              {editTarget ? <Pencil className="h-4 w-4 text-slate-400" /> : <Plus className="h-4 w-4 text-slate-400" />}
+              {editTarget ? t('capacity.editActivity', { name: editTarget.name }) : t('capacity.addActivity')}
             </h3>
-            <div className="flex gap-3 items-end flex-wrap">
-              <div className="flex-1 min-w-[10rem] space-y-1">
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">{t('common.name')}</label>
+            <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+              <Field label={t('common.name')} htmlFor={`${uid}-name`} error={formError}>
                 <input
+                  id={`${uid}-name`}
                   type="text"
                   value={form.name}
                   onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); setFormError('') }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}
+                  onKeyDown={(e) => { if (e.key === 'Escape' && editTarget) { e.stopPropagation(); resetForm() } }}
                   placeholder={t('capacity.activityNamePlaceholder')}
                   className="form-input"
+                  aria-invalid={!!formError}
                 />
-              </div>
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">{t('rotation.color')}</label>
-                <div className="flex flex-wrap gap-1.5 w-48">
-                  {COLOR_OPTIONS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, color: c }))}
-                      className={`w-6 h-6 rounded-full border-2 transition-all ${form.color === c ? 'border-slate-700 dark:border-slate-300 scale-110' : 'border-transparent'}`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
+              </Field>
+              <div>
+                <span id={`${uid}-color`} className="form-label">{t('rotation.color')}</span>
+                <div role="radiogroup" aria-labelledby={`${uid}-color`} className="grid w-max grid-cols-6 gap-1.5">
+                  {COLOR_OPTIONS.map((c) => {
+                    const selected = form.color === c
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        aria-label={c}
+                        onClick={() => setForm((f) => ({ ...f, color: c }))}
+                        className={`flex h-6 w-6 items-center justify-center rounded-full transition-transform hover:scale-110 ${
+                          selected ? 'ring-2 ring-slate-900 ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-slate-900' : ''
+                        }`}
+                        style={{ backgroundColor: c }}
+                      >
+                        {selected && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+            <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm text-slate-700 dark:text-slate-300">
               <input
                 type="checkbox"
                 checked={form.countsToSprint}
                 onChange={(e) => setForm((f) => ({ ...f, countsToSprint: e.target.checked }))}
-                className="rounded border-slate-300 text-indigo-600"
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-slate-600"
               />
               {t('capacity.countsToSprintLong')}
             </label>
-            {formError && <p className="text-xs text-red-500">{formError}</p>}
-            <div className="flex gap-2">
+            <div className="mt-4 flex justify-end gap-2">
               {editTarget && (
-                <Button variant="secondary" onClick={resetForm}>{t('common.cancel')}</Button>
+                <Button variant="ghost" onClick={resetForm} disabled={saving}>{t('common.cancel')}</Button>
               )}
-              <Button variant="primary" icon={editTarget ? undefined : <Plus className="w-4 h-4" />} onClick={handleSubmit}>
+              <Button variant="primary" type="submit" loading={saving} icon={editTarget ? <Check /> : <Plus />}>
                 {editTarget ? t('common.save') : t('common.add')}
               </Button>
             </div>
-          </div>
+          </form>
         </div>
       </Modal>
 
       <ConfirmDialog
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
+        onConfirm={async () => {
+          if (!deleteTarget) return
+          try {
+            await deleteCapacityActivity(deleteTarget.id)
             if (editTarget?.id === deleteTarget.id) resetForm()
-            deleteCapacityActivity(deleteTarget.id).catch(() => {})
+            toast.success(t('capacity.activityDeleted', { name: deleteTarget.name }))
+          } catch (err) {
+            toast.error(t('common.deleteError'), { description: errorMessage(err) })
+            throw err
           }
         }}
         title={t('capacity.deleteActivity')}

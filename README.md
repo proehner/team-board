@@ -34,11 +34,42 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 | **Known Errors** | Error database with severity, solutions, workarounds, comments, and file attachments |
 | **Software** | Registry for tracking vendor software versions used by the team |
 | **Stakeholder** | Sprint progress and goal achievement overview for external communication |
-| **Azure Rankings** | Gamified developer ranking based on Azure DevOps metrics |
+| **Azure Rankings** | Gamified developer ranking based on Azure DevOps activity (PRs, reviews, completed work items, tickets, discussions) – fair, transparent scoring with caps, incremental loading and retroactively recomputed history (see below) |
 | **Global Search** | Cross-module search across members, skills, tickets, topics, errors, and roadmap features |
 | **Multi-Team** | Full tenant isolation – each team has its own members, sprints, assignments, and settings |
 | **Permission Groups** | Role-based access control with named groups; per-page permissions (`none` / `read` / `write-own` / `write`); union model – users may belong to multiple groups |
-| **Dark / Light Mode** | Toggleable via the sidebar button, persisted across sessions |
+| **Dark / Light Mode** | Toggleable via the user menu, follows the OS preference on first visit, persisted across sessions |
+
+### Azure Rankings – how scores are calculated
+
+All data is read from Azure DevOps with **GET requests only** (nothing is ever written to Azure DevOps). Code: `server/src/azureRanking/`.
+
+- **Sources:** the work item *reporting revision stream* (creations, real state changes, discussion comments) plus pull requests and their threads (votes with timestamps, review comments).
+- **Event store:** everything is normalised into events in `server/data/azure-ranking.events.json`, covering about two years (the 365-day period before the oldest history point). The first load builds the store (~2½ min); later refreshes are **incremental** (continuation token + only new/changed PRs) and take a few seconds. *Settings → "Daten vollständig neu aufbauen"* rebuilds it from scratch.
+- **History:** one point per **month end** (Europe/Berlin) for the last 12 months, each computed from the events for all periods (7/30/90/365 days). `azure-ranking.history.json` is an export of these values; a change of the scoring model recomputes the whole history automatically (`SCORING_VERSION` in `scoring.ts`). All files are written atomically.
+
+| Activity | Points | Rule |
+| --- | --- | --- |
+| PR created / merged | 5 / 20 | credited to the author |
+| Backport merged | 5 | instead of 5 + 20: same author, repository and title as an earlier PR, other target branch, within 60 days |
+| PR reviewed | 6 | per PR of someone else you voted on or commented on |
+| Approval | 2 | "Approved" or "Approved with suggestions" |
+| Review finding | 3 | a new comment thread on someone else's PR; max. 25 per PR |
+| Review reply | 1 | a reply in a review discussion; max. 10 per PR |
+| PBI / Bug completed | 15 | counted once, when the state really changes to *Done/Closed*, for the assignee at that moment |
+| Task completed | 5 | same rule; Features, Epics and test artefacts don't count |
+| Ticket created / Task or Test Case created | 5 / 1 | max. 10 per person and day each |
+| Ticket discussion | 3 | once per ticket and day |
+
+Review comments only count with at least 10 characters of own text; pure acknowledgements ("ok", "done", "LGTM", "Danke") never count. Bots, service accounts and team groups are ignored; accounts with identical display names are merged. Besides total points the UI offers **points per active week** to compensate for vacation, part-time work and later joiners (a period is split into round(days / 7) weeks, e.g. 4 weeks for 30 days).
+
+#### Annual report (PDF)
+
+In the developer detail view of the Azure Rankings, **"Jahresbericht"** creates a neutral PDF report for one person – for the last 12 complete months or a calendar year. It contains key figures with rank, distribution by area, monthly activity compared with the comparison group's median, all counts with placement (quarters/median), way of working (PR cycle time, review response time, review depth), review partners, rule-based strengths and recommendations (each can be deselected before export), the competencies from the competency matrix of the current team (matched by e-mail or name) and optional notes.
+
+- Data: `GET /api/azure-ranking/report/periods` and `GET /api/azure-ranking/report?devId=…&period=…` (`server/src/azureRanking/report.ts`); the PDF is rendered in the browser with `@react-pdf/renderer` (loaded on demand, `src/components/azure/report/`).
+- Comparison group: everyone with PR or review activity who was active in at least a quarter of the weeks; comparisons use values per active week.
+- Permission: sub-permission **"Jahresberichte erstellen"** (`azure-ranking-report`) – opt-in per permission group, admins always.
 
 ---
 
@@ -48,7 +79,8 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 
 - React 18 + TypeScript
 - Vite 5 (build tool)
-- Tailwind CSS 3 (dark mode via `class` strategy)
+- Tailwind CSS 3 (dark mode via `class` strategy; design tokens in `tailwind.config.cjs`, global component classes such as `.form-input`, `.form-select`, `.surface` in `src/index.css`)
+- Inter Variable font (bundled via `@fontsource-variable/inter`, no external font requests)
 - Zustand (state management)
 - React Router v6
 - Lucide React (icons)
@@ -218,16 +250,22 @@ team-board/
 ├── src/                          # React frontend (TypeScript)
 │   ├── api/                      # API client (fetch wrapper)
 │   ├── components/
-│   │   ├── layout/               # Sidebar (incl. Change Password), Layout wrapper
-│   │   ├── tickets/              # TicketDetailModal
-│   │   └── ui/                   # Reusable UI components (Button, Card, Modal,
-│   │                             #   ReadOnlyBanner, ChangePasswordDialog, …)
+│   │   ├── layout/               # Layout, collapsible Sidebar (team switcher, user menu),
+│   │   │                         #   navItems.ts (navigation + permissions, shared with Ctrl+K palette)
+│   │   ├── GlobalSearch.tsx      # Command palette (Ctrl/⌘+K): jump to pages + full-text search
+│   │   ├── <area>/               # Page-specific building blocks (sprints, rotation, roadmap, …)
+│   │   └── ui/                   # Shared design-system components: Page, PageHeader, Tabs,
+│   │                             #   Button, IconButton, Card, StatCard, Modal, ConfirmDialog,
+│   │                             #   DropdownMenu, Select, SearchInput, Chip, Badge, Field,
+│   │                             #   EmptyState, Skeleton, Toaster, ReadOnlyBanner, …
 │   ├── hooks/
 │   │   ├── usePagePermission.ts  # Resolves effective permission for the current page
-│   │   └── useUnsavedChanges.ts  # Navigation guard for forms with unsaved changes
+│   │   ├── useUnsavedChanges.ts  # Navigation guard for forms with unsaved changes
+│   │   ├── useClickOutside.ts    # Close popovers on outside click / Escape
+│   │   └── useDocumentTitle.ts   # Browser tab title per page (used by PageHeader)
 │   ├── i18n/                     # i18next setup + locale files (en/de)
 │   ├── pages/                    # Page components (one per module)
-│   ├── store/                    # Zustand stores (app, auth, theme)
+│   ├── store/                    # Zustand stores (app, auth, theme, toast)
 │   ├── types/                    # Shared TypeScript interfaces
 │   └── utils/                    # Date and avatar helpers
 ├── server/                       # Express backend (TypeScript)

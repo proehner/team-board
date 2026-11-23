@@ -1,14 +1,18 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useId, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
+import { toast, errorMessage } from '@/store/toast'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
+import Field from '@/components/ui/Field'
+import Select from '@/components/ui/Select'
+import Chip from '@/components/ui/Chip'
 import { countWorkingDays, formatDateShort, sprintDurationDays } from '@/utils/date'
 import {
   capacitySourceFor, endDateForWeeks, overlappingSprints, shiftEndDate, sprintWeeks,
   suggestNextSprintDates, suggestSprintName,
 } from '@/utils/sprint'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, CalendarPlus, Pencil, Users, CalendarRange } from 'lucide-react'
 import type { Sprint, SprintStatus } from '@/types'
 
 const CAPACITY_NONE = ''
@@ -43,6 +47,7 @@ interface SprintFormModalProps {
  */
 export default function SprintFormModal({ isOpen, onClose, sprint, onCreated }: SprintFormModalProps) {
   const { t } = useTranslation()
+  const uid = useId()
   const sprints = useStore((s) => s.sprints)
   const members = useStore((s) => s.members)
   const addSprint = useStore((s) => s.addSprint)
@@ -52,7 +57,6 @@ export default function SprintFormModal({ isOpen, onClose, sprint, onCreated }: 
 
   const [form, setForm] = useState<SprintFormData>(() => initialForm())
   const [errors, setErrors] = useState<FormErrors>({})
-  const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
 
   const activeMemberIds = members.filter((m) => m.isActive).map((m) => m.id)
@@ -64,7 +68,6 @@ export default function SprintFormModal({ isOpen, onClose, sprint, onCreated }: 
     if (!isOpen) return
     setForm(initialForm())
     setErrors({})
-    setSaveError('')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
@@ -113,13 +116,13 @@ export default function SprintFormModal({ isOpen, onClose, sprint, onCreated }: 
     e?.preventDefault()
     if (saving || !validate()) return
     setSaving(true)
-    setSaveError('')
     const data = {
       name: form.name.trim(), goal: form.goal.trim(), startDate: form.startDate, endDate: form.endDate, notes: form.notes,
     }
     try {
       if (sprint) {
         await updateSprint(sprint.id, { ...data, status: form.status })
+        toast.success(t('sprints.updatedToast', { name: data.name }))
         onClose()
         return
       }
@@ -130,11 +133,15 @@ export default function SprintFormModal({ isOpen, onClose, sprint, onCreated }: 
         } else if (form.capacitySource) {
           await copySprintCapacity(id, form.capacitySource)
         }
-      } catch { /* sprint exists – capacity can still be planned on the detail page */ }
+      } catch (err) {
+        // Sprint exists – capacity can still be planned on the detail page
+        toast.warning(t('sprints.capacitySetupFailed'), { description: errorMessage(err) })
+      }
+      toast.success(t('sprints.createdToast', { name: data.name }))
       onClose()
       onCreated?.(id)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : t('common.saveError'))
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -143,78 +150,108 @@ export default function SprintFormModal({ isOpen, onClose, sprint, onCreated }: 
   const datesValid = !!form.startDate && !!form.endDate && form.endDate > form.startDate
   const weeks = sprintWeeks(form.startDate, form.endDate)
   const overlaps = datesValid ? overlappingSprints(sprints, form.startDate, form.endDate, sprint?.id) : []
+  const id = (name: string) => `${uid}-${name}`
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      dismissible={!saving}
+      icon={sprint ? <Pencil /> : <CalendarPlus />}
       title={sprint ? t('sprints.editSprint') : t('sprints.newSprint')}
+      description={sprint ? sprint.name : t('sprints.newSprintDescription')}
       footer={
         <>
-          {saveError && <p className="flex-1 text-sm text-red-600">{saveError}</p>}
-          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button variant="primary" type="submit" form="sprint-form" loading={saving}>
+          <span className="mr-auto hidden self-center text-xs text-slate-400 sm:inline dark:text-slate-500">
+            <kbd className="kbd">Ctrl</kbd> <kbd className="kbd">Enter</kbd>
+          </span>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>{t('common.cancel')}</Button>
+          <Button variant="primary" type="submit" form={id('form')} loading={saving}>
             {sprint ? t('common.save') : t('sprints.createSprint')}
           </Button>
         </>
       }
     >
       <form
-        id="sprint-form"
+        id={id('form')}
         onSubmit={handleSubmit}
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSubmit() }}
-        className="space-y-4"
+        className="space-y-5"
+        noValidate
       >
-        <FormField label={t('common.name')} error={errors.name}>
-          <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} className="form-input" />
-        </FormField>
+        <Field label={t('common.name')} htmlFor={id('name')} error={errors.name} required>
+          <input
+            id={id('name')}
+            type="text"
+            value={form.name}
+            onChange={(e) => set('name', e.target.value)}
+            className="form-input"
+            aria-invalid={!!errors.name}
+            autoFocus={!!sprint}
+          />
+        </Field>
 
         {/* Period */}
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label={t('sprints.startDate')} error={errors.startDate}>
-              <input type="date" value={form.startDate} onChange={(e) => setStartDate(e.target.value)} className="form-input" />
-            </FormField>
-            <FormField label={t('sprints.endDate')} error={errors.endDate}>
-              <input type="date" value={form.endDate} onChange={(e) => set('endDate', e.target.value)} className="form-input" />
-            </FormField>
+        <fieldset className="space-y-3">
+          <legend className="sr-only">{t('sprints.period')}</legend>
+          <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
+            <Field label={t('sprints.startDate')} htmlFor={id('start')} error={errors.startDate} required>
+              <input
+                id={id('start')}
+                type="date"
+                value={form.startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="form-input"
+                aria-invalid={!!errors.startDate}
+              />
+            </Field>
+            <Field label={t('sprints.endDate')} htmlFor={id('end')} error={errors.endDate} required>
+              <input
+                id={id('end')}
+                type="date"
+                value={form.endDate}
+                min={form.startDate || undefined}
+                onChange={(e) => set('endDate', e.target.value)}
+                className="form-input"
+                aria-invalid={!!errors.endDate}
+              />
+            </Field>
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-medium text-slate-500 dark:text-slate-400">{t('sprints.duration')}</span>
             {WEEK_OPTIONS.map((w) => (
-              <button
+              <Chip
                 key={w}
-                type="button"
+                active={weeks === w}
                 disabled={!form.startDate}
                 onClick={() => set('endDate', endDateForWeeks(form.startDate, w))}
-                className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors disabled:opacity-50 ${
-                  weeks === w
-                    ? 'bg-indigo-600 border-indigo-600 text-white'
-                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                }`}
+                className="disabled:opacity-50"
               >
                 {t('sprints.weeks', { count: w })}
-              </button>
+              </Chip>
             ))}
-            {datesValid && (
-              <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
-                {t('sprints.workingDays', { count: countWorkingDays(form.startDate, form.endDate) })}
-                {' · '}
-                {t('sprints.calendarDays', { count: sprintDurationDays(form.startDate, form.endDate) })}
-              </span>
-            )}
           </div>
+          {datesValid && (
+            <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <CalendarRange className="h-3.5 w-3.5 shrink-0" />
+              {t('sprints.workingDays', { count: countWorkingDays(form.startDate, form.endDate) })}
+              {' · '}
+              {t('sprints.calendarDays', { count: sprintDurationDays(form.startDate, form.endDate) })}
+            </p>
+          )}
           {overlaps.length > 0 && (
-            <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0" />
+            <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-inset ring-amber-600/15 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/20">
+              <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
               {t('sprints.overlapWarning', {
                 sprints: overlaps.map((s) => `${s.name} (${formatDateShort(s.startDate)} – ${formatDateShort(s.endDate)})`).join(', '),
               })}
             </p>
           )}
-        </div>
+        </fieldset>
 
-        <FormField label={t('sprints.sprintGoal')} hint={t('common.optional')}>
+        <Field label={t('sprints.sprintGoal')} htmlFor={id('goal')} optional>
           <textarea
+            id={id('goal')}
             value={form.goal}
             onChange={(e) => set('goal', e.target.value)}
             rows={2}
@@ -222,17 +259,22 @@ export default function SprintFormModal({ isOpen, onClose, sprint, onCreated }: 
             placeholder={t('sprints.sprintGoalPlaceholder')}
             autoFocus={!sprint}
           />
-        </FormField>
+        </Field>
 
         {sprint ? (
-          <FormField label={t('common.status')}>
-            <select value={form.status} onChange={(e) => set('status', e.target.value as SprintStatus)} className="form-input">
+          <Field label={t('common.status')} htmlFor={id('status')}>
+            <Select id={id('status')} value={form.status} onChange={(e) => set('status', e.target.value as SprintStatus)}>
               {STATUSES.map((s) => <option key={s} value={s}>{t(`sprintStatus.${s}`)}</option>)}
-            </select>
-          </FormField>
+            </Select>
+          </Field>
         ) : (
-          <FormField label={t('capacity.title')} hint={t('sprints.capacitySetupHint')}>
-            <select value={form.capacitySource} onChange={(e) => set('capacitySource', e.target.value)} className="form-input">
+          <Field label={t('capacity.title')} htmlFor={id('capacity')} hint={t('sprints.capacitySetupHint')}>
+            <Select
+              id={id('capacity')}
+              icon={<Users />}
+              value={form.capacitySource}
+              onChange={(e) => set('capacitySource', e.target.value)}
+            >
               {capacitySources.map((s) => (
                 <option key={s.id} value={s.id}>{t('sprints.capacityCopyFrom', { name: s.name })}</option>
               ))}
@@ -240,27 +282,21 @@ export default function SprintFormModal({ isOpen, onClose, sprint, onCreated }: 
                 <option value={CAPACITY_MEMBERS}>{t('sprints.capacityAllMembers', { count: activeMemberIds.length })}</option>
               )}
               <option value={CAPACITY_NONE}>{t('sprints.capacityLater')}</option>
-            </select>
-          </FormField>
+            </Select>
+          </Field>
         )}
 
-        <FormField label={t('sprints.notesLabel')} hint={t('common.optional')}>
-          <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} className="form-textarea" placeholder={t('sprints.notesPlaceholder')} />
-        </FormField>
+        <Field label={t('sprints.notesLabel')} htmlFor={id('notes')} optional>
+          <textarea
+            id={id('notes')}
+            value={form.notes}
+            onChange={(e) => set('notes', e.target.value)}
+            rows={2}
+            className="form-textarea"
+            placeholder={t('sprints.notesPlaceholder')}
+          />
+        </Field>
       </form>
     </Modal>
-  )
-}
-
-function FormField({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-        {label}
-        {hint && <span className="ml-1.5 text-xs font-normal text-slate-400 dark:text-slate-500">{hint}</span>}
-      </label>
-      {children}
-      {error && <p className="text-xs text-red-500">{error}</p>}
-    </div>
   )
 }

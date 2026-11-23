@@ -1,374 +1,286 @@
-import { useState, useMemo } from 'react'
-import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { CalendarClock, Plus, Search, Pencil, Trash2, RefreshCw, ChevronRight, Globe } from 'lucide-react'
+import {
+  CalendarClock, Plus, Pencil, Trash2, RefreshCw, Clock, MapPin, Globe, ListTodo,
+  MoreHorizontal, SearchX,
+} from 'lucide-react'
 import { useStore } from '@/store'
-import type { Meeting, MeetingRecurrence } from '@/types'
+import type { Meeting } from '@/types'
+import { meetingsApi } from '@/api/client'
+import Page from '@/components/ui/Page'
+import PageHeader from '@/components/ui/PageHeader'
+import Button from '@/components/ui/Button'
+import IconButton from '@/components/ui/IconButton'
+import Badge from '@/components/ui/Badge'
+import DropdownMenu from '@/components/ui/DropdownMenu'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import EmptyState from '@/components/ui/EmptyState'
+import SearchInput from '@/components/ui/SearchInput'
 import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import { usePagePermission } from '@/hooks/usePagePermission'
+import { toast, errorMessage } from '@/store/toast'
+import MeetingFormModal, { type MeetingPayload } from '@/components/meetings/MeetingFormModal'
+import { compareMeetings, formatSchedule, isMeetingToday, weekdayShort } from '@/components/meetings/meetingUtils'
 
-const RECURRENCE_OPTIONS: MeetingRecurrence[] = ['daily', 'weekly', 'biweekly', 'monthly', 'custom']
-
-const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-
-function RecurrenceBadge({ recurrence }: { recurrence: MeetingRecurrence }) {
+/** Calendar-like tile: weekday abbreviation + time. Highlighted when the meeting is today. */
+function DayTile({ meeting, today }: { meeting: Meeting; today: boolean }) {
   const { t } = useTranslation()
-  const colors: Record<MeetingRecurrence, string> = {
-    daily:    'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-    weekly:   'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-    biweekly: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
-    monthly:  'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
-    custom:   'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  const base = 'flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl ring-1 ring-inset'
+  const tone = today
+    ? 'bg-gradient-to-b from-indigo-500 to-indigo-600 text-white ring-white/10 shadow-sm shadow-indigo-500/30'
+    : 'bg-indigo-50 text-indigo-700 ring-indigo-600/10 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-400/20'
+  if (meeting.dayOfWeek == null) {
+    return (
+      <span className={`${base} ${tone}`}>
+        <CalendarClock className="h-5 w-5" />
+      </span>
+    )
   }
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colors[recurrence]}`}>
-      <RefreshCw className="w-3 h-3" />
-      {t(`meetings.recurrence.${recurrence}`)}
+    <span className={`${base} ${tone}`}>
+      <span className={`text-2xs font-semibold uppercase tracking-wider ${today ? 'text-indigo-100' : 'text-indigo-500 dark:text-indigo-400'}`}>
+        {weekdayShort(t, meeting.dayOfWeek)}
+      </span>
+      <span className="text-sm font-semibold leading-tight tabular-nums">
+        {meeting.meetingTime ?? '–'}
+      </span>
     </span>
   )
-}
-
-interface FormState {
-  title: string
-  description: string
-  recurrence: MeetingRecurrence
-  dayOfWeek: string
-  meetingTime: string
-  location: string
-  isGlobal: boolean
-}
-
-const EMPTY_FORM: FormState = {
-  title: '', description: '', recurrence: 'weekly',
-  dayOfWeek: '', meetingTime: '', location: '', isGlobal: false,
 }
 
 export default function MeetingsPage() {
   const { t } = useTranslation()
   const { canWrite, isReadOnly } = usePagePermission('meetings')
-  const navigate = useNavigate()
   const meetings      = useStore((s) => s.meetings)
   const addMeeting    = useStore((s) => s.addMeeting)
   const updateMeeting = useStore((s) => s.updateMeeting)
   const deleteMeeting = useStore((s) => s.deleteMeeting)
 
-  const [search, setSearch]         = useState('')
-  const [showForm, setShowForm]     = useState(false)
-  const [editId, setEditId]         = useState<string | null>(null)
-  const [form, setForm]             = useState<FormState>(EMPTY_FORM)
-  const [saving, setSaving]         = useState(false)
+  const [search, setSearch]             = useState('')
+  const [formOpen, setFormOpen]         = useState(false)
+  const [editTarget, setEditTarget]     = useState<Meeting | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Meeting | null>(null)
+  /** meetingId → number of open (not done) topics; undefined while loading */
+  const [openCounts, setOpenCounts]     = useState<Record<string, number>>({})
+
+  // Read-only: count open agenda topics per meeting
+  const idsKey = meetings.map((m) => m.id).join(',')
+  useEffect(() => {
+    let cancelled = false
+    meetings.forEach((m) => {
+      meetingsApi.listTopics(m.id)
+        .then((topics) => { if (!cancelled) setOpenCounts((c) => ({ ...c, [m.id]: topics.length })) })
+        .catch(() => { /* count is optional */ })
+    })
+    return () => { cancelled = true }
+  }, [idsKey])
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase()
-    return meetings.filter((m) =>
-      m.title.toLowerCase().includes(q) ||
-      m.description.toLowerCase().includes(q) ||
-      (m.location ?? '').toLowerCase().includes(q),
-    )
+    const q = search.trim().toLowerCase()
+    return meetings
+      .filter((m) =>
+        m.title.toLowerCase().includes(q) ||
+        m.description.toLowerCase().includes(q) ||
+        (m.location ?? '').toLowerCase().includes(q),
+      )
+      .sort(compareMeetings)
   }, [meetings, search])
 
   function openCreate() {
-    setEditId(null)
-    setForm(EMPTY_FORM)
-    setShowForm(true)
+    setEditTarget(null)
+    setFormOpen(true)
   }
 
-  function openEdit(m: Meeting, e: React.MouseEvent) {
-    e.stopPropagation()
-    setEditId(m.id)
-    setForm({
-      title:       m.title,
-      description: m.description,
-      recurrence:  m.recurrence,
-      dayOfWeek:   m.dayOfWeek != null ? String(m.dayOfWeek) : '',
-      meetingTime: m.meetingTime ?? '',
-      location:    m.location ?? '',
-      isGlobal:    m.isGlobal,
-    })
-    setShowForm(true)
+  function openEdit(m: Meeting) {
+    setEditTarget(m)
+    setFormOpen(true)
   }
 
-  async function handleSave() {
-    if (!form.title.trim()) return
-    setSaving(true)
+  async function handleSubmit(payload: MeetingPayload) {
     try {
-      const payload = {
-        title:       form.title.trim(),
-        description: form.description,
-        recurrence:  form.recurrence,
-        dayOfWeek:   form.dayOfWeek !== '' ? Number(form.dayOfWeek) : undefined,
-        meetingTime: form.meetingTime || undefined,
-        location:    form.location.trim() || undefined,
-        isGlobal:    form.isGlobal,
-      }
-      if (editId) {
-        await updateMeeting(editId, payload)
+      if (editTarget) {
+        await updateMeeting(editTarget.id, payload)
+        toast.success(t('common.saved'))
       } else {
         await addMeeting(payload)
+        toast.success(t('common.created'), { description: payload.title })
       }
-      setShowForm(false)
-    } finally {
-      setSaving(false)
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+      throw err
     }
   }
 
   async function handleDelete() {
     if (!deleteTarget) return
-    await deleteMeeting(deleteTarget.id)
-    setDeleteTarget(null)
-  }
-
-  function formatSchedule(m: Meeting) {
-    const parts: string[] = []
-    if (m.dayOfWeek != null) parts.push(t(`meetings.days.${DAY_KEYS[m.dayOfWeek]}`))
-    if (m.meetingTime) parts.push(m.meetingTime)
-    return parts.join(', ')
+    try {
+      await deleteMeeting(deleteTarget.id)
+      toast.success(t('common.deleted'), { description: deleteTarget.title })
+    } catch (err) {
+      toast.error(t('common.deleteError'), { description: errorMessage(err) })
+      throw err
+    }
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-violet-500 flex items-center justify-center shrink-0">
-            <CalendarClock className="w-5 h-5 text-white" />
+    <Page size="default">
+      <PageHeader
+        icon={CalendarClock}
+        title={t('meetings.title')}
+        subtitle={t('meetings.subtitle')}
+        actions={
+          canWrite && (
+            <Button variant="primary" icon={<Plus />} onClick={openCreate}>
+              {t('meetings.newMeeting')}
+            </Button>
+          )
+        }
+      >
+        {isReadOnly && <ReadOnlyBanner className="mb-5" />}
+        {meetings.length > 0 && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              size="sm"
+              placeholder={t('meetings.searchPlaceholder')}
+              className="w-full sm:w-72"
+              aria-label={t('common.search')}
+            />
+            <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400 sm:ml-auto" aria-live="polite">
+              {search.trim()
+                ? t('meetings.filteredCount', { shown: filtered.length, total: meetings.length })
+                : t('meetings.count', { count: meetings.length })}
+            </span>
           </div>
-          <div>
-            <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{t('meetings.title')}</h1>
-            <p className="text-xs text-slate-500">{t('meetings.subtitle')}</p>
-          </div>
-        </div>
-        {canWrite && (
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {t('meetings.newMeeting')}
-          </button>
         )}
-      </div>
-      {isReadOnly && <ReadOnlyBanner />}
+      </PageHeader>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t('common.search')}
-          className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
-        />
-      </div>
-
-      {/* List */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-16 text-slate-400">
-          <CalendarClock className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p className="text-sm">{search ? t('meetings.noResults') : t('meetings.empty')}</p>
+      {meetings.length === 0 ? (
+        <div className="surface">
+          <EmptyState
+            icon={<CalendarClock />}
+            title={t('meetings.empty')}
+            description={t('meetings.emptyHint')}
+            action={canWrite && (
+              <Button variant="primary" icon={<Plus />} onClick={openCreate}>{t('meetings.newMeeting')}</Button>
+            )}
+          />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="surface">
+          <EmptyState
+            icon={<SearchX />}
+            title={t('meetings.noResults')}
+            action={<Button variant="secondary" onClick={() => setSearch('')}>{t('common.resetFilters')}</Button>}
+          />
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((m) => (
-            <div
-              key={m.id}
-              onClick={() => navigate(`/meetings/${m.id}`)}
-              className="group flex items-center gap-4 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-sm cursor-pointer transition-all"
-            >
-              <div className="w-9 h-9 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center shrink-0">
-                <CalendarClock className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{m.title}</span>
-                  <RecurrenceBadge recurrence={m.recurrence} />
-                  {m.isGlobal && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                      <Globe className="w-3 h-3" />
-                      {t('meetings.global')}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 mt-0.5">
-                  {m.description && (
-                    <p className="text-xs text-slate-500 truncate">{m.description}</p>
-                  )}
-                  {formatSchedule(m) && (
-                    <span className="text-xs text-slate-400 shrink-0">{formatSchedule(m)}</span>
-                  )}
-                  {m.location && (
-                    <span className="text-xs text-slate-400 shrink-0 truncate">{m.location}</span>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                <button
-                  onClick={(e) => openEdit(m, e)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {filtered.map((m) => {
+            const today = isMeetingToday(m)
+            const schedule = formatSchedule(t, m)
+            const open = openCounts[m.id]
+            return (
+              <li key={m.id} className="group relative">
+                <Link
+                  to={`/meetings/${m.id}`}
+                  className="surface-interactive flex h-full flex-col p-4 sm:p-5"
                 >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(m) }}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0 group-hover:text-violet-400 transition-colors" />
-            </div>
-          ))}
-        </div>
+                  <div className="flex items-start gap-3.5 pr-8">
+                    <DayTile meeting={m} today={today} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <h3 className="text-sm font-semibold leading-6 text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-400">
+                          {m.title}
+                        </h3>
+                        {today && <Badge variant="indigo" dot label={t('meetings.today')} />}
+                      </div>
+                      {m.description && (
+                        <p className="mt-0.5 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">{m.description}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-auto pt-4">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                      <span className="inline-flex items-center gap-1.5">
+                        <RefreshCw className="h-3.5 w-3.5 text-slate-400" />
+                        {t(`meetings.recurrence.${m.recurrence}`)}
+                      </span>
+                      {schedule && (
+                        <span className="inline-flex items-center gap-1.5 tabular-nums">
+                          <Clock className="h-3.5 w-3.5 text-slate-400" />
+                          {schedule}
+                        </span>
+                      )}
+                      {m.location && (
+                        <span className="inline-flex min-w-0 items-center gap-1.5">
+                          <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                          <span className="truncate">{m.location}</span>
+                        </span>
+                      )}
+                      {m.isGlobal && (
+                        <Badge variant="success" icon={<Globe />} label={t('meetings.global')} />
+                      )}
+                      <span className="inline-flex items-center gap-1.5 sm:ml-auto">
+                        <ListTodo className="h-3.5 w-3.5 text-slate-400" />
+                        {open === undefined ? (
+                          <span className="inline-block h-3 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-800" aria-hidden />
+                        ) : open === 0 ? (
+                          <span className="text-slate-400 dark:text-slate-500">{t('meetings.noOpenTopics')}</span>
+                        ) : (
+                          <span className="font-medium text-slate-700 dark:text-slate-300">
+                            {t('meetings.openTopicsCount', { count: open })}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+
+                {canWrite && (
+                  <div className="absolute right-3 top-3 sm:right-4 sm:top-4">
+                    <DropdownMenu
+                      trigger={(p) => (
+                        <IconButton
+                          {...p}
+                          icon={<MoreHorizontal />}
+                          label={t('common.moreActions')}
+                          className="opacity-60 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100"
+                        />
+                      )}
+                      items={[
+                        { label: t('meetings.editMeeting'), icon: <Pencil />, onClick: () => openEdit(m) },
+                        { type: 'divider' },
+                        { label: t('meetings.deleteTitle'), icon: <Trash2 />, danger: true, onClick: () => setDeleteTarget(m) },
+                      ]}
+                    />
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
       )}
 
-      {/* Create / Edit Modal */}
-      {showForm && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowForm(false)} />
-          <div className="relative bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-lg space-y-4 p-6">
-            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-              {editId ? t('meetings.editMeeting') : t('meetings.newMeeting')}
-            </h2>
+      <MeetingFormModal
+        isOpen={formOpen}
+        onClose={() => setFormOpen(false)}
+        meeting={editTarget}
+        onSubmit={handleSubmit}
+      />
 
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('common.name')} *</label>
-                <input
-                  autoFocus
-                  value={form.title}
-                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  placeholder={t('meetings.titlePlaceholder')}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('meetings.description')}</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  rows={2}
-                  className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('meetings.recurrenceLabel')}</label>
-                  <select
-                    value={form.recurrence}
-                    onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value as MeetingRecurrence }))}
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  >
-                    {RECURRENCE_OPTIONS.map((r) => (
-                      <option key={r} value={r}>{t(`meetings.recurrence.${r}`)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('meetings.dayOfWeek')}</label>
-                  <select
-                    value={form.dayOfWeek}
-                    onChange={(e) => setForm((f) => ({ ...f, dayOfWeek: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  >
-                    <option value="">{t('common.none')}</option>
-                    {DAY_KEYS.map((day, i) => (
-                      <option key={i} value={i}>{t(`meetings.days.${day}`)}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('meetings.time')}</label>
-                  <input
-                    type="time"
-                    value={form.meetingTime}
-                    onChange={(e) => setForm((f) => ({ ...f, meetingTime: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('meetings.location')}</label>
-                  <input
-                    value={form.location}
-                    onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    placeholder={t('meetings.locationPlaceholder')}
-                  />
-                </div>
-              </div>
-
-              <label className="flex items-center gap-3 cursor-pointer select-none">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={form.isGlobal}
-                    onChange={(e) => setForm((f) => ({ ...f, isGlobal: e.target.checked }))}
-                  />
-                  <div className="w-9 h-5 rounded-full bg-slate-200 dark:bg-slate-700 peer-checked:bg-emerald-500 transition-colors" />
-                  <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Globe className="w-3.5 h-3.5 text-emerald-500" />
-                    {t('meetings.globalLabel')}
-                  </span>
-                  <p className="text-xs text-slate-400">{t('meetings.globalHint')}</p>
-                </div>
-              </label>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setShowForm(false)}
-                className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={!form.title.trim() || saving}
-                className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                {saving ? '…' : t('common.save')}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
-
-      {/* Delete Confirm */}
-      {deleteTarget && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
-          <div className="relative bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">{t('meetings.deleteTitle')}</h2>
-            <p className="text-sm text-slate-500">{t('meetings.deleteConfirm', { title: deleteTarget.title })}</p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 transition-colors"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={handleDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                {t('common.delete')}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
-    </div>
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        title={t('meetings.deleteTitle')}
+        message={t('meetings.deleteConfirm', { title: deleteTarget?.title ?? '' })}
+        confirmLabel={t('common.delete')}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteTarget(null)}
+        variant="danger"
+      />
+    </Page>
   )
 }

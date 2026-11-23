@@ -1,56 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
-  Users, Plus, Pencil, Trash2, ShieldCheck, User, Loader2, Key,
-  Monitor, UsersRound, Tag, ShieldAlert, Lock, Unlock, Eye, UserCheck,
+  Users, Plus, Pencil, Trash2, ShieldCheck, User, Settings, Monitor, UsersRound, Tag, ShieldAlert,
+  Link2, AlertTriangle, SearchX, Check, Info, UserPlus,
 } from 'lucide-react'
 import { adminApi, groupsApi, teamsApi, ticketCategoriesApi } from '@/api/client'
 import type { AdminUser, PermissionGroup, PagePermission, Software, Team, TicketCategory } from '@/types'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import Page from '@/components/ui/Page'
+import PageHeader from '@/components/ui/PageHeader'
+import Tabs from '@/components/ui/Tabs'
+import Button from '@/components/ui/Button'
+import IconButton from '@/components/ui/IconButton'
+import Badge from '@/components/ui/Badge'
+import Avatar from '@/components/ui/Avatar'
+import Field from '@/components/ui/Field'
+import Select from '@/components/ui/Select'
+import SearchInput from '@/components/ui/SearchInput'
+import EmptyState from '@/components/ui/EmptyState'
+import { SkeletonList } from '@/components/ui/Skeleton'
+import PasswordInput from '@/components/ui/PasswordInput'
+import {
+  ALL_PAGES, PERM_OPTIONS, PermBadge, PermSegment, defaultPermFor, optionsFor,
+} from '@/components/admin/permissions'
 import { useAuthStore } from '@/store/auth'
+import { toast, errorMessage } from '@/store/toast'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
 import { getMemberDisplayNames } from '@/utils/members'
-
-// ─── Page keys + labels (same order as sidebar) ───────────────────────────────
-const ALL_PAGES: { key: string; labelKey: string; hasWriteOwn?: boolean; isSubReadOnly?: boolean }[] = [
-  { key: 'dashboard',          labelKey: 'nav.dashboard' },
-  { key: 'team',               labelKey: 'nav.team' },
-  { key: 'kompetenzen',        labelKey: 'nav.competencies' },
-  { key: 'kompetenzen-matrix',        labelKey: 'admin.groups.matrixPermLabel',  hasWriteOwn: true },
-  { key: 'kompetenzen-matrix-footer', labelKey: 'admin.groups.footerPermLabel',  isSubReadOnly: true },
-  { key: 'sprints',            labelKey: 'nav.sprints' },
-  { key: 'rotation',      labelKey: 'nav.rotation' },
-  { key: 'retro',         labelKey: 'nav.retrospectives' },
-  { key: 'health',        labelKey: 'nav.teamHealth' },
-  { key: 'pulse',         labelKey: 'nav.pulseCheck' },
-  { key: 'stakeholder',   labelKey: 'nav.stakeholder' },
-  { key: 'azure-ranking',         labelKey: 'nav.azureRankings' },
-  { key: 'azure-ranking-refresh', labelKey: 'admin.groups.azureRankingRefreshLabel', isSubReadOnly: true },
-  { key: 'known-errors',  labelKey: 'nav.knownErrors' },
-  { key: 'meetings',      labelKey: 'nav.meetings' },
-  { key: 'tickets',       labelKey: 'nav.tickets' },
-  { key: 'roadmap',       labelKey: 'nav.roadmap' },
-]
-
-// ─── Permission icons / labels ─────────────────────────────────────────────────
-const PERM_OPTIONS: { value: PagePermission; icon: React.ReactNode; className: string }[] = [
-  { value: 'write',     icon: <Unlock    className="w-3 h-3" />, className: 'bg-green-50 text-green-700 border-green-200' },
-  { value: 'write-own', icon: <UserCheck className="w-3 h-3" />, className: 'bg-blue-50  text-blue-700  border-blue-200'  },
-  { value: 'read',      icon: <Eye       className="w-3 h-3" />, className: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { value: 'none',      icon: <Lock      className="w-3 h-3" />, className: 'bg-red-50   text-red-700   border-red-200'   },
-]
-// Standard options without write-own (used for all pages except kompetenzen-matrix)
-const PERM_OPTIONS_STANDARD = PERM_OPTIONS.filter((o) => o.value !== 'write-own')
-// Matrix options: write-own included, but 'none' excluded (use parent page 'none' to block entirely)
-const PERM_OPTIONS_MATRIX = PERM_OPTIONS.filter((o) => o.value !== 'none')
-// Sub-read-only options: only read/none (visibility toggle, no write semantics)
-const PERM_OPTIONS_READONLY = PERM_OPTIONS.filter((o) => o.value === 'read' || o.value === 'none')
-
-/** Returns the default PagePermission for a page entry (used when the group has no explicit value). */
-function defaultPermFor(page: { isSubReadOnly?: boolean }): PagePermission {
-  return page.isSubReadOnly ? 'read' : 'write'
-}
+import { AVATAR_COLORS } from '@/utils/avatar'
 
 // ─── Form state types ──────────────────────────────────────────────────────────
 interface UserFormState {
@@ -82,12 +61,94 @@ const emptyGroupForm = (): GroupFormState => ({
 interface SoftwareFormState { name: string; vendor: string; version: string; description: string }
 const emptySoftwareForm = (): SoftwareFormState => ({ name: '', vendor: '', version: '', description: '' })
 
+const CATEGORY_PRESETS = ['#6366f1', '#0ea5e9', '#14b8a6', '#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444', '#ec4899', '#8b5cf6', '#64748b']
+
+type TabKey = 'users' | 'groups' | 'teams' | 'software' | 'ticketCategories'
+const TAB_KEYS: TabKey[] = ['users', 'groups', 'teams', 'software', 'ticketCategories']
+type UserFilter = 'all' | 'admin' | 'user' | 'inactive'
+
+/** ALL_PAGES grouped as [parent, ...subPermissions] */
+const PAGE_CHUNKS = ALL_PAGES.reduce<(typeof ALL_PAGES)[]>((acc, p) => {
+  if ((p.hasWriteOwn || p.isSubReadOnly) && acc.length > 0) acc[acc.length - 1].push(p)
+  else acc.push([p])
+  return acc
+}, [])
+
+function hashColor(s: string) {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h)
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
+}
+
+// ─── Small layout helpers ──────────────────────────────────────────────────────
+
+/** Inline error box used inside modal forms. */
+function FormAlert({ children }: { children: ReactNode }) {
+  return (
+    <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+      <span className="break-words">{children}</span>
+    </div>
+  )
+}
+
+/** Row actions: edit + delete icon buttons. */
+function RowActions({ onEdit, onDelete, editLabel, deleteLabel, deleteDisabled, deleteDisabledReason }: {
+  onEdit: () => void
+  onDelete: () => void
+  editLabel: string
+  deleteLabel: string
+  deleteDisabled?: boolean
+  deleteDisabledReason?: string
+}) {
+  return (
+    <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+      <IconButton icon={<Pencil />} label={editLabel} onClick={onEdit} />
+      <span title={deleteDisabled ? deleteDisabledReason : undefined}>
+        <IconButton icon={<Trash2 />} label={deleteLabel} variant="danger" onClick={onDelete} disabled={deleteDisabled} />
+      </span>
+    </div>
+  )
+}
+
+/** Simple list container with rows (used for teams, software, categories). */
+function ListCard({ children }: { children: ReactNode }) {
+  return <ul className="surface divide-y divide-slate-100 overflow-hidden dark:divide-slate-800">{children}</ul>
+}
+
+function ListRow({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
+  return (
+    <li
+      onClick={onClick}
+      className={`flex items-center gap-3 px-4 py-3 transition-colors sm:px-5 ${onClick ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40' : ''}`}
+    >
+      {children}
+    </li>
+  )
+}
+
 export default function AdminPage() {
   const { t } = useTranslation()
-  const currentUser = useAuthStore((s) => s.user)
-  const setTeams    = useAuthStore((s) => s.setTeams)
+  const currentUser   = useAuthStore((s) => s.user)
+  const setTeams      = useAuthStore((s) => s.setTeams)
+  const currentTeamId = useAuthStore((s) => s.currentTeamId)
 
-  const [activeTab, setActiveTab] = useState<'users' | 'groups' | 'software' | 'teams' | 'ticketCategories'>('users')
+  // Active tab lives in the URL (?tab=groups) so reloads / links keep it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab') as TabKey | null
+  const activeTab: TabKey = tabParam && TAB_KEYS.includes(tabParam) ? tabParam : 'users'
+  function setActiveTab(k: TabKey) {
+    setSearchParams(k === 'users' ? {} : { tab: k }, { replace: true })
+  }
+  // Keep the active tab visible in the horizontally scrolling tab bar (mobile, deep links)
+  const tabsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = tabsRef.current?.querySelector<HTMLElement>('[role=tab][aria-selected=true]')
+    const bar = el?.parentElement
+    if (el && bar && bar.scrollWidth > bar.clientWidth) {
+      bar.scrollTo({ left: el.offsetLeft - (bar.clientWidth - el.offsetWidth) / 2, behavior: 'smooth' })
+    }
+  }, [activeTab])
 
   // ─── Users ──────────────────────────────────────────────────────────────────
   const [users,       setUsers]       = useState<AdminUser[]>([])
@@ -99,6 +160,8 @@ export default function AdminPage() {
   const [saving,      setSaving]      = useState(false)
   const [formError,   setFormError]   = useState('')
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
+  const [userSearch,  setUserSearch]  = useState('')
+  const [userFilter,  setUserFilter]  = useState<UserFilter>('all')
 
   // ─── Groups ──────────────────────────────────────────────────────────────────
   const [groups,         setGroups]         = useState<PermissionGroup[]>([])
@@ -170,6 +233,7 @@ export default function AdminPage() {
     catch { /* ignore */ }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadUsers(); loadGroups(); loadTeams(); loadTicketCats() }, [])
 
   // ─── Users CRUD ───────────────────────────────────────────────────────────────
@@ -186,7 +250,8 @@ export default function AdminPage() {
     setFormError(''); setModalOpen(true)
   }
 
-  async function handleSaveUser() {
+  async function handleSaveUser(e?: React.FormEvent) {
+    e?.preventDefault()
     setFormError('')
     if (!form.username.trim() || !form.displayName.trim()) {
       setFormError(t('admin.usernameDisplayNameRequired')); return
@@ -205,6 +270,7 @@ export default function AdminPage() {
           memberId:    form.memberId || null,
         })
         setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
+        toast.success(t('admin.userUpdated'))
       } else {
         const created = await adminApi.createUser({
           username:    form.username.trim(),
@@ -215,6 +281,7 @@ export default function AdminPage() {
           memberId:    form.memberId || null,
         })
         setUsers((prev) => [...prev, created])
+        toast.success(t('admin.userCreated'))
       }
       setModalOpen(false)
     } catch (err) {
@@ -227,9 +294,11 @@ export default function AdminPage() {
     try {
       await adminApi.deleteUser(deleteTarget.id)
       setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id))
+      toast.success(t('common.deleted'))
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('admin.errorDeleting'))
-    } finally { setDeleteTarget(null) }
+      toast.error(t('admin.errorDeleting'), { description: errorMessage(err) })
+      throw err
+    }
   }
 
   // ─── Groups CRUD ──────────────────────────────────────────────────────────────
@@ -251,7 +320,8 @@ export default function AdminPage() {
     setGroupForm((prev) => ({ ...prev, permissions: { ...prev.permissions, [page]: perm } }))
   }
 
-  async function handleSaveGroup() {
+  async function handleSaveGroup(e?: React.FormEvent) {
+    e?.preventDefault()
     setGroupFormError('')
     if (!groupForm.name.trim()) { setGroupFormError(t('admin.groups.nameRequired')); return }
     setGroupSaving(true)
@@ -262,12 +332,14 @@ export default function AdminPage() {
           permissions: groupForm.permissions, isDefault: groupForm.isDefault,
         })
         setGroups((prev) => prev.map((g) => (g.id === editGroup.id ? updated : g)))
+        toast.success(t('common.saved'))
       } else {
         const created = await groupsApi.create({
           name: groupForm.name.trim(), description: groupForm.description.trim(),
           permissions: groupForm.permissions, isDefault: groupForm.isDefault,
         })
         setGroups((prev) => [...prev, created])
+        toast.success(t('common.created'))
       }
       setGroupModal(false)
     } catch (err) {
@@ -282,13 +354,26 @@ export default function AdminPage() {
       setGroups((prev) => prev.filter((g) => g.id !== groupDelete.id))
       // Remove this group from local user state too
       setUsers((prev) => prev.map((u) => ({ ...u, groupIds: u.groupIds.filter((gid) => gid !== groupDelete.id) })))
+      toast.success(t('common.deleted'))
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('admin.errorDeleting'))
-    } finally { setGroupDelete(null) }
+      toast.error(t('admin.errorDeleting'), { description: errorMessage(err) })
+      throw err
+    }
   }
 
   // ─── Software ─────────────────────────────────────────────────────────────────
-  async function handleSaveSw() {
+  function openCreateSw() {
+    setEditSw(null); setSwForm(emptySoftwareForm()); setSwFormError(''); setSwModalOpen(true)
+  }
+
+  function openEditSw(sw: Software) {
+    setEditSw(sw)
+    setSwForm({ name: sw.name, vendor: sw.vendor ?? '', version: sw.version ?? '', description: sw.description ?? '' })
+    setSwFormError(''); setSwModalOpen(true)
+  }
+
+  async function handleSaveSw(e?: React.FormEvent) {
+    e?.preventDefault()
     setSwFormError('')
     if (!swForm.name.trim()) { setSwFormError(t('admin.software.nameRequired')); return }
     setSwSaving(true)
@@ -299,8 +384,8 @@ export default function AdminPage() {
         version: swForm.version.trim() || undefined,
         description: swForm.description.trim() || undefined,
       }
-      if (editSw) { await updateSoftware(editSw.id, data) }
-      else { await addSoftware(data) }
+      if (editSw) { await updateSoftware(editSw.id, data); toast.success(t('common.saved')) }
+      else { await addSoftware(data); toast.success(t('common.created')) }
       setSwModalOpen(false)
     } catch (err) {
       setSwFormError(err instanceof Error ? err.message : t('admin.software.saveError'))
@@ -309,22 +394,37 @@ export default function AdminPage() {
 
   async function handleDeleteSw() {
     if (!swDeleteTarget) return
-    try { await deleteSoftware(swDeleteTarget.id) }
-    catch (err) { setError(err instanceof Error ? err.message : t('admin.software.deleteError')) }
-    finally { setSwDeleteTarget(null) }
+    try {
+      await deleteSoftware(swDeleteTarget.id)
+      toast.success(t('common.deleted'))
+    } catch (err) {
+      toast.error(t('admin.software.deleteError'), { description: errorMessage(err) })
+      throw err
+    }
   }
 
   // ─── Ticket Categories ────────────────────────────────────────────────────────
-  async function saveCat() {
+  function openCreateCat() {
+    setEditCat(null); setCatForm({ name: '', color: '#6366f1' }); setCatFormError(''); setCatModalOpen(true)
+  }
+
+  function openEditCat(cat: TicketCategory) {
+    setEditCat(cat); setCatForm({ name: cat.name, color: cat.color }); setCatFormError(''); setCatModalOpen(true)
+  }
+
+  async function saveCat(e?: React.FormEvent) {
+    e?.preventDefault()
     if (!catForm.name.trim()) { setCatFormError(t('admin.ticketCategories.nameRequired')); return }
     setCatSaving(true); setCatFormError('')
     try {
       if (editCat) {
         const updated = await ticketCategoriesApi.update(editCat.id, catForm)
         setTicketCats((prev) => prev.map((c) => (c.id === editCat.id ? updated : c)))
+        toast.success(t('common.saved'))
       } else {
         const created = await ticketCategoriesApi.create(catForm)
         setTicketCats((prev) => [...prev, created])
+        toast.success(t('common.created'))
       }
       setCatModalOpen(false)
     } catch (err) {
@@ -337,18 +437,29 @@ export default function AdminPage() {
     try {
       await ticketCategoriesApi.delete(catDeleteTarget.id)
       setTicketCats((prev) => prev.filter((c) => c.id !== catDeleteTarget.id))
+      toast.success(t('common.deleted'))
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('admin.errorDeleting'))
-    } finally { setCatDeleteTarget(null) }
+      toast.error(t('admin.errorDeleting'), { description: errorMessage(err) })
+      throw err
+    }
   }
 
   // ─── Teams ────────────────────────────────────────────────────────────────────
-  async function saveTeam() {
-    if (!teamForm.name.trim()) { setTeamFormError(t('teams.teamName') + ' required.'); return }
+  function openCreateTeam() {
+    setEditTeam(null); setTeamForm({ name: '', description: '' }); setTeamFormError(''); setTeamModalOpen(true)
+  }
+
+  function openEditTeam(team: Team) {
+    setEditTeam(team); setTeamForm({ name: team.name, description: team.description ?? '' }); setTeamFormError(''); setTeamModalOpen(true)
+  }
+
+  async function saveTeam(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!teamForm.name.trim()) { setTeamFormError(t('admin.teams.nameRequired')); return }
     setTeamSaving(true); setTeamFormError('')
     try {
-      if (editTeam) { await teamsApi.update(editTeam.id, teamForm) }
-      else { await teamsApi.create(teamForm) }
+      if (editTeam) { await teamsApi.update(editTeam.id, teamForm); toast.success(t('common.saved')) }
+      else { await teamsApi.create(teamForm); toast.success(t('common.created')) }
       await loadTeams(); setTeamModalOpen(false)
     } catch (err) {
       setTeamFormError(err instanceof Error ? err.message : t('admin.errorLoading'))
@@ -357,9 +468,14 @@ export default function AdminPage() {
 
   async function confirmDeleteTeam() {
     if (!teamDeleteTarget) return
-    try { await teamsApi.delete(teamDeleteTarget.id); await loadTeams() }
-    catch (err) { setError(err instanceof Error ? err.message : t('teams.lastTeamError')) }
-    finally { setTeamDeleteTarget(null) }
+    try {
+      await teamsApi.delete(teamDeleteTarget.id)
+      await loadTeams()
+      toast.success(t('common.deleted'))
+    } catch (err) {
+      toast.error(t('common.deleteError'), { description: errorMessage(err, t('teams.lastTeamError')) })
+      throw err
+    }
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -372,376 +488,492 @@ export default function AdminPage() {
     }))
   }
 
-  function permIcon(perm: PagePermission) {
-    const opt = PERM_OPTIONS.find((o) => o.value === perm)
-    return opt ? <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${opt.className}`}>{opt.icon}{t(`admin.groups.perm.${perm}`)}</span> : null
+  const memberById = useMemo(() => new Map(allMembers.map((m) => [m.id, m])), [allMembers])
+
+  const userCounts = useMemo(() => ({
+    all:      users.length,
+    admin:    users.filter((u) => u.role === 'admin').length,
+    user:     users.filter((u) => u.role === 'user').length,
+    inactive: users.filter((u) => !u.isActive).length,
+  }), [users])
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase()
+    return users.filter((u) => {
+      if (userFilter === 'admin' && u.role !== 'admin') return false
+      if (userFilter === 'user' && u.role !== 'user') return false
+      if (userFilter === 'inactive' && u.isActive) return false
+      if (!q) return true
+      const member = u.memberId ? memberById.get(u.memberId) : undefined
+      return (
+        u.displayName.toLowerCase().includes(q) ||
+        u.username.toLowerCase().includes(q) ||
+        (member?.name.toLowerCase().includes(q) ?? false)
+      )
+    })
+  }, [users, userSearch, userFilter, memberById])
+
+  const usersFiltered = userSearch.trim() !== '' || userFilter !== 'all'
+  function resetUserFilters() { setUserSearch(''); setUserFilter('all') }
+
+  // ─── Render pieces ────────────────────────────────────────────────────────────
+  const TABS = [
+    { value: 'users'            as TabKey, icon: Users,       label: t('admin.tab.users'),            count: users.length },
+    { value: 'groups'           as TabKey, icon: ShieldAlert, label: t('admin.tab.groups'),           count: groups.length },
+    { value: 'teams'            as TabKey, icon: UsersRound,  label: t('admin.tab.teams'),            count: teamList.length },
+    { value: 'software'         as TabKey, icon: Monitor,     label: t('admin.tab.software'),         count: software.length },
+    { value: 'ticketCategories' as TabKey, icon: Tag,         label: t('admin.tab.ticketCategories'), count: ticketCats.length },
+  ]
+
+  const primaryAction = {
+    users:            <Button variant="primary" icon={<UserPlus />} onClick={openCreateUser}>{t('admin.newUser')}</Button>,
+    groups:           <Button variant="primary" icon={<Plus />} onClick={openCreateGroup}>{t('admin.groups.new')}</Button>,
+    teams:            <Button variant="primary" icon={<Plus />} onClick={openCreateTeam}>{t('teams.createTeam')}</Button>,
+    software:         <Button variant="primary" icon={<Plus />} onClick={openCreateSw}>{t('admin.software.new')}</Button>,
+    ticketCategories: <Button variant="primary" icon={<Plus />} onClick={openCreateCat}>{t('admin.ticketCategories.new')}</Button>,
+  }[activeTab]
+
+  function userAvatar(u: AdminUser, size: 'sm' | 'md' = 'sm') {
+    const member = u.memberId ? memberById.get(u.memberId) : undefined
+    return <Avatar name={u.displayName} color={member?.avatarColor ?? hashColor(u.username)} size={size} />
   }
 
+  function userIdentity(u: AdminUser) {
+    const member = u.memberId ? memberById.get(u.memberId) : undefined
+    return (
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate font-medium text-slate-900 dark:text-slate-100">{u.displayName}</span>
+          {u.id === currentUser?.id && <Badge variant="indigo" label={t('admin.me')} className="!px-1.5 !py-0 !text-2xs" />}
+        </div>
+        <p className="flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span className="truncate">@{u.username}</span>
+          {member && (
+            <span className="inline-flex min-w-0 items-center gap-1 text-indigo-600 dark:text-indigo-400" title={t('admin.linkedMember')}>
+              <Link2 className="h-3 w-3 shrink-0" />
+              <span className="truncate">{member.name}</span>
+            </span>
+          )}
+        </p>
+      </div>
+    )
+  }
+
+  function roleBadge(u: AdminUser) {
+    return u.role === 'admin'
+      ? <Badge variant="indigo" icon={<ShieldCheck />} label={t('sidebar.administrator')} />
+      : <Badge variant="default" icon={<User />} label={t('sidebar.user')} />
+  }
+
+  function groupBadges(u: AdminUser) {
+    if (u.role === 'admin') {
+      return <span className="text-xs text-slate-400 dark:text-slate-500">{t('admin.fullAccess')}</span>
+    }
+    if ((u.groupIds?.length ?? 0) === 0) {
+      return <Badge variant="warning" icon={<AlertTriangle />} label={t('admin.groups.noGroupAssigned')} />
+    }
+    return (
+      <div className="flex flex-wrap gap-1">
+        {(u.groupIds ?? []).map((gid) => {
+          const g = groups.find((x) => x.id === gid)
+          return g ? <Badge key={gid} variant="outline" label={g.name} /> : null
+        })}
+      </div>
+    )
+  }
+
+  function statusBadge(u: AdminUser) {
+    return u.isActive
+      ? <Badge variant="success" dot label={t('common.active')} />
+      : <Badge variant="default" dot label={t('common.inactive')} />
+  }
+
+  function userRowActions(u: AdminUser) {
+    return (
+      <RowActions
+        onEdit={() => openEditUser(u)}
+        onDelete={() => setDeleteTarget(u)}
+        editLabel={t('common.edit')}
+        deleteLabel={t('admin.deleteUser')}
+        deleteDisabled={u.id === currentUser?.id}
+        deleteDisabledReason={t('admin.cannotDeleteSelf')}
+      />
+    )
+  }
+
+  const thCls = 'sticky top-0 z-10 whitespace-nowrap border-b border-slate-200 bg-slate-50/95 px-4 py-2.5 text-left text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-400'
+
   // ─── Render ───────────────────────────────────────────────────────────────────
-  const TABS = [
-    { key: 'users',            icon: <Users       className="w-4 h-4" />, label: t('admin.tab.users') },
-    { key: 'groups',           icon: <ShieldAlert className="w-4 h-4" />, label: t('admin.tab.groups') },
-    { key: 'teams',            icon: <UsersRound  className="w-4 h-4" />, label: t('teams.manage') },
-    { key: 'software',         icon: <Monitor     className="w-4 h-4" />, label: t('admin.tab.software') },
-    { key: 'ticketCategories', icon: <Tag         className="w-4 h-4" />, label: t('admin.tab.ticketCategories') },
-  ] as const
-
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center">
-            <Users className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t('admin.pageTitle')}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{t('admin.pageSubtitle')}</p>
-          </div>
+    <Page>
+      <PageHeader
+        icon={Settings}
+        title={t('admin.pageTitle')}
+        subtitle={t('admin.pageSubtitle')}
+        actions={primaryAction}
+      >
+        <div ref={tabsRef}>
+          <Tabs items={TABS} value={activeTab} onChange={setActiveTab} aria-label={t('admin.pageTitle')} />
         </div>
-        <div>
-          {activeTab === 'users' && (
-            <button onClick={openCreateUser} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
-              <Plus className="w-4 h-4" /> {t('admin.newUser')}
-            </button>
-          )}
-          {activeTab === 'groups' && (
-            <button onClick={openCreateGroup} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
-              <Plus className="w-4 h-4" /> {t('admin.groups.new')}
-            </button>
-          )}
-          {activeTab === 'software' && (
-            <button onClick={() => { setEditSw(null); setSwForm(emptySoftwareForm()); setSwFormError(''); setSwModalOpen(true) }} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
-              <Plus className="w-4 h-4" /> {t('admin.software.new')}
-            </button>
-          )}
-          {activeTab === 'teams' && (
-            <button onClick={() => { setEditTeam(null); setTeamForm({ name: '', description: '' }); setTeamFormError(''); setTeamModalOpen(true) }} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
-              <Plus className="w-4 h-4" /> {t('teams.createTeam')}
-            </button>
-          )}
-          {activeTab === 'ticketCategories' && (
-            <button onClick={() => { setEditCat(null); setCatForm({ name: '', color: '#6366f1' }); setCatFormError(''); setCatModalOpen(true) }} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
-              <Plus className="w-4 h-4" /> {t('admin.ticketCategories.new')}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700 flex-wrap">
-        {TABS.map(({ key, icon, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              activeTab === key
-                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            {icon}{label}
-          </button>
-        ))}
-      </div>
-
-      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{error}</p>}
+      </PageHeader>
 
       {/* ─── Users Tab ────────────────────────────────────────────────────────── */}
-      {activeTab === 'users' && (loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-indigo-500" /></div>
-      ) : (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm min-w-[620px]">
-            <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-              <tr>
-                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.userColumn')}</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.roleColumn')}</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.tab.groups')}</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('common.status')}</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {users.map((u) => (
-                <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center shrink-0">
-                        {u.role === 'admin' ? <ShieldCheck className="w-4 h-4 text-indigo-600" /> : <User className="w-4 h-4 text-slate-500" />}
-                      </div>
-                      <div>
-                        <p className="font-medium text-slate-800 dark:text-slate-200">{u.displayName}</p>
-                        <p className="text-xs text-slate-400">@{u.username}</p>
-                        {u.memberId && (() => {
-                          const m = allMembers.find((x) => x.id === u.memberId)
-                          return m ? <p className="text-xs text-indigo-500">↳ {m.name}</p> : null
-                        })()}
-                      </div>
-                      {u.id === currentUser?.id && (
-                        <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-1.5 py-0.5 ml-1">{t('admin.me')}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${
-                      u.role === 'admin'
-                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                    }`}>
-                      {u.role === 'admin' ? t('sidebar.administrator') : t('sidebar.user')}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    {u.role === 'admin' ? (
-                      <span className="text-xs text-slate-400">{t('admin.fullAccess')}</span>
-                    ) : (u.groupIds?.length ?? 0) === 0 ? (
-                      <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">{t('admin.groups.noGroupAssigned')}</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {(u.groupIds ?? []).map((gid) => {
-                          const g = groups.find((x) => x.id === gid)
-                          return g ? (
-                            <span key={gid} className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5">
-                              {g.name}
-                            </span>
-                          ) : null
-                        })}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full border ${
-                      u.isActive
-                        ? 'bg-green-50 text-green-700 border-green-200'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'
-                    }`}>
-                      {u.isActive ? t('common.active') : t('common.inactive')}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => openEditUser(u)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-lg transition-colors">
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(u)}
-                        disabled={u.id === currentUser?.id}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+      {activeTab === 'users' && (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <SearchInput
+              size="sm"
+              value={userSearch}
+              onChange={setUserSearch}
+              placeholder={t('admin.searchUsers')}
+              className="sm:w-72"
+            />
+            <Tabs
+              variant="pills"
+              size="sm"
+              value={userFilter}
+              onChange={setUserFilter}
+              aria-label={t('common.filter')}
+              items={[
+                { value: 'all' as UserFilter,      label: t('common.all'),           count: userCounts.all },
+                { value: 'admin' as UserFilter,    label: t('admin.filterAdmins'),   count: userCounts.admin },
+                { value: 'user' as UserFilter,     label: t('admin.filterUsers'),    count: userCounts.user },
+                { value: 'inactive' as UserFilter, label: t('common.inactive'),      count: userCounts.inactive },
+              ]}
+            />
+          </div>
+
+          {loading ? (
+            <SkeletonList rows={5} />
+          ) : error ? (
+            <div className="surface">
+              <EmptyState
+                icon={<AlertTriangle />}
+                title={t('admin.errorLoading')}
+                description={error}
+                action={<Button onClick={loadUsers}>{t('common.retry')}</Button>}
+              />
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="surface">
+              <EmptyState
+                icon={usersFiltered ? <SearchX /> : <Users />}
+                title={usersFiltered ? t('common.noResults') : t('admin.noUsers')}
+                action={usersFiltered
+                  ? <Button size="sm" onClick={resetUserFilters}>{t('common.resetFilters')}</Button>
+                  : <Button variant="primary" icon={<UserPlus />} onClick={openCreateUser}>{t('admin.newUser')}</Button>}
+              />
+            </div>
+          ) : (
+            <>
+              {/* Desktop table */}
+              <div className="surface hidden lg:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th scope="col" className={`${thCls} w-[36%] rounded-tl-xl pl-5`}>{t('admin.userColumn')}</th>
+                      <th scope="col" className={`${thCls} w-40`}>{t('admin.roleColumn')}</th>
+                      <th scope="col" className={thCls}>{t('admin.tab.groups')}</th>
+                      <th scope="col" className={`${thCls} w-28`}>{t('common.status')}</th>
+                      <th scope="col" className={`${thCls} w-24 rounded-tr-xl pr-5 text-right`}><span className="sr-only">{t('common.actions')}</span></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    {filteredUsers.map((u) => (
+                      <tr
+                        key={u.id}
+                        onClick={() => openEditUser(u)}
+                        className={`cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40 ${u.isActive ? '' : 'opacity-60'}`}
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <td className="max-w-0 py-3 pl-5 pr-4">
+                          <div className="flex items-center gap-3">
+                            {userAvatar(u)}
+                            {userIdentity(u)}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">{roleBadge(u)}</td>
+                        <td className="px-4 py-3">{groupBadges(u)}</td>
+                        <td className="whitespace-nowrap px-4 py-3">{statusBadge(u)}</td>
+                        <td className="py-3 pl-4 pr-4">{userRowActions(u)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile cards */}
+              <ul className="space-y-2 lg:hidden">
+                {filteredUsers.map((u) => (
+                  <li key={u.id} className={`surface p-4 ${u.isActive ? '' : 'opacity-70'}`}>
+                    <div className="flex items-start gap-3">
+                      {userAvatar(u, 'md')}
+                      <div className="min-w-0 flex-1">{userIdentity(u)}</div>
+                      {userRowActions(u)}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 pl-[3.25rem]">
+                      {roleBadge(u)}
+                      {statusBadge(u)}
+                      {groupBadges(u)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {usersFiltered && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t('admin.showingUsers', { shown: filteredUsers.length, total: users.length })}
+                </p>
+              )}
+            </>
+          )}
         </div>
-      ))}
+      )}
 
       {/* ─── Groups Tab ───────────────────────────────────────────────────────── */}
       {activeTab === 'groups' && (groupLoading ? (
-        <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-indigo-500" /></div>
+        <SkeletonList rows={3} />
       ) : groups.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 py-16 text-center">
-          <ShieldAlert className="w-10 h-10 mx-auto mb-3 text-slate-300" />
-          <p className="text-sm text-slate-500">{t('admin.groups.empty')}</p>
+        <div className="surface">
+          <EmptyState
+            icon={<ShieldAlert />}
+            title={t('admin.groups.emptyTitle')}
+            description={t('admin.groups.empty')}
+            action={<Button variant="primary" icon={<Plus />} onClick={openCreateGroup}>{t('admin.groups.new')}</Button>}
+          />
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {groups.map((g) => (
-            <div key={g.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-              <div className="flex items-start justify-between gap-4 mb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-slate-800 dark:text-slate-200">{g.name}</h3>
-                    {g.isDefault && (
-                      <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-1.5 py-0.5">{t('admin.groups.default')}</span>
-                    )}
+            <section key={g.id} className="surface">
+              <header className="flex items-start gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+                  <ShieldCheck className="h-[18px] w-[18px]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-slate-900 dark:text-slate-100">{g.name}</h3>
+                    {g.isDefault && <Badge variant="indigo" icon={<Check />} label={t('admin.groups.default')} />}
+                    <Badge variant="default" icon={<Users />} label={t('admin.groups.memberCount', { count: g.memberCount })} />
                   </div>
-                  {g.description && <p className="text-sm text-slate-500 mt-0.5">{g.description}</p>}
-                  <p className="text-xs text-slate-400 mt-1">{t('admin.groups.memberCount', { count: g.memberCount })}</p>
+                  {g.description && <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{g.description}</p>}
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => openEditGroup(g)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-lg transition-colors">
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => setGroupDelete(g)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                <RowActions
+                  onEdit={() => openEditGroup(g)}
+                  onDelete={() => setGroupDelete(g)}
+                  editLabel={t('admin.groups.edit')}
+                  deleteLabel={t('admin.groups.delete')}
+                />
+              </header>
+              <div className="columns-1 gap-x-8 px-5 py-4 sm:columns-2 lg:columns-3">
+                {PAGE_CHUNKS.map((chunk) => (
+                  // Parent page + its sub-permissions stay together in one column
+                  <div key={chunk[0].key} className="break-inside-avoid">
+                    {chunk.map((pageEntry) => {
+                      const { key, labelKey, hasWriteOwn, isSubReadOnly } = pageEntry
+                      const perm = (g.permissions[key] ?? defaultPermFor(pageEntry)) as PagePermission
+                      const sub = hasWriteOwn || isSubReadOnly
+                      return (
+                        <div key={key} className={`flex items-center justify-between gap-2 py-1 ${sub ? 'pl-3' : ''}`}>
+                          <span className={`truncate text-sm ${sub ? 'text-slate-500 dark:text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}>{t(labelKey)}</span>
+                          <PermBadge perm={perm} />
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {ALL_PAGES.map((pageEntry) => {
-                  const { key, labelKey } = pageEntry
-                  const perm = (g.permissions[key] ?? defaultPermFor(pageEntry)) as PagePermission
-                  return (
-                    <div key={key} className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-1.5">
-                      <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{t(labelKey)}</span>
-                      {permIcon(perm)}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+            </section>
           ))}
         </div>
       ))}
 
-      {/* ─── Software Tab ────────────────────────────────────────────────────── */}
-      {activeTab === 'software' && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden overflow-x-auto">
-          {software.length === 0 ? (
-            <div className="py-16 text-center text-slate-400"><Monitor className="w-8 h-8 mx-auto mb-2 opacity-40" /><p className="text-sm">{t('admin.software.empty')}</p></div>
-          ) : (
-            <table className="w-full text-sm min-w-[520px]">
-              <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('common.name')}</th>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.software.vendor')}</th>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.software.version')}</th>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.software.description')}</th>
-                  <th className="px-5 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {software.map((sw) => (
-                  <tr key={sw.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center shrink-0">
-                          <Monitor className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                        </div>
-                        <span className="font-medium text-slate-800 dark:text-slate-200">{sw.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{sw.vendor ?? '—'}</td>
-                    <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{sw.version ? `v${sw.version}` : '—'}</td>
-                    <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400 max-w-xs truncate">{sw.description ?? '—'}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-1 justify-end">
-                        <button onClick={() => { setEditSw(sw); setSwForm({ name: sw.name, vendor: sw.vendor ?? '', version: sw.version ?? '', description: sw.description ?? '' }); setSwFormError(''); setSwModalOpen(true) }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => setSwDeleteTarget(sw)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-
       {/* ─── Teams Tab ──────────────────────────────────────────────────────── */}
-      {activeTab === 'teams' && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden overflow-x-auto">
-          {teamList.length === 0 ? (
-            <div className="py-16 text-center text-slate-400"><UsersRound className="w-8 h-8 mx-auto mb-2 opacity-40" /><p className="text-sm">{t('teams.selectTitle')}</p></div>
-          ) : (
-            <table className="w-full text-sm min-w-[400px]">
-              <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('teams.teamName')}</th>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('teams.description')}</th>
-                  <th className="px-5 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {teamList.map((team) => (
-                  <tr key={team.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center shrink-0 text-indigo-600 dark:text-indigo-400 text-xs font-bold">
-                          {team.name.charAt(0).toUpperCase()}
-                        </div>
-                        <span className="font-medium text-slate-800 dark:text-slate-200">{team.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{team.description ?? '—'}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-1 justify-end">
-                        <button onClick={() => { setEditTeam(team); setTeamForm({ name: team.name, description: team.description ?? '' }); setTeamFormError(''); setTeamModalOpen(true) }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => setTeamDeleteTarget(team)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      {activeTab === 'teams' && (teamList.length === 0 ? (
+        <div className="surface">
+          <EmptyState
+            icon={<UsersRound />}
+            title={t('admin.teams.empty')}
+            action={<Button variant="primary" icon={<Plus />} onClick={openCreateTeam}>{t('teams.createTeam')}</Button>}
+          />
         </div>
-      )}
+      ) : (
+        <ListCard>
+          {teamList.map((team) => (
+            <ListRow key={team.id} onClick={() => openEditTeam(team)}>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-sm font-semibold text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+                {team.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-medium text-slate-900 dark:text-slate-100">{team.name}</span>
+                  {team.id === currentTeamId && <Badge variant="success" dot label={t('admin.teams.current')} />}
+                </div>
+                <p className="truncate text-xs text-slate-500 dark:text-slate-400" title={team.description}>
+                  {team.description || '—'}
+                </p>
+              </div>
+              <RowActions
+                onEdit={() => openEditTeam(team)}
+                onDelete={() => setTeamDeleteTarget(team)}
+                editLabel={t('common.edit')}
+                deleteLabel={t('common.delete')}
+              />
+            </ListRow>
+          ))}
+        </ListCard>
+      ))}
+
+      {/* ─── Software Tab ────────────────────────────────────────────────────── */}
+      {activeTab === 'software' && (software.length === 0 ? (
+        <div className="surface">
+          <EmptyState
+            icon={<Monitor />}
+            title={t('admin.software.empty')}
+            action={<Button variant="primary" icon={<Plus />} onClick={openCreateSw}>{t('admin.software.new')}</Button>}
+          />
+        </div>
+      ) : (
+        <ListCard>
+          {software.map((sw) => (
+            <ListRow key={sw.id} onClick={() => openEditSw(sw)}>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                <Monitor className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="truncate font-medium text-slate-900 dark:text-slate-100">{sw.name}</span>
+                  {sw.version && <Badge variant="outline" label={`v${sw.version}`} className="!py-0 font-mono !text-2xs" />}
+                  {sw.vendor && <span className="text-xs text-slate-500 dark:text-slate-400">{sw.vendor}</span>}
+                </div>
+                {sw.description && (
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400" title={sw.description}>{sw.description}</p>
+                )}
+              </div>
+              <RowActions
+                onEdit={() => openEditSw(sw)}
+                onDelete={() => setSwDeleteTarget(sw)}
+                editLabel={t('admin.software.edit')}
+                deleteLabel={t('admin.software.delete')}
+              />
+            </ListRow>
+          ))}
+        </ListCard>
+      ))}
 
       {/* ─── Ticket Categories Tab ──────────────────────────────────────────── */}
-      {activeTab === 'ticketCategories' && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-          {ticketCats.length === 0 ? (
-            <div className="py-16 text-center text-slate-400"><Tag className="w-8 h-8 mx-auto mb-2 opacity-40" /><p className="text-sm">{t('admin.ticketCategories.empty')}</p></div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('common.name')}</th>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600 dark:text-slate-400">{t('admin.ticketCategories.color')}</th>
-                  <th className="px-5 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {ticketCats.map((cat) => (
-                  <tr key={cat.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-6 h-6 rounded-md shrink-0" style={{ backgroundColor: cat.color }} />
-                        <span className="font-medium text-slate-800 dark:text-slate-200">{cat.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5"><span className="text-xs font-mono text-slate-500 dark:text-slate-400">{cat.color}</span></td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-1 justify-end">
-                        <button onClick={() => { setEditCat(cat); setCatForm({ name: cat.name, color: cat.color }); setCatFormError(''); setCatModalOpen(true) }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => setCatDeleteTarget(cat)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      {activeTab === 'ticketCategories' && (ticketCats.length === 0 ? (
+        <div className="surface">
+          <EmptyState
+            icon={<Tag />}
+            title={t('admin.ticketCategories.empty')}
+            action={<Button variant="primary" icon={<Plus />} onClick={openCreateCat}>{t('admin.ticketCategories.new')}</Button>}
+          />
         </div>
-      )}
+      ) : (
+        <ListCard>
+          {ticketCats.map((cat) => (
+            <ListRow key={cat.id} onClick={() => openEditCat(cat)}>
+              <span className="h-9 w-9 shrink-0 rounded-lg ring-1 ring-inset ring-black/10 dark:ring-white/10" style={{ backgroundColor: cat.color }} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-slate-900 dark:text-slate-100">{cat.name}</p>
+                <p className="font-mono text-xs uppercase text-slate-500 dark:text-slate-400">{cat.color}</p>
+              </div>
+              <span
+                className="hidden rounded-full px-2.5 py-0.5 text-xs font-medium sm:inline-flex"
+                style={{ backgroundColor: cat.color + '22', color: cat.color }}
+              >
+                {cat.name}
+              </span>
+              <RowActions
+                onEdit={() => openEditCat(cat)}
+                onDelete={() => setCatDeleteTarget(cat)}
+                editLabel={t('admin.ticketCategories.edit')}
+                deleteLabel={t('admin.ticketCategories.delete')}
+              />
+            </ListRow>
+          ))}
+        </ListCard>
+      ))}
 
       {/* ═══ MODALS ════════════════════════════════════════════════════════════ */}
 
       {/* User Create / Edit Modal */}
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editUser ? t('common.edit') : t('admin.newUser')}>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.displayName')}</label>
-            <input type="text" value={form.displayName} onChange={(e) => setForm((p) => ({ ...p, displayName: e.target.value }))} className="form-input w-full" placeholder="Max Mustermann" />
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editUser ? t('admin.editUser') : t('admin.newUser')}
+        description={editUser ? `@${editUser.username}` : t('admin.newUserHint')}
+        icon={editUser ? <User /> : <UserPlus />}
+        size="md"
+        dismissible={!saving}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModalOpen(false)} disabled={saving}>{t('common.cancel')}</Button>
+            <Button variant="primary" type="submit" form="admin-user-form" loading={saving}>
+              {editUser ? t('common.save') : t('common.create')}
+            </Button>
+          </>
+        }
+      >
+        <form id="admin-user-form" onSubmit={handleSaveUser} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={t('admin.displayName')} htmlFor="au-display" required>
+              <input
+                id="au-display"
+                type="text"
+                value={form.displayName}
+                onChange={(e) => setForm((p) => ({ ...p, displayName: e.target.value }))}
+                className="form-input"
+                placeholder="Max Mustermann"
+                autoFocus
+              />
+            </Field>
+            <Field label={t('admin.username')} htmlFor="au-username" required={!editUser} hint={editUser ? t('admin.usernameReadonly') : undefined}>
+              <input
+                id="au-username"
+                type="text"
+                value={form.username}
+                onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))}
+                className="form-input"
+                placeholder="max.mustermann"
+                disabled={!!editUser}
+                autoComplete="off"
+              />
+            </Field>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.username')}</label>
-            <input type="text" value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} className="form-input w-full" placeholder="max.mustermann" disabled={!!editUser} />
-            {editUser && <p className="text-xs text-slate-400 mt-1">{t('admin.usernameReadonly')}</p>}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label={t('admin.password')}
+              htmlFor="au-password"
+              required={!editUser}
+              hint={editUser ? t('admin.passwordHint') : t('admin.passwordMinHint')}
+            >
+              <PasswordInput
+                id="au-password"
+                value={form.password}
+                onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+                placeholder={editUser ? '••••••••' : ''}
+                autoComplete="new-password"
+              />
+            </Field>
+            <Field label={t('common.role')} htmlFor="au-role">
+              <Select
+                id="au-role"
+                value={form.role}
+                onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as 'admin' | 'user' }))}
+              >
+                <option value="user">{t('sidebar.user')}</option>
+                <option value="admin">{t('sidebar.administrator')}</option>
+              </Select>
+            </Field>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              <Key className="w-3.5 h-3.5 inline mr-1" />
-              {t('admin.password')} {editUser && <span className="text-slate-400 font-normal">({t('admin.passwordHint')})</span>}
-            </label>
-            <input type="password" value={form.password} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} className="form-input w-full" placeholder={editUser ? '••••••••' : t('admin.passwordMinHint')} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('common.role')}</label>
-            <select value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as 'admin' | 'user' }))} className="form-input w-full">
-              <option value="user">{t('sidebar.user')}</option>
-              <option value="admin">{t('sidebar.administrator')}</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.linkedMember')}</label>
-            <select value={form.memberId} onChange={(e) => setForm((p) => ({ ...p, memberId: e.target.value }))} className="form-input w-full">
+
+          <Field label={t('admin.linkedMember')} htmlFor="au-member" hint={t('admin.linkedMemberHint')}>
+            <Select
+              id="au-member"
+              value={form.memberId}
+              onChange={(e) => setForm((p) => ({ ...p, memberId: e.target.value }))}
+            >
               <option value="">{t('admin.noLinkedMember')}</option>
               {(() => {
                 const activeMembers = allMembers.filter((m) => m.isActive)
@@ -750,176 +982,164 @@ export default function AdminPage() {
                   <option key={m.id} value={m.id}>{displayNames.get(m.id) ?? m.name}</option>
                 ))
               })()}
-            </select>
-          </div>
+            </Select>
+          </Field>
+
           {editUser && (
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="isActive" checked={form.isActive} onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))} className="rounded border-slate-300 text-indigo-600" />
-              <label htmlFor="isActive" className="text-sm text-slate-700 dark:text-slate-300">{t('admin.userActive')}</label>
-            </div>
+            <label htmlFor="au-active" className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 px-3 py-2.5 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50">
+              <input
+                type="checkbox"
+                id="au-active"
+                checked={form.isActive}
+                onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              />
+              <span>
+                <span className="block text-sm font-medium text-slate-800 dark:text-slate-200">{t('admin.userActive')}</span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">{t('admin.userActiveHint')}</span>
+              </span>
+            </label>
           )}
-          {form.role === 'user' && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{t('admin.tab.groups')}</label>
+
+          {form.role === 'user' ? (
+            <fieldset>
+              <legend className="form-label">{t('admin.tab.groups')}</legend>
               {groups.length === 0 ? (
-                <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{t('admin.groups.noGroupsYet')}</p>
+                <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  {t('admin.groups.noGroupsYet')}
+                </p>
               ) : (
                 <div className="space-y-1.5">
-                  {groups.map((g) => (
-                    <label
-                      key={g.id}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
-                        form.groupIds.includes(g.id)
-                          ? 'bg-indigo-50 border-indigo-300 dark:bg-indigo-950 dark:border-indigo-700'
-                          : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      <input type="checkbox" checked={form.groupIds.includes(g.id)} onChange={() => toggleUserGroup(g.id)} className="rounded border-slate-300 text-indigo-600" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{g.name}</p>
-                        {g.description && <p className="text-xs text-slate-500 truncate">{g.description}</p>}
-                      </div>
-                      {g.isDefault && <span className="text-xs bg-indigo-100 text-indigo-600 rounded px-1.5 py-0.5">{t('admin.groups.default')}</span>}
-                    </label>
-                  ))}
+                  {groups.map((g) => {
+                    const checked = form.groupIds.includes(g.id)
+                    return (
+                      <label
+                        key={g.id}
+                        className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                          checked
+                            ? 'border-indigo-300 bg-indigo-50/70 dark:border-indigo-500/40 dark:bg-indigo-500/10'
+                            : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50'
+                        }`}
+                      >
+                        <input type="checkbox" checked={checked} onChange={() => toggleUserGroup(g.id)} className="h-4 w-4 rounded border-slate-300" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{g.name}</p>
+                          {g.description && <p className="truncate text-xs text-slate-500 dark:text-slate-400">{g.description}</p>}
+                        </div>
+                        {g.isDefault && <Badge variant="indigo" label={t('admin.groups.default')} />}
+                      </label>
+                    )
+                  })}
                 </div>
               )}
-            </div>
+            </fieldset>
+          ) : (
+            <p className="flex items-start gap-2 rounded-lg bg-indigo-50 px-3 py-2.5 text-sm text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-200">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              {t('admin.adminFullAccessHint')}
+            </p>
           )}
-          {formError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{formError}</p>}
-          <div className="flex justify-end gap-3 pt-2">
-            <button onClick={() => setModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">{t('common.cancel')}</button>
-            <button onClick={handleSaveUser} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors">
-              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-              {editUser ? t('common.save') : t('common.create')}
-            </button>
-          </div>
-        </div>
+
+          {formError && <FormAlert>{formError}</FormAlert>}
+        </form>
       </Modal>
 
       {/* Group Create / Edit Modal */}
-      <Modal isOpen={groupModal} onClose={() => setGroupModal(false)} title={editGroup ? t('admin.groups.edit') : t('admin.groups.new')} size="lg">
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('common.name')} *</label>
-              <input autoFocus type="text" value={groupForm.name} onChange={(e) => setGroupForm((p) => ({ ...p, name: e.target.value }))} className="form-input w-full" placeholder={t('admin.groups.namePlaceholder')} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.groups.description')}</label>
-              <input type="text" value={groupForm.description} onChange={(e) => setGroupForm((p) => ({ ...p, description: e.target.value }))} className="form-input w-full" placeholder={t('admin.groups.descriptionPlaceholder')} />
-            </div>
+      <Modal
+        isOpen={groupModal}
+        onClose={() => setGroupModal(false)}
+        title={editGroup ? t('admin.groups.edit') : t('admin.groups.new')}
+        description={t('admin.groups.modalHint')}
+        icon={<ShieldCheck />}
+        size="lg"
+        dismissible={!groupSaving}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setGroupModal(false)} disabled={groupSaving}>{t('common.cancel')}</Button>
+            <Button variant="primary" type="submit" form="admin-group-form" loading={groupSaving}>
+              {editGroup ? t('common.save') : t('common.create')}
+            </Button>
+          </>
+        }
+      >
+        <form id="admin-group-form" onSubmit={handleSaveGroup} className="space-y-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label={t('common.name')} htmlFor="ag-name" required>
+              <input
+                id="ag-name"
+                autoFocus
+                type="text"
+                value={groupForm.name}
+                onChange={(e) => setGroupForm((p) => ({ ...p, name: e.target.value }))}
+                className="form-input"
+                placeholder={t('admin.groups.namePlaceholder')}
+              />
+            </Field>
+            <Field label={t('admin.groups.description')} htmlFor="ag-desc" optional>
+              <input
+                id="ag-desc"
+                type="text"
+                value={groupForm.description}
+                onChange={(e) => setGroupForm((p) => ({ ...p, description: e.target.value }))}
+                className="form-input"
+                placeholder={t('admin.groups.descriptionPlaceholder')}
+              />
+            </Field>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input type="checkbox" id="isDefault" checked={groupForm.isDefault} onChange={(e) => setGroupForm((p) => ({ ...p, isDefault: e.target.checked }))} className="rounded border-slate-300 text-indigo-600" />
-            <label htmlFor="isDefault" className="text-sm text-slate-700 dark:text-slate-300">
-              {t('admin.groups.setDefault')}
-              <span className="ml-1 text-slate-400 font-normal">({t('admin.groups.setDefaultHint')})</span>
-            </label>
-          </div>
+          <label htmlFor="ag-default" className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 px-3 py-2.5 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50">
+            <input
+              type="checkbox"
+              id="ag-default"
+              checked={groupForm.isDefault}
+              onChange={(e) => setGroupForm((p) => ({ ...p, isDefault: e.target.checked }))}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+            />
+            <span>
+              <span className="block text-sm font-medium text-slate-800 dark:text-slate-200">{t('admin.groups.setDefault')}</span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400">{t('admin.groups.setDefaultHint')}</span>
+            </span>
+          </label>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">{t('admin.groups.permissions')}</label>
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-              <div className="grid grid-cols-[1fr_auto_auto_auto] bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-2 gap-3">
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{t('common.page')}</span>
-                {PERM_OPTIONS_STANDARD.map(({ value, icon }) => (
-                  <span key={value} className="inline-flex items-center justify-center gap-1 text-xs font-medium text-slate-500 uppercase tracking-wide px-2.5">{icon} {t(`admin.groups.perm.${value}`)}</span>
-                ))}
-              </div>
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {ALL_PAGES.map(({ key, labelKey, hasWriteOwn, isSubReadOnly }) => {
-                  if (hasWriteOwn) {
-                    // Render the matrix row with write/write-own/read (no 'none' — block via parent page)
-                    return (
-                      <div key={key} className="flex items-center justify-between px-4 py-2.5 pl-8 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                        <span className="text-sm text-slate-500 dark:text-slate-400">{t(labelKey)}</span>
-                        <div className="flex items-center gap-1.5">
-                          {PERM_OPTIONS_MATRIX.map(({ value, icon, className }) => (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() => setGroupPerm(key, value)}
-                              title={t(`admin.groups.perm.${value}Hint`)}
-                              className={`inline-flex items-center gap-1 px-2.5 h-7 rounded-lg border text-xs font-medium transition-all ${
-                                groupForm.permissions[key] === value
-                                  ? className
-                                  : 'bg-white dark:bg-slate-900 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                              }`}
-                            >
-                              {icon} {t(`admin.groups.perm.${value}`)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  }
-                  if (isSubReadOnly) {
-                    // Render as indented sub-row with read/none only (pure visibility toggle)
-                    return (
-                      <div key={key} className="flex items-center justify-between px-4 py-2.5 pl-8 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                        <span className="text-sm text-slate-500 dark:text-slate-400">{t(labelKey)}</span>
-                        <div className="flex items-center gap-1.5">
-                          {PERM_OPTIONS_READONLY.map(({ value, icon, className }) => (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() => setGroupPerm(key, value)}
-                              title={t(`admin.groups.perm.${value}Hint`)}
-                              className={`inline-flex items-center gap-1 px-2.5 h-7 rounded-lg border text-xs font-medium transition-all ${
-                                groupForm.permissions[key] === value
-                                  ? className
-                                  : 'bg-white dark:bg-slate-900 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                              }`}
-                            >
-                              {icon} {t(`admin.groups.perm.${value}`)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  }
-                  return (
-                    <div key={key} className="grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-2.5 gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <span className="text-sm text-slate-700 dark:text-slate-300">{t(labelKey)}</span>
-                      {PERM_OPTIONS_STANDARD.map(({ value, icon, className }) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setGroupPerm(key, value)}
-                          className={`inline-flex items-center gap-1 px-2.5 h-7 rounded-lg border text-xs font-medium transition-all ${
-                            groupForm.permissions[key] === value
-                              ? className
-                              : 'bg-white dark:bg-slate-900 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                          }`}
-                        >
-                          {icon} {t(`admin.groups.perm.${value}`)}
-                        </button>
-                      ))}
-                    </div>
-                  )
-                })}
-              </div>
+          <fieldset>
+            <legend className="form-label">{t('admin.groups.permissions')}</legend>
+            <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+              {ALL_PAGES.map((pageEntry) => {
+                const { key, labelKey, hasWriteOwn, isSubReadOnly } = pageEntry
+                const sub = hasWriteOwn || isSubReadOnly
+                return (
+                  <div
+                    key={key}
+                    className={`flex flex-col gap-2 px-4 py-2 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between dark:hover:bg-slate-800/40 ${
+                      sub ? 'bg-slate-50/50 pl-8 dark:bg-slate-800/20' : ''
+                    }`}
+                  >
+                    <span className={`text-sm ${sub ? 'text-slate-500 dark:text-slate-400' : 'font-medium text-slate-700 dark:text-slate-200'}`}>
+                      {t(labelKey)}
+                    </span>
+                    <PermSegment
+                      label={t(labelKey)}
+                      value={groupForm.permissions[key]}
+                      options={optionsFor(pageEntry)}
+                      onChange={(v) => setGroupPerm(key, v)}
+                    />
+                  </div>
+                )
+              })}
             </div>
-            <div className="flex flex-wrap gap-3 mt-3">
-              {PERM_OPTIONS.map(({ value, icon, className }) => (
-                <span key={value} className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border ${className}`}>
-                  {icon} {t(`admin.groups.perm.${value}`)}: {t(`admin.groups.perm.${value}Hint`)}
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+              {PERM_OPTIONS.map(({ value }) => (
+                <span key={value} className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  <PermBadge perm={value} />
+                  {t(`admin.groups.perm.${value}Hint`)}
                 </span>
               ))}
             </div>
-          </div>
+          </fieldset>
 
-          {groupFormError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{groupFormError}</p>}
-          <div className="flex justify-end gap-3 pt-2">
-            <button onClick={() => setGroupModal(false)} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">{t('common.cancel')}</button>
-            <button onClick={handleSaveGroup} disabled={groupSaving} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors">
-              {groupSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-              {editGroup ? t('common.save') : t('common.create')}
-            </button>
-          </div>
-        </div>
+          {groupFormError && <FormAlert>{groupFormError}</FormAlert>}
+        </form>
       </Modal>
 
       {/* Group Delete Confirm */}
@@ -945,86 +1165,179 @@ export default function AdminPage() {
       />
 
       {/* Team Modal */}
-      <Modal isOpen={teamModalOpen} onClose={() => setTeamModalOpen(false)} title={editTeam ? t('common.edit') : t('teams.createTeam')}>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('teams.teamName')}</label>
-            <input type="text" value={teamForm.name} onChange={(e) => setTeamForm((p) => ({ ...p, name: e.target.value }))} className="form-input w-full" placeholder="Frontend-Team" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('teams.description')}</label>
-            <input type="text" value={teamForm.description} onChange={(e) => setTeamForm((p) => ({ ...p, description: e.target.value }))} className="form-input w-full" />
-          </div>
-          {teamFormError && <p className="text-sm text-red-600">{teamFormError}</p>}
-          <div className="flex justify-end gap-3 pt-1">
-            <button onClick={() => setTeamModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">{t('common.cancel')}</button>
-            <button onClick={saveTeam} disabled={teamSaving} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-              {teamSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}{t('common.save')}
-            </button>
-          </div>
-        </div>
+      <Modal
+        isOpen={teamModalOpen}
+        onClose={() => setTeamModalOpen(false)}
+        title={editTeam ? t('admin.teams.edit') : t('teams.createTeam')}
+        icon={<UsersRound />}
+        size="sm"
+        dismissible={!teamSaving}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setTeamModalOpen(false)} disabled={teamSaving}>{t('common.cancel')}</Button>
+            <Button variant="primary" type="submit" form="admin-team-form" loading={teamSaving}>
+              {editTeam ? t('common.save') : t('common.create')}
+            </Button>
+          </>
+        }
+      >
+        <form id="admin-team-form" onSubmit={saveTeam} className="space-y-4">
+          <Field label={t('teams.teamName')} htmlFor="at-name" required error={teamFormError || undefined}>
+            <input
+              id="at-name"
+              type="text"
+              autoFocus
+              value={teamForm.name}
+              onChange={(e) => setTeamForm((p) => ({ ...p, name: e.target.value }))}
+              className="form-input"
+              placeholder="Frontend-Team"
+            />
+          </Field>
+          <Field label={t('teams.description')} htmlFor="at-desc" optional>
+            <input
+              id="at-desc"
+              type="text"
+              value={teamForm.description}
+              onChange={(e) => setTeamForm((p) => ({ ...p, description: e.target.value }))}
+              className="form-input"
+            />
+          </Field>
+        </form>
       </Modal>
 
-      <ConfirmDialog isOpen={!!teamDeleteTarget} title={t('common.delete')} message={`${t('teams.deleteConfirm')} "${teamDeleteTarget?.name}"?`} onConfirm={confirmDeleteTeam} onClose={() => setTeamDeleteTarget(null)} />
+      <ConfirmDialog
+        isOpen={!!teamDeleteTarget}
+        title={t('admin.teams.delete')}
+        message={<>
+          <p>{t('teams.deleteConfirm')}</p>
+          {teamDeleteTarget && <p className="mt-2 font-medium text-slate-900 dark:text-slate-100">„{teamDeleteTarget.name}"</p>}
+        </>}
+        confirmLabel={t('common.delete')}
+        onConfirm={confirmDeleteTeam}
+        onClose={() => setTeamDeleteTarget(null)}
+      />
 
       {/* Software Modal */}
-      <Modal isOpen={swModalOpen} onClose={() => setSwModalOpen(false)} title={editSw ? t('admin.software.edit') : t('admin.software.new')}>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('common.name')} *</label>
-            <input autoFocus type="text" value={swForm.name} onChange={(e) => setSwForm((p) => ({ ...p, name: e.target.value }))} className="form-input w-full" placeholder="z. B. SAP ERP" />
+      <Modal
+        isOpen={swModalOpen}
+        onClose={() => setSwModalOpen(false)}
+        title={editSw ? t('admin.software.edit') : t('admin.software.new')}
+        icon={<Monitor />}
+        dismissible={!swSaving}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setSwModalOpen(false)} disabled={swSaving}>{t('common.cancel')}</Button>
+            <Button variant="primary" type="submit" form="admin-sw-form" loading={swSaving}>
+              {editSw ? t('common.save') : t('common.create')}
+            </Button>
+          </>
+        }
+      >
+        <form id="admin-sw-form" onSubmit={handleSaveSw} className="space-y-4">
+          <Field label={t('common.name')} htmlFor="as-name" required>
+            <input
+              id="as-name"
+              autoFocus
+              type="text"
+              value={swForm.name}
+              onChange={(e) => setSwForm((p) => ({ ...p, name: e.target.value }))}
+              className="form-input"
+              placeholder={t('admin.software.namePlaceholder')}
+            />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={t('admin.software.vendor')} htmlFor="as-vendor" optional>
+              <input id="as-vendor" type="text" value={swForm.vendor} onChange={(e) => setSwForm((p) => ({ ...p, vendor: e.target.value }))} className="form-input" />
+            </Field>
+            <Field label={t('admin.software.version')} htmlFor="as-version" optional>
+              <input id="as-version" type="text" value={swForm.version} onChange={(e) => setSwForm((p) => ({ ...p, version: e.target.value }))} className="form-input" placeholder="1.0" />
+            </Field>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.software.vendor')}</label>
-            <input type="text" value={swForm.vendor} onChange={(e) => setSwForm((p) => ({ ...p, vendor: e.target.value }))} className="form-input w-full" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.software.version')}</label>
-            <input type="text" value={swForm.version} onChange={(e) => setSwForm((p) => ({ ...p, version: e.target.value }))} className="form-input w-full" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.software.description')}</label>
-            <textarea value={swForm.description} onChange={(e) => setSwForm((p) => ({ ...p, description: e.target.value }))} className="form-input w-full resize-none" rows={3} placeholder={t('admin.software.descriptionPlaceholder')} />
-          </div>
-          {swFormError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{swFormError}</p>}
-          <div className="flex justify-end gap-3 pt-2">
-            <button onClick={() => setSwModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">{t('common.cancel')}</button>
-            <button onClick={handleSaveSw} disabled={swSaving} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors">
-              {swSaving && <Loader2 className="w-4 h-4 animate-spin" />}{editSw ? t('common.save') : t('common.create')}
-            </button>
-          </div>
-        </div>
+          <Field label={t('admin.software.description')} htmlFor="as-desc" optional>
+            <textarea
+              id="as-desc"
+              value={swForm.description}
+              onChange={(e) => setSwForm((p) => ({ ...p, description: e.target.value }))}
+              className="form-textarea"
+              rows={3}
+              placeholder={t('admin.software.descriptionPlaceholder')}
+            />
+          </Field>
+          {swFormError && <FormAlert>{swFormError}</FormAlert>}
+        </form>
       </Modal>
 
       <ConfirmDialog isOpen={!!swDeleteTarget} title={t('admin.software.delete')} message={t('admin.software.deleteConfirm', { name: swDeleteTarget?.name ?? '' })} confirmLabel={t('common.delete')} variant="danger" onConfirm={handleDeleteSw} onClose={() => setSwDeleteTarget(null)} />
 
       {/* Ticket Category Modal */}
-      <Modal isOpen={catModalOpen} onClose={() => setCatModalOpen(false)} title={editCat ? t('admin.ticketCategories.edit') : t('admin.ticketCategories.new')}>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('common.name')} *</label>
-            <input autoFocus type="text" value={catForm.name} onChange={(e) => setCatForm((p) => ({ ...p, name: e.target.value }))} className="form-input w-full" placeholder={t('admin.ticketCategories.namePlaceholder')} onKeyDown={(e) => e.key === 'Enter' && saveCat()} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{t('admin.ticketCategories.color')}</label>
-            <div className="flex items-center gap-3">
-              <input type="color" value={catForm.color} onChange={(e) => setCatForm((p) => ({ ...p, color: e.target.value }))} className="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-600 cursor-pointer p-0.5 bg-white dark:bg-slate-800" />
-              <span className="text-xs font-medium px-2.5 py-1 rounded-full" style={{ backgroundColor: catForm.color + '22', color: catForm.color }}>
-                {catForm.name || t('admin.ticketCategories.preview')}
-              </span>
+      <Modal
+        isOpen={catModalOpen}
+        onClose={() => setCatModalOpen(false)}
+        title={editCat ? t('admin.ticketCategories.edit') : t('admin.ticketCategories.new')}
+        icon={<Tag />}
+        size="sm"
+        dismissible={!catSaving}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCatModalOpen(false)} disabled={catSaving}>{t('common.cancel')}</Button>
+            <Button variant="primary" type="submit" form="admin-cat-form" loading={catSaving}>{t('common.save')}</Button>
+          </>
+        }
+      >
+        <form id="admin-cat-form" onSubmit={saveCat} className="space-y-4">
+          <Field label={t('common.name')} htmlFor="ac-name" required error={catFormError || undefined}>
+            <input
+              id="ac-name"
+              autoFocus
+              type="text"
+              value={catForm.name}
+              onChange={(e) => setCatForm((p) => ({ ...p, name: e.target.value }))}
+              className="form-input"
+              placeholder={t('admin.ticketCategories.namePlaceholder')}
+            />
+          </Field>
+          <fieldset>
+            <legend className="form-label">{t('admin.ticketCategories.color')}</legend>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {CATEGORY_PRESETS.map((c) => {
+                const active = catForm.color.toLowerCase() === c
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCatForm((p) => ({ ...p, color: c }))}
+                    aria-label={c}
+                    aria-pressed={active}
+                    title={c}
+                    className={`flex h-7 w-7 items-center justify-center rounded-full ring-offset-2 ring-offset-white transition-transform hover:scale-110 dark:ring-offset-slate-900 ${active ? 'ring-2 ring-slate-900 dark:ring-white' : ''}`}
+                    style={{ backgroundColor: c }}
+                  >
+                    {active && <Check className="h-3.5 w-3.5 text-white" />}
+                  </button>
+                )
+              })}
+              <label className="relative ml-1 flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-slate-300 pl-1 pr-2.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800" title={t('admin.ticketCategories.customColor')}>
+                <input
+                  type="color"
+                  value={catForm.color}
+                  onChange={(e) => setCatForm((p) => ({ ...p, color: e.target.value }))}
+                  className="h-5 w-5 cursor-pointer rounded-full border-0 bg-transparent p-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0"
+                  aria-label={t('admin.ticketCategories.customColor')}
+                />
+                <span className="font-mono uppercase">{catForm.color}</span>
+              </label>
             </div>
+          </fieldset>
+          <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-800/50">
+            <span className="text-xs text-slate-500 dark:text-slate-400">{t('admin.ticketCategories.preview')}:</span>
+            <span className="rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ backgroundColor: catForm.color + '22', color: catForm.color }}>
+              {catForm.name || t('admin.ticketCategories.preview')}
+            </span>
           </div>
-          {catFormError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{catFormError}</p>}
-          <div className="flex justify-end gap-3 pt-1">
-            <button onClick={() => setCatModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">{t('common.cancel')}</button>
-            <button onClick={saveCat} disabled={catSaving} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-              {catSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}{t('common.save')}
-            </button>
-          </div>
-        </div>
+        </form>
       </Modal>
 
       <ConfirmDialog isOpen={!!catDeleteTarget} title={t('admin.ticketCategories.delete')} message={t('admin.ticketCategories.deleteConfirm', { name: catDeleteTarget?.name ?? '' })} confirmLabel={t('common.delete')} variant="danger" onConfirm={confirmDeleteCat} onClose={() => setCatDeleteTarget(null)} />
-    </div>
+    </Page>
   )
 }

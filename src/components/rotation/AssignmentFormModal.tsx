@@ -1,15 +1,18 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
+import { toast, errorMessage } from '@/store/toast'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
+import Field from '@/components/ui/Field'
+import Select from '@/components/ui/Select'
 import { formatDateShort } from '@/utils/date'
 import { localTodayISO, toISODate } from '@/utils/sprint'
 import {
   assignmentsOverlapping, nextFreePeriod, nextOpenSprint, rankCandidates, suggestedCandidate, type Period,
 } from '@/utils/rotation'
 import { addDays, parseISO } from 'date-fns'
-import { AlertTriangle, Info, Trash2, Wand2 } from 'lucide-react'
+import { AlertTriangle, CalendarCog, CalendarPlus, Check, Info, Trash2, Wand2 } from 'lucide-react'
 import type { ResponsibilityAssignment } from '@/types'
 
 interface AssignmentFormData {
@@ -58,7 +61,6 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
 
   const [form, setForm] = useState<AssignmentFormData>(() => initialForm())
   const [errors, setErrors] = useState<FormErrors>({})
-  const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
   // Once the member was picked by hand, changing type / sprint no longer replaces it
   const memberTouched = useRef(false)
@@ -68,7 +70,6 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
     memberTouched.current = !!assignment
     setForm(initialForm())
     setErrors({})
-    setSaveError('')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
@@ -124,6 +125,7 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
   function setDuration(days: number) {
     if (!form.startDate) return
     setForm((f) => ({ ...f, endDate: toISODate(addDays(parseISO(f.startDate), days - 1)) }))
+    setErrors((e) => ({ ...e, endDate: undefined }))
   }
 
   function validate(): boolean {
@@ -141,7 +143,6 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
     e?.preventDefault()
     if (saving || !validate()) return
     setSaving(true)
-    setSaveError('')
     const data = {
       type: form.type, memberId: form.memberId, sprintId: form.sprintId || undefined,
       startDate: form.startDate, endDate: form.endDate, notes: form.notes,
@@ -150,9 +151,10 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
     try {
       if (assignment) await updateAssignment(assignment.id, { ...data, isAutoSuggested: assignment.isAutoSuggested && data.memberId === assignment.memberId })
       else            await addAssignment(data)
+      toast.success(assignment ? t('common.saved') : t('rotation.assignmentCreated', { type: form.type, name: memberName(form.memberId) }))
       onClose()
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : t('common.saveError'))
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -182,22 +184,25 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={() => { if (!saving) onClose() }}
       title={assignment ? t('rotation.editAssignment') : t('rotation.newAssignment')}
+      description={assignment ? `${assignment.type} · ${memberName(assignment.memberId)}` : t('rotation.newAssignmentHint')}
+      icon={assignment ? <CalendarCog /> : <CalendarPlus />}
+      dismissible={false}
       footer={
         <>
           {assignment && onDelete && (
             <Button
               variant="ghost"
-              icon={<Trash2 className="w-4 h-4" />}
+              icon={<Trash2 />}
               onClick={() => { onDelete(assignment); onClose() }}
-              className="mr-auto !text-red-600 hover:!bg-red-50 dark:hover:!bg-red-950"
+              disabled={saving}
+              className="mr-auto !text-red-600 hover:!bg-red-50 dark:!text-red-400 dark:hover:!bg-red-500/10"
             >
               {t('common.delete')}
             </Button>
           )}
-          {saveError && <p className="flex-1 text-sm text-red-600">{saveError}</p>}
-          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>{t('common.cancel')}</Button>
           <Button variant="primary" type="submit" form="assignment-form" loading={saving}>
             {assignment ? t('common.save') : t('common.create')}
           </Button>
@@ -208,33 +213,45 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
         id="assignment-form"
         onSubmit={handleSubmit}
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSubmit() }}
-        className="space-y-4"
+        noValidate
+        className="space-y-5"
       >
         {/* Responsibility */}
-        <Field label={t('rotation.responsibility')} error={errors.type}>
-          <div className="flex flex-wrap gap-2">
-            {types.map((rt) => (
-              <button
-                key={rt.id}
-                type="button"
-                onClick={() => selectType(rt.name)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-                  form.type === rt.name
-                    ? 'text-white border-transparent'
-                    : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                }`}
-                style={form.type === rt.name ? { backgroundColor: rt.color, borderColor: rt.color } : {}}
-              >
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: form.type === rt.name ? 'rgba(255,255,255,0.6)' : rt.color }} />
-                {rt.name}
-              </button>
-            ))}
+        <fieldset>
+          <legend className="form-label">
+            {t('rotation.responsibility')}<span className="ml-0.5 text-red-500">*</span>
+          </legend>
+          <div role="radiogroup" aria-label={t('rotation.responsibility')} className="flex flex-wrap gap-1.5">
+            {types.map((rt) => {
+              const active = form.type === rt.name
+              return (
+                <button
+                  key={rt.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => selectType(rt.name)}
+                  className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset transition-colors ${
+                    active
+                      ? 'text-white shadow-sm ring-transparent'
+                      : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 hover:text-slate-900 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800'
+                  }`}
+                  style={active ? { backgroundColor: rt.color } : undefined}
+                >
+                  {active
+                    ? <Check className="h-3.5 w-3.5 shrink-0" strokeWidth={3} />
+                    : <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: rt.color }} />}
+                  <span className="truncate">{rt.name}</span>
+                </button>
+              )
+            })}
           </div>
-        </Field>
+          {errors.type && <p className="form-error">{errors.type}</p>}
+        </fieldset>
 
         {/* Sprint – selecting one takes over its period */}
-        <Field label={t('rotation.sprint')} hint={t('rotation.sprintHint')}>
-          <select value={form.sprintId} onChange={(e) => selectSprint(e.target.value)} className="form-input">
+        <Field label={t('rotation.sprint')} htmlFor="assignment-sprint" hint={t('rotation.sprintHintLong')}>
+          <Select id="assignment-sprint" value={form.sprintId} onChange={(e) => selectSprint(e.target.value)}>
             <option value="">{t('rotation.noSprint')}</option>
             {sprintOptions.map((s) => {
               const covered = assignmentsOverlapping(others, s, { type: form.type }).length > 0
@@ -244,30 +261,39 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
                 </option>
               )
             })}
-          </select>
+          </Select>
         </Field>
 
         {/* Period */}
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <div className="grid grid-cols-2 gap-3">
-            <Field label={t('sprints.startDate')} error={errors.startDate}>
-              <input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} className="form-input" />
+            <Field label={t('sprints.startDate')} htmlFor="assignment-start" error={errors.startDate} required>
+              <input
+                id="assignment-start"
+                type="date"
+                value={form.startDate}
+                onChange={(e) => { setForm((f) => ({ ...f, startDate: e.target.value })); setErrors((x) => ({ ...x, startDate: undefined })) }}
+                aria-invalid={!!errors.startDate}
+                className="form-input"
+              />
             </Field>
-            <Field label={t('sprints.endDate')} error={errors.endDate}>
-              <input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} className="form-input" />
+            <Field label={t('sprints.endDate')} htmlFor="assignment-end" error={errors.endDate} required>
+              <input
+                id="assignment-end"
+                type="date"
+                value={form.endDate}
+                onChange={(e) => { setForm((f) => ({ ...f, endDate: e.target.value })); setErrors((x) => ({ ...x, endDate: undefined })) }}
+                aria-invalid={!!errors.endDate}
+                className="form-input"
+              />
             </Field>
           </div>
-          <div className="flex gap-1.5 flex-wrap items-center">
-            <span className="text-xs text-slate-400 dark:text-slate-500">{t('rotation.setDuration')}:</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-0.5 text-xs text-slate-500 dark:text-slate-400">{t('rotation.setDuration')}</span>
             {DURATION_PRESETS.map(({ key, days }) => (
-              <button
-                key={days}
-                type="button"
-                onClick={() => setDuration(days)}
-                className="px-2 py-0.5 text-xs rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-              >
+              <Button key={days} size="xs" variant="secondary" onClick={() => setDuration(days)} disabled={!form.startDate}>
                 {t(key)}
-              </button>
+              </Button>
             ))}
           </div>
           {conflicts.length > 0 && (
@@ -280,8 +306,13 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
         </div>
 
         {/* Member */}
-        <Field label={t('sprintDetail.memberColumn')} error={errors.memberId}>
-          <select value={form.memberId} onChange={(e) => selectMember(e.target.value)} className="form-input">
+        <Field label={t('sprintDetail.memberColumn')} htmlFor="assignment-member" error={errors.memberId} required>
+          <Select
+            id="assignment-member"
+            value={form.memberId}
+            onChange={(e) => selectMember(e.target.value)}
+            aria-invalid={!!errors.memberId}
+          >
             <option value="">{t('rotation.selectMember')}</option>
             {inactiveSelected && <option value={form.memberId}>{inactiveSelected}</option>}
             {memberOptions.map((c) => (
@@ -291,15 +322,26 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
                 {c.excluded ? ` · ${t('rotation.notParticipating')}` : ''}
               </option>
             ))}
-          </select>
-          <div className="space-y-1 pt-1">
+          </Select>
+        </Field>
+        {(suggestion || selected) && (
+          <div className="-mt-2 space-y-1.5">
             {suggestion && suggestion.member.id !== form.memberId && (
-              <p className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400">
-                <Wand2 className="w-3.5 h-3.5 shrink-0" />
-                {t('rotation.suggestionLine', { name: suggestion.member.name, count: suggestion.count })}
-                <button type="button" onClick={() => selectMember(suggestion.member.id)} className="font-medium underline hover:no-underline">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-700 ring-1 ring-inset ring-indigo-600/10 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-400/20">
+                <Wand2 className="h-3.5 w-3.5 shrink-0" />
+                <span>{t('rotation.suggestionLine', { name: suggestion.member.name, count: suggestion.count })}</span>
+                <button
+                  type="button"
+                  onClick={() => selectMember(suggestion.member.id)}
+                  className="ml-auto rounded font-semibold underline-offset-2 hover:underline"
+                >
                   {t('rotation.useSuggestion')}
                 </button>
+              </div>
+            )}
+            {suggestion && suggestion.member.id === form.memberId && (
+              <p className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400">
+                <Wand2 className="h-3.5 w-3.5 shrink-0" /> {t('rotation.suggestionReason', { count: suggestion.count })}
               </p>
             )}
             {selected?.excluded && <Hint warning>{t('rotation.excludedHint', { name: selected.member.name })}</Hint>}
@@ -310,33 +352,27 @@ export default function AssignmentFormModal({ isOpen, onClose, assignment, prese
               <Hint>{t('rotation.otherDutiesHint', { name: selected.member.name, duties: selected.otherDuties.join(', ') })}</Hint>
             )}
           </div>
-        </Field>
+        )}
 
-        <Field label={t('sprints.notesLabel')} hint={t('common.optional')}>
-          <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="form-textarea" />
+        <Field label={t('sprints.notesLabel')} htmlFor="assignment-notes" optional>
+          <textarea
+            id="assignment-notes"
+            value={form.notes}
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            rows={2}
+            className="form-textarea"
+          />
         </Field>
       </form>
     </Modal>
   )
 }
 
-function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
+/** Small inline hint (info or warning) used in the rotation dialogs. */
+export function Hint({ warning = false, children }: { warning?: boolean; children: ReactNode }) {
   return (
-    <div className="space-y-1">
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-        {label}
-        {hint && <span className="ml-1.5 text-xs font-normal text-slate-400 dark:text-slate-500">{hint}</span>}
-        {error && <span className="ml-1.5 text-xs font-normal text-red-500">{error}</span>}
-      </label>
-      {children}
-    </div>
-  )
-}
-
-export function Hint({ warning = false, children }: { warning?: boolean; children: React.ReactNode }) {
-  return (
-    <p className={`flex items-start gap-1.5 text-xs ${warning ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
-      {warning ? <AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0" /> : <Info className="w-3.5 h-3.5 mt-px shrink-0" />}
+    <p className={`flex items-start gap-1.5 text-xs ${warning ? 'text-amber-700 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
+      {warning ? <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" /> : <Info className="mt-px h-3.5 w-3.5 shrink-0" />}
       <span>{children}</span>
     </p>
   )

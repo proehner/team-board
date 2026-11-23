@@ -4,12 +4,13 @@ import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
 import Avatar from '@/components/ui/Avatar'
 import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
 import CapacityBar from '@/components/sprints/CapacityBar'
 import { formatDateShort } from '@/utils/date'
 import { sprintWorkingDays, summarizeMemberCapacity, sprintCapacityHours, formatNumber } from '@/utils/capacity'
 import { chronological, localTodayISO } from '@/utils/sprint'
-import { Gauge, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Gauge, ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import type { Sprint } from '@/types'
 
 const VISIBLE_SPRINTS = 3
@@ -30,6 +31,8 @@ function defaultWindowEnd(list: Sprint[]): number {
   return Math.min(list.length, Math.max(anchor + 2, VISIBLE_SPRINTS))
 }
 
+const stickyCell = 'sticky left-0 z-[1] bg-white dark:bg-slate-900'
+
 /** Matrix of members × sprints showing who has which capacity in which sprint. */
 export default function CapacityOverview() {
   const { t } = useTranslation()
@@ -45,11 +48,13 @@ export default function CapacityOverview() {
 
   if (shown.length === 0) {
     return (
-      <EmptyState
-        icon={<Gauge className="w-12 h-12" />}
-        title={t('capacity.overviewEmpty')}
-        description={t('capacity.overviewEmptySubtitle')}
-      />
+      <div className="surface">
+        <EmptyState
+          icon={<Gauge />}
+          title={t('capacity.overviewEmpty')}
+          description={t('capacity.overviewEmptySubtitle')}
+        />
+      </div>
     )
   }
 
@@ -65,70 +70,72 @@ export default function CapacityOverview() {
     .sort((a, b) => a.name.localeCompare(b.name))
   const memberIds = new Set(rowMembers.map((m) => m.id))
 
+  const activeCol = (sprint: Sprint) => (sprint.status === 'Aktiv' ? 'bg-indigo-50/40 dark:bg-indigo-500/[0.04]' : '')
+
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Legend */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600 dark:text-slate-400">
           {activities.map((a) => (
             <span key={a.id} className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: a.color }} />
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: a.color }} />
               {a.name}
-              {a.countsToSprint && <span className="text-indigo-600 dark:text-indigo-400 font-medium">({t('capacity.sprintShort')})</span>}
+              {a.countsToSprint && (
+                <span className="rounded bg-indigo-50 px-1 py-px text-2xs font-semibold text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+                  {t('capacity.sprintShort')}
+                </span>
+              )}
             </span>
           ))}
-          <span className="text-slate-400 dark:text-slate-500">{t('capacity.overviewHint')}</span>
         </div>
 
         {/* Sprint window navigation */}
         {candidates.length > VISIBLE_SPRINTS && (
-          <div className="ml-auto flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-            <button
-              onClick={() => setWindowEnd(end - 1)}
-              disabled={start === 0}
-              className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" /> {t('capacity.olderSprints')}
-            </button>
-            <span className="px-1 whitespace-nowrap">
+          <div className="ml-auto flex items-center gap-1">
+            <Button variant="ghost" size="sm" icon={<ChevronLeft />} onClick={() => setWindowEnd(end - 1)} disabled={start === 0}>
+              {t('capacity.olderSprints')}
+            </Button>
+            <span className="whitespace-nowrap px-1 text-xs tabular-nums text-slate-500 dark:text-slate-400">
               {t('capacity.sprintRange', { from: start + 1, to: end, total: candidates.length })}
             </span>
-            <button
-              onClick={() => setWindowEnd(end + 1)}
-              disabled={end >= candidates.length}
-              className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-            >
-              {t('capacity.newerSprints')} <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+            <Button variant="ghost" size="sm" iconRight={<ChevronRight />} onClick={() => setWindowEnd(end + 1)} disabled={end >= candidates.length}>
+              {t('capacity.newerSprints')}
+            </Button>
           </div>
         )}
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-x-auto">
+      <div className="surface overflow-x-auto scrollbar-thin">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800">
-              <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                {t('sprintDetail.memberColumn')}
+            <tr className="border-b border-slate-200 dark:border-slate-800">
+              <th className={`${stickyCell} px-4 py-3 text-left align-bottom`}>
+                <span className="section-label">{t('sprintDetail.memberColumn')}</span>
               </th>
               {columns.map(({ sprint, workingDays }) => (
-                <th key={sprint.id} className="text-left px-3 py-3 min-w-[8.5rem] align-top">
-                  <Link to={`/sprints/${sprint.id}`} className="text-sm font-semibold text-slate-800 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400">
-                    {sprint.name}
-                  </Link>
-                  {sprint.status === 'Aktiv' && <span className="ml-1.5"><Badge label={t('sprintStatus.Aktiv')} variant="info" /></span>}
-                  <p className="text-xs font-normal text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                <th key={sprint.id} className={`min-w-[9rem] px-3 py-3 text-left align-top font-normal ${activeCol(sprint)}`}>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Link
+                      to={`/sprints/${sprint.id}`}
+                      className="text-sm font-semibold text-slate-900 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-indigo-400"
+                    >
+                      {sprint.name}
+                    </Link>
+                    {sprint.status === 'Aktiv' && <Badge label={t('sprintStatus.Aktiv')} variant="indigo" dot />}
+                  </div>
+                  <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
                     {formatDateShort(sprint.startDate)} · {t('capacity.workingDaysShort', { count: workingDays })}
                   </p>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {rowMembers.map((member) => (
-              <tr key={member.id} className="border-t border-slate-100 dark:border-slate-800">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2 whitespace-nowrap">
+              <tr key={member.id}>
+                <td className={`${stickyCell} px-4 py-3`}>
+                  <div className="flex items-center gap-2.5 whitespace-nowrap">
                     <Avatar name={member.name} color={member.avatarColor} size="xs" />
                     <span className="font-medium text-slate-800 dark:text-slate-200">{member.name}</span>
                   </div>
@@ -136,26 +143,26 @@ export default function CapacityOverview() {
                 {columns.map(({ sprint, cells }) => {
                   const cell = cells.get(member.id)
                   if (!cell) {
-                    return <td key={sprint.id} className="px-3 py-3 text-slate-300 dark:text-slate-600">—</td>
+                    return <td key={sprint.id} className={`px-3 py-3 text-slate-300 dark:text-slate-600 ${activeCol(sprint)}`}>—</td>
                   }
                   const { capacity, summary } = cell
                   return (
-                    <td key={sprint.id} className="px-3 py-3 align-top" title={capacity.notes || undefined}>
+                    <td key={sprint.id} className={`px-3 py-3 align-top ${activeCol(sprint)}`} title={capacity.notes || undefined}>
                       <div className="flex items-baseline justify-between gap-2">
-                        <span className="font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                        <span className="whitespace-nowrap font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                           {t('capacity.hoursPerDayShort', { hours: formatNumber(summary.sprintHoursPerDay) })}
                         </span>
-                        <span className="text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">{formatNumber(summary.sprintHours)} h</span>
+                        <span className="whitespace-nowrap text-xs tabular-nums text-slate-500 dark:text-slate-400">{formatNumber(summary.sprintHours)} h</span>
                       </div>
-                      <CapacityBar capacity={capacity} activities={activities} className="mt-1.5" />
+                      <CapacityBar capacity={capacity} activities={activities} className="mt-2" />
                       {(capacity.daysOff > 0 || summary.unassignedHoursPerDay < 0) && (
-                        <p className="mt-1 text-xs whitespace-nowrap">
+                        <p className="mt-1.5 whitespace-nowrap text-xs">
                           {capacity.daysOff > 0 && (
-                            <span className="text-amber-600 dark:text-amber-400">{t('capacity.daysOffShort', { days: formatNumber(capacity.daysOff) })}</span>
+                            <span className="text-amber-700 dark:text-amber-400">{t('capacity.daysOffShort', { days: formatNumber(capacity.daysOff) })}</span>
                           )}
                           {capacity.daysOff > 0 && summary.unassignedHoursPerDay < 0 && ' · '}
                           {summary.unassignedHoursPerDay < 0 && (
-                            <span className="text-red-500">{t('capacity.overbookedHours', { hours: formatNumber(-summary.unassignedHoursPerDay) })}</span>
+                            <span className="font-medium text-red-600 dark:text-red-400">{t('capacity.overbookedHours', { hours: formatNumber(-summary.unassignedHoursPerDay) })}</span>
                           )}
                         </p>
                       )}
@@ -166,10 +173,12 @@ export default function CapacityOverview() {
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-slate-600 dark:text-slate-400">
-              <td className="px-4 py-3 text-xs uppercase tracking-wide">{t('capacity.sprintCapacity')}</td>
+            <tr className="border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800">
+              <td className="sticky left-0 z-[1] bg-slate-50 px-4 py-3 dark:bg-slate-800">
+                <span className="section-label">{t('capacity.sprintCapacity')}</span>
+              </td>
               {columns.map(({ sprint }) => (
-                <td key={sprint.id} className="px-3 py-3 text-sm text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                <td key={sprint.id} className="whitespace-nowrap px-3 py-3 text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                   {formatNumber(sprintCapacityHours(sprint, activities, memberIds))} h
                 </td>
               ))}
@@ -177,6 +186,11 @@ export default function CapacityOverview() {
           </tfoot>
         </table>
       </div>
+
+      <p className="flex items-start gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+        <Info className="mt-px h-3.5 w-3.5 shrink-0" />
+        {t('capacity.overviewHint')}
+      </p>
     </div>
   )
 }
