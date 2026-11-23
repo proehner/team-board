@@ -297,7 +297,13 @@ export default function AzureRankingPage() {
       />
 
       {/* Detail Modal */}
-      <DevDetailModal dev={detailDev} scoring={scoring} days={data?.days ?? days} onClose={() => setDetailDev(null)} />
+      <DevDetailModal
+        dev={detailDev}
+        scoring={scoring}
+        days={data?.days ?? days}
+        source={configStatus?.organization ? `${configStatus.organization} / ${configStatus.project}` : 'Azure DevOps'}
+        onClose={() => setDetailDev(null)}
+      />
 
       <div className="space-y-8">
         {/* Error banner */}

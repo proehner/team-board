@@ -1,10 +1,11 @@
-import { Router } from 'express'
+import { Router, type Request } from 'express'
 import { rankingService } from '../azureRanking/service'
 
 // Azure DevOps ranking — evaluation logic lives in ../azureRanking/
 //   collect.ts  – read-only data collection (work item revision stream, PRs, threads)
 //   scoring.ts  – scoring model, caps, levels, badges (pure, reproducible)
 //   service.ts  – incremental loading, cache, month-end history (computed from the events)
+//   report.ts   – data of the per-developer annual report
 
 const router = Router()
 const VALID_PERIODS = [7, 30, 90, 365]
@@ -49,6 +50,25 @@ router.post('/cache/refresh', (req, res) => {
   const full = req.query.full === '1' || req.body?.full === true
   rankingService.refresh({ full }) // fire and forget
   res.json({ started: true, message: 'Data load started.' })
+})
+
+/** Annual reports need the azure-ranking-report sub-permission (admins always have it). */
+const canCreateReports = (req: Request) =>
+  req.user?.role === 'admin' || (req.user?.pagePermissions?.['azure-ranking-report'] ?? 'none') !== 'none'
+
+router.get('/report/periods', (req, res) => {
+  if (!canCreateReports(req)) return res.status(403).json({ error: 'No permission to create reports.' })
+  res.json({ periods: rankingService.reportPeriods() })
+})
+
+router.get('/report', (req, res) => {
+  if (!canCreateReports(req)) return res.status(403).json({ error: 'No permission to create reports.' })
+  const devId  = String(req.query.devId || '')
+  const period = String(req.query.period || '')
+  if (!devId || !period) return res.status(400).json({ error: 'devId and period are required' })
+  const data = rankingService.report(devId, period)
+  if (!data) return res.status(404).json({ error: 'No activity of this developer in the selected period.', noActivity: true })
+  res.json(data)
 })
 
 router.get('/dev-history', (req, res) => {

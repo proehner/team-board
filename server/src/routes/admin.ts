@@ -205,8 +205,10 @@ function groupToPublic(g: GroupRow) {
   // Ensure all pages are represented.
   // Sub-permissions (kompetenzen-matrix, kompetenzen-matrix-footer) default to 'read'.
   const SUB_READ_DEFAULTS = new Set(['kompetenzen-matrix', 'kompetenzen-matrix-footer', 'azure-ranking-refresh'])
+  // Opt-in sub-permissions: not granted unless explicitly enabled for a group
+  const SUB_NONE_DEFAULTS = new Set(['azure-ranking-report'])
   for (const page of ALL_PAGE_KEYS) {
-    if (!(page in permissions)) permissions[page] = SUB_READ_DEFAULTS.has(page) ? 'read' : 'write'
+    if (!(page in permissions)) permissions[page] = SUB_NONE_DEFAULTS.has(page) ? 'none' : SUB_READ_DEFAULTS.has(page) ? 'read' : 'write'
   }
   // 'none' is not a valid UI choice for kompetenzen-matrix (block via parent page instead).
   if (permissions['kompetenzen-matrix'] === 'none') permissions['kompetenzen-matrix'] = 'read'
@@ -258,7 +260,9 @@ router.post('/groups', (req, res) => {
   const safePerms: Record<string, string> = {}
   for (const page of ALL_PAGE_KEYS) {
     const v = permissions?.[page]
-    safePerms[page] = (v === 'none' || v === 'read' || v === 'write-own') ? v : 'write'
+    safePerms[page] = (v === 'none' || v === 'read' || v === 'write-own') ? v
+      : page === 'azure-ranking-report' && v !== 'write' ? 'none' // opt-in sub-permission
+      : 'write'
   }
 
   const id = crypto.randomUUID()

@@ -33,6 +33,7 @@ export const ALL_PAGE_KEYS = [
   'stakeholder',
   'azure-ranking',
   'azure-ranking-refresh',
+  'azure-ranking-report',
   'known-errors',
   'meetings',
   'tickets',
@@ -134,6 +135,7 @@ export function computePagePermissions(
         // default to 'read' so existing groups can still trigger refreshes.
         storedPerm = 'read'
       } else {
+        // Everything else — including azure-ranking-report (annual reports are opt-in) — defaults to 'none'
         storedPerm = perms[page] ?? 'none'
       }
       const groupPerm = storedPerm as PagePermission

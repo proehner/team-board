@@ -9,6 +9,8 @@ import {
   FILES, HISTORY_VERSION, loadStore, newStore, readJson, writeJsonAtomic,
   type CacheFile, type HistoryFile, type HistoryMonth,
 } from './store'
+import { buildReport, reportPeriods, type ReportData, type ReportPeriod } from './report'
+import { monthEndsBefore } from './time'
 import type { AzureConfig, EventStore, PeriodData, Progress } from './types'
 
 const DAY = 86_400_000
@@ -16,38 +18,6 @@ const DAY = 86_400_000
 const HISTORY_MONTHS = 12
 /** Longest ranking period: the oldest month-end point needs this many days of events before it */
 const MAX_PERIOD_DAYS = Math.max(...PERIODS)
-
-// ─── Month ends (Europe/Berlin) ───────────────────────────────────────────────
-
-const berlinParts = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'Europe/Berlin', hourCycle: 'h23',
-  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
-})
-
-/** Offset of Europe/Berlin to UTC at the given instant (ms, e.g. +1h / +2h). */
-function berlinOffset(t: number): number {
-  const p = Object.fromEntries(berlinParts.formatToParts(t).map((x) => [x.type, x.value]))
-  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(t / 1000) * 1000
-}
-
-/** First instant of the given month in Europe/Berlin (month may overflow, e.g. 12 → January next year). */
-function berlinMonthStart(year: number, month: number): number {
-  const utc = Date.UTC(year, month, 1)
-  return utc - berlinOffset(utc)
-}
-
-/** The last `count` month ends (Europe/Berlin) that lie before `at`, oldest first. */
-function monthEndsBefore(at: number, count: number): { date: string; at: number }[] {
-  const local = new Date(at + berlinOffset(at))
-  const result: { date: string; at: number }[] = []
-  for (let i = 0; result.length < count && i <= count; i++) {
-    const end = berlinMonthStart(local.getUTCFullYear(), local.getUTCMonth() - i) - 1
-    if (end >= at) continue
-    const d = new Date(end + berlinOffset(end))
-    result.push({ date: d.toISOString().slice(0, 10), at: end })
-  }
-  return result.reverse()
-}
 
 export interface HistoryPoint {
   /** Last day of the month (yyyy-MM-dd) */
@@ -241,6 +211,19 @@ class RankingService {
 
   devCount() {
     return this.cache.data?.periods?.[365]?.developers?.length ?? 0
+  }
+
+  /** Report periods that can be computed from the stored events. */
+  reportPeriods(): ReportPeriod[] {
+    if (!this.prep || !this.cache.lastLoaded) return []
+    return reportPeriods(this.prep, Date.parse(this.cache.lastLoaded))
+  }
+
+  /** Annual report data for one developer (null: unknown period or no activity in it). */
+  report(devId: string, periodKey: string): ReportData | null {
+    const period = this.reportPeriods().find((p) => p.key === periodKey)
+    if (!period || !this.prep || !this.cache.lastLoaded) return null
+    return buildReport(this.prep, devId, period, Date.parse(this.cache.lastLoaded))
   }
 
   devHistory(devId: string): HistoryPoint[] {

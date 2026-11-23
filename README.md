@@ -63,6 +63,14 @@ All data is read from Azure DevOps with **GET requests only** (nothing is ever w
 
 Review comments only count with at least 10 characters of own text; pure acknowledgements ("ok", "done", "LGTM", "Danke") never count. Bots, service accounts and team groups are ignored; accounts with identical display names are merged. Besides total points the UI offers **points per active week** to compensate for vacation, part-time work and later joiners (a period is split into round(days / 7) weeks, e.g. 4 weeks for 30 days).
 
+#### Annual report (PDF)
+
+In the developer detail view of the Azure Rankings, **"Jahresbericht"** creates a neutral PDF report for one person – for the last 12 complete months or a calendar year. It contains key figures with rank, distribution by area, monthly activity compared with the comparison group's median, all counts with placement (quarters/median), way of working (PR cycle time, review response time, review depth), review partners, rule-based strengths and recommendations (each can be deselected before export), the competencies from the competency matrix of the current team (matched by e-mail or name) and optional notes.
+
+- Data: `GET /api/azure-ranking/report/periods` and `GET /api/azure-ranking/report?devId=…&period=…` (`server/src/azureRanking/report.ts`); the PDF is rendered in the browser with `@react-pdf/renderer` (loaded on demand, `src/components/azure/report/`).
+- Comparison group: everyone with PR or review activity who was active in at least a quarter of the weeks; comparisons use values per active week.
+- Permission: sub-permission **"Jahresberichte erstellen"** (`azure-ranking-report`) – opt-in per permission group, admins always.
+
 ---
 
 ## 2. Technology Stack

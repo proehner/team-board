@@ -5,7 +5,7 @@ import type { PagePermission } from '@/types'
 import Badge, { type BadgeVariant } from '@/components/ui/Badge'
 
 // ─── Page keys + labels (same order as sidebar) ───────────────────────────────
-export const ALL_PAGES: { key: string; labelKey: string; hasWriteOwn?: boolean; isSubReadOnly?: boolean }[] = [
+export const ALL_PAGES: { key: string; labelKey: string; hasWriteOwn?: boolean; isSubReadOnly?: boolean; defaultNone?: boolean }[] = [
   { key: 'dashboard',          labelKey: 'nav.dashboard' },
   { key: 'team',               labelKey: 'nav.team' },
   { key: 'kompetenzen',        labelKey: 'nav.competencies' },
@@ -19,6 +19,7 @@ export const ALL_PAGES: { key: string; labelKey: string; hasWriteOwn?: boolean; 
   { key: 'stakeholder',   labelKey: 'nav.stakeholder' },
   { key: 'azure-ranking',         labelKey: 'nav.azureRankings' },
   { key: 'azure-ranking-refresh', labelKey: 'admin.groups.azureRankingRefreshLabel', isSubReadOnly: true },
+  { key: 'azure-ranking-report',  labelKey: 'admin.groups.azureRankingReportLabel',  isSubReadOnly: true, defaultNone: true },
   { key: 'known-errors',  labelKey: 'nav.knownErrors' },
   { key: 'meetings',      labelKey: 'nav.meetings' },
   { key: 'tickets',       labelKey: 'nav.tickets' },
@@ -52,7 +53,8 @@ export const PERM_OPTIONS_MATRIX = PERM_OPTIONS.filter((o) => o.value !== 'none'
 export const PERM_OPTIONS_READONLY = PERM_OPTIONS.filter((o) => o.value === 'read' || o.value === 'none')
 
 /** Returns the default PagePermission for a page entry (used when the group has no explicit value). */
-export function defaultPermFor(page: { isSubReadOnly?: boolean }): PagePermission {
+export function defaultPermFor(page: { isSubReadOnly?: boolean; defaultNone?: boolean }): PagePermission {
+  if (page.defaultNone) return 'none'
   return page.isSubReadOnly ? 'read' : 'write'
 }
 

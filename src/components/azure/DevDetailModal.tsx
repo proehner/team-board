@@ -1,7 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Award, BarChart3, CalendarCheck, FolderGit2, Gauge, History, Target, TrendingUp } from 'lucide-react'
+import { Award, BarChart3, CalendarCheck, FileText, FolderGit2, Gauge, History, Target, TrendingUp } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import Button from '@/components/ui/Button'
+import { useAuthStore } from '@/store/auth'
+import ReportDialog from './report/ReportDialog'
 import Avatar from '@/components/ui/Avatar'
 import Tabs from '@/components/ui/Tabs'
 import SectionHeader from '@/components/ui/SectionHeader'
@@ -213,14 +216,39 @@ interface DevDetailModalProps {
   scoring: Record<string, number>
   /** Length of the current period in days (active-weeks bound, default chart period) */
   days: number
+  /** "organisation / project" — data source shown in annual reports */
+  source: string
   onClose: () => void
 }
 
-export default function DevDetailModal({ dev, scoring, days, onClose }: DevDetailModalProps) {
+/** Annual reports are an opt-in sub-permission (admins always); a missing key means "not granted". */
+function useCanCreateReports() {
+  const user = useAuthStore((s) => s.user)
+  return !!user && (user.role === 'admin' || (user.pagePermissions?.['azure-ranking-report'] ?? 'none') !== 'none')
+}
+
+export default function DevDetailModal({ dev, scoring, days, source, onClose }: DevDetailModalProps) {
+  const { t } = useTranslation()
+  const canReport = useCanCreateReports()
+  const [reportDev, setReportDev] = useState<DevStats | null>(null)
   return (
-    <Modal isOpen={!!dev} onClose={onClose} title={dev?.displayName ?? ''} description={dev?.uniqueName} size="lg">
-      {dev && <DevDetailBody dev={dev} scoring={scoring} days={days} />}
-    </Modal>
+    <>
+      <Modal
+        isOpen={!!dev}
+        onClose={onClose}
+        title={dev?.displayName ?? ''}
+        description={dev?.uniqueName}
+        size="lg"
+        footer={canReport && dev ? (
+          <Button variant="secondary" icon={<FileText />} title={t('azureReport.buttonHint')} onClick={() => setReportDev(dev)}>
+            {t('azureReport.button')}
+          </Button>
+        ) : undefined}
+      >
+        {dev && <DevDetailBody dev={dev} scoring={scoring} days={days} />}
+      </Modal>
+      {canReport && <ReportDialog dev={reportDev} source={source} onClose={() => setReportDev(null)} />}
+    </>
   )
 }
 
