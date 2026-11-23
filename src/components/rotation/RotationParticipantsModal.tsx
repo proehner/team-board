@@ -1,8 +1,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
+import { toast, errorMessage } from '@/store/toast'
 import Modal from '@/components/ui/Modal'
 import Avatar from '@/components/ui/Avatar'
+import Button from '@/components/ui/Button'
+import EmptyState from '@/components/ui/EmptyState'
+import Spinner from '@/components/ui/Spinner'
+import { UserCheck } from 'lucide-react'
 
 /** Matrix members × responsibilities: who takes part in which rotation. */
 export default function RotationParticipantsModal({ isOpen, onClose, canWrite }: { isOpen: boolean; onClose: () => void; canWrite: boolean }) {
@@ -10,86 +15,123 @@ export default function RotationParticipantsModal({ isOpen, onClose, canWrite }:
   const types = useStore((s) => s.responsibilityTypes)
   const members = useStore((s) => s.members).filter((m) => m.isActive).sort((a, b) => a.name.localeCompare(b.name))
   const updateResponsibilityType = useStore((s) => s.updateResponsibilityType)
-  const [error, setError] = useState('')
+  const [pending, setPending] = useState<string | null>(null)
 
   async function toggle(typeId: string, memberId: string, participates: boolean) {
     const rt = types.find((x) => x.id === typeId)
     if (!rt) return
-    setError('')
     const excludedMemberIds = participates
       ? rt.excludedMemberIds.filter((id) => id !== memberId)
       : [...rt.excludedMemberIds, memberId]
+    setPending(`${typeId}:${memberId}`)
     try {
       await updateResponsibilityType(typeId, { excludedMemberIds })
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('common.saveError'))
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+    } finally {
+      setPending(null)
     }
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('rotation.participants')} size="xl">
-      <div className="space-y-4">
-        <p className="text-sm text-slate-500 dark:text-slate-400">{t('rotation.participantsHint')}</p>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {types.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-4">{t('rotation.noTypes')}</p>
-        ) : (
-          <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  <th className="text-left px-4 py-2.5">{t('sprintDetail.memberColumn')}</th>
-                  {types.map((rt) => (
-                    <th key={rt.id} className="px-2 py-2.5 text-center font-medium leading-tight">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: rt.color }} />
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={t('rotation.participants')}
+      description={t('rotation.participantsHint')}
+      icon={<UserCheck />}
+      size="xl"
+      footer={<Button variant="secondary" onClick={onClose}>{t('common.close')}</Button>}
+    >
+      {types.length === 0 ? (
+        <EmptyState compact icon={<UserCheck />} title={t('rotation.noTypes')} />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 scrollbar-thin dark:border-slate-700">
+          {/* Initial focus anchor: avoids a focus ring on the first checkbox */}
+          <div data-autofocus tabIndex={-1} className="sr-only" />
+          <table className="w-full border-separate border-spacing-0 text-sm">
+            <thead>
+              <tr>
+                <th
+                  scope="col"
+                  className="sticky left-0 z-10 border-b border-r border-slate-200 bg-slate-50 px-4 py-2.5 text-left align-bottom dark:border-slate-700 dark:bg-[#162032]"
+                >
+                  <span className="section-label">{t('sprintDetail.memberColumn')}</span>
+                </th>
+                {types.map((rt) => (
+                  <th
+                    key={rt.id}
+                    scope="col"
+                    className="min-w-[7rem] border-b border-slate-200 bg-slate-50 px-2 py-2.5 text-center align-bottom dark:border-slate-700 dark:bg-[#162032]"
+                  >
+                    <span className="flex flex-col items-center gap-1.5">
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: rt.color }} />
+                      <span className="line-clamp-2 text-xs font-medium leading-tight text-slate-700 dark:text-slate-300" title={rt.name}>
                         {rt.name}
                       </span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((m) => (
-                  <tr key={m.id} className="border-t border-slate-100 dark:border-slate-800">
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-2 whitespace-nowrap">
-                        <Avatar name={m.name} color={m.avatarColor} size="xs" />
-                        <span className="font-medium text-slate-700 dark:text-slate-300">{m.name}</span>
-                      </div>
-                    </td>
-                    {types.map((rt) => {
-                      const participates = !rt.excludedMemberIds.includes(m.id)
-                      return (
-                        <td key={rt.id} className="px-2 py-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={participates}
-                            disabled={!canWrite}
-                            onChange={(e) => toggle(rt.id, m.id, e.target.checked)}
-                            className="rounded border-slate-300 text-indigo-600 disabled:opacity-50"
-                            aria-label={`${m.name} – ${rt.name}`}
-                          />
-                        </td>
-                      )
-                    })}
-                  </tr>
+                    </span>
+                  </th>
                 ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-500 dark:text-slate-400">
-                  <td className="px-4 py-2 font-semibold">{t('rotation.participantCount')}</td>
-                  {types.map((rt) => (
-                    <td key={rt.id} className="px-2 py-2 text-center">
-                      {members.filter((m) => !rt.excludedMemberIds.includes(m.id)).length} / {members.length}
-                    </td>
-                  ))}
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((m) => (
+                <tr key={m.id} className="group">
+                  <th
+                    scope="row"
+                    className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-4 py-2 text-left font-normal group-hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:group-hover:bg-slate-800"
+                  >
+                    <div className="flex items-center gap-2 whitespace-nowrap">
+                      <Avatar name={m.name} color={m.avatarColor} size="xs" />
+                      <span className="font-medium text-slate-700 dark:text-slate-300">{m.name}</span>
+                    </div>
+                  </th>
+                  {types.map((rt) => {
+                    const participates = !rt.excludedMemberIds.includes(m.id)
+                    const busy = pending === `${rt.id}:${m.id}`
+                    return (
+                      <td key={rt.id} className="border-b border-slate-100 px-2 py-2 text-center group-hover:bg-slate-50 dark:border-slate-800 dark:group-hover:bg-slate-800/50">
+                        <label className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${canWrite ? 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800' : ''}`}>
+                          {busy ? (
+                            <Spinner className="h-4 w-4" />
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={participates}
+                              disabled={!canWrite || pending !== null}
+                              onChange={(e) => toggle(rt.id, m.id, e.target.checked)}
+                              className="h-4 w-4 cursor-pointer rounded disabled:cursor-default disabled:opacity-50"
+                              aria-label={`${m.name} – ${rt.name}`}
+                            />
+                          )}
+                        </label>
+                      </td>
+                    )
+                  })}
                 </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </div>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 border-r border-slate-200 bg-slate-50 px-4 py-2 text-left dark:border-slate-700 dark:bg-[#162032]"
+                >
+                  <span className="section-label">{t('rotation.participantCount')}</span>
+                </th>
+                {types.map((rt) => {
+                  const count = members.filter((m) => !rt.excludedMemberIds.includes(m.id)).length
+                  return (
+                    <td key={rt.id} className="bg-slate-50 px-2 py-2 text-center text-xs tabular-nums text-slate-500 dark:bg-[#162032] dark:text-slate-400">
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">{count}</span> / {members.length}
+                    </td>
+                  )
+                })}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </Modal>
   )
 }

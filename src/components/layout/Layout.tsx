@@ -1,41 +1,69 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
-import { Menu, Shield } from 'lucide-react'
+import { Menu, Shield, Search } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import Sidebar from './Sidebar'
 import GlobalSearch from '@/components/GlobalSearch'
 
+const COLLAPSE_KEY = 'sidebar_collapsed'
+
 export default function Layout() {
+  const { t } = useTranslation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen,  setSearchOpen]  = useState(false)
-  const location = useLocation()
+  const [collapsed,   setCollapsed]   = useState(() => {
+    try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
+  })
+  const location  = useLocation()
+  const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Close sidebar on route change (mobile)
+  // Close mobile sidebar and reset scroll position on route change
   useEffect(() => {
     setSidebarOpen(false)
+    scrollRef.current?.scrollTo({ top: 0 })
   }, [location.pathname])
 
-  // Close sidebar on Escape; open search on Ctrl+K / Cmd+K
+  useEffect(() => {
+    try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0') } catch { /* ignore */ }
+  }, [collapsed])
+
+  // Escape closes overlays; Ctrl/Cmd+K toggles search; Ctrl/Cmd+B toggles sidebar
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         if (searchOpen) { setSearchOpen(false); return }
         setSidebarOpen(false)
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setSearchOpen((o) => !o)
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && !e.shiftKey && !e.altKey) {
+        const el = document.activeElement as HTMLElement | null
+        const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+        if (typing) return
+        e.preventDefault()
+        setCollapsed((c) => !c)
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [sidebarOpen, searchOpen])
+  }, [searchOpen])
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+      <a
+        href="#main-content"
+        onClick={(e) => { e.preventDefault(); document.getElementById('main-content')?.focus() }}
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-lg focus:bg-indigo-600 focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
+      >
+        {t('sidebar.skipToContent')}
+      </a>
+
       {/* ── Mobile overlay backdrop ─────────────────────────────────────────── */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-20 overflow-hidden bg-black/50 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-30 bg-slate-950/40 backdrop-blur-[2px] animate-fade-in md:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
@@ -44,37 +72,60 @@ export default function Layout() {
       {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
       <div
         className={`
-          fixed inset-y-0 left-0 z-30 transform transition-transform duration-200 ease-in-out
-          md:relative md:translate-x-0 md:flex md:flex-shrink-0
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          fixed inset-y-0 left-0 z-40 transform transition-transform duration-200 ease-out
+          md:relative md:z-auto md:translate-x-0 md:flex md:flex-shrink-0
+          ${sidebarOpen ? 'translate-x-0 shadow-popover' : '-translate-x-full'}
         `}
       >
-        <Sidebar onClose={() => setSidebarOpen(false)} onOpenSearch={() => setSearchOpen(true)} />
+        {/* Mobile: always expanded. Desktop: collapsible. */}
+        <div className="h-full md:hidden">
+          <Sidebar onClose={() => setSidebarOpen(false)} onOpenSearch={() => { setSidebarOpen(false); setSearchOpen(true) }} />
+        </div>
+        <div className="hidden h-full md:block">
+          <Sidebar
+            onOpenSearch={() => setSearchOpen(true)}
+            collapsed={collapsed}
+            onToggleCollapsed={() => setCollapsed((c) => !c)}
+          />
+        </div>
       </div>
 
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       {/* ── Main area ───────────────────────────────────────────────────────── */}
-      <main className="flex flex-col flex-1 min-w-0 overflow-hidden bg-slate-50 dark:bg-slate-950">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Mobile top bar */}
-        <header className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 md:hidden shrink-0">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-200 bg-white/80 px-3 backdrop-blur md:hidden dark:border-slate-800 dark:bg-slate-900/80">
           <button
             onClick={() => setSidebarOpen(true)}
-            aria-label="Navigation öffnen"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+            aria-label={t('sidebar.openNavigation')}
+            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="h-5 w-5" />
           </button>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-indigo-500 flex items-center justify-center">
-              <Shield className="w-3 h-3 text-white" />
+          <div className="flex flex-1 items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600">
+              <Shield className="h-3.5 w-3.5 text-white" />
             </div>
-            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">Team Board</span>
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Team Board</span>
           </div>
+          <button
+            onClick={() => setSearchOpen(true)}
+            aria-label={t('sidebar.search')}
+            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <Search className="h-5 w-5" />
+          </button>
         </header>
 
-        {/* Page content */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin">
+        {/* Page content. `relative` makes this the containing block for absolutely positioned
+            descendants (e.g. `sr-only` elements) so they can't stretch the document and add a second scrollbar. */}
+        <div
+          id="main-content"
+          ref={scrollRef}
+          tabIndex={-1}
+          className="relative flex-1 overflow-y-auto scrollbar-thin outline-none"
+        >
           <Outlet />
         </div>
       </main>

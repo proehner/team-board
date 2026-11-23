@@ -1,168 +1,52 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { createPortal } from 'react-dom'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect, type ReactNode } from 'react'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { usePagePermission } from '@/hooks/usePagePermission'
-import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { format } from 'date-fns'
 import {
-  ArrowLeft, MessageSquare, Send, Trash2,
-  Paperclip, Upload, Download, File, ImageIcon, Loader2, Users, X,
-  Ticket as TicketIcon, Flag, Globe, Tag,
+  Users, X, Ticket as TicketIcon, Pencil, FileText, Info, CheckCircle2, RotateCcw, Plus,
+  CalendarClock, CalendarPlus, History, ArrowLeft, MessageSquare,
 } from 'lucide-react'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import { useStore } from '@/store'
 import { meetingsApi, topicAttachmentsApi, ticketsApi, ticketCategoriesApi } from '@/api/client'
-import type { MeetingTopic, MeetingTopicStatus, TopicComment, TopicAttachment, Ticket, TicketPriority, TicketCategory } from '@/types'
+import type { MeetingTopic, MeetingTopicStatus, TopicComment, Ticket, TicketCategory, TicketStatus } from '@/types'
 import { useAuthStore } from '@/store/auth'
 import { getMemberDisplayNames } from '@/utils/members'
+import Page from '@/components/ui/Page'
+import PageHeader from '@/components/ui/PageHeader'
+import Button from '@/components/ui/Button'
+import IconButton from '@/components/ui/IconButton'
+import Badge, { type BadgeVariant } from '@/components/ui/Badge'
+import Avatar from '@/components/ui/Avatar'
+import EmptyState from '@/components/ui/EmptyState'
+import Skeleton from '@/components/ui/Skeleton'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
 import MarkdownEditor from '@/components/ui/MarkdownEditor'
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
-import MentionInput, { renderWithMentions } from '@/components/ui/MentionInput'
 import TicketDetailModal from '@/components/tickets/TicketDetailModal'
+import { toast, errorMessage } from '@/store/toast'
+import Panel from '@/components/knownErrors/Panel'
+import AttachmentsCard from '@/components/knownErrors/AttachmentsCard'
+import CommentThread from '@/components/knownErrors/CommentThread'
+import { TopicStatusMenu } from '@/components/meetings/TopicStatus'
+import CreateTicketModal, { type NewTicketData } from '@/components/meetings/CreateTicketModal'
+import AssigneesModal from '@/components/meetings/AssigneesModal'
 
-const TOPIC_STATUS_CONFIG: Record<MeetingTopicStatus, { className: string }> = {
-  todo:        { className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
-  in_progress: { className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
-  deferred:    { className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
-  fixed:       { className: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' },
-  done:        { className: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+
+const TICKET_STATUS_VARIANT: Record<TicketStatus, BadgeVariant> = {
+  todo:        'default',
+  in_progress: 'info',
+  done:        'success',
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-// ─── Attachments Panel ────────────────────────────────────────────────────────
-
-function AttachmentsPanel({ topicId, onImageUpload, canWrite }: {
-  topicId: string
-  onImageUpload: (file: File) => Promise<string>
-  canWrite: boolean
-}) {
-  const { t } = useTranslation()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const [attachments,   setAttachments]   = useState<TopicAttachment[]>([])
-  const [loading,       setLoading]       = useState(true)
-  const [uploading,     setUploading]     = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState<TopicAttachment | null>(null)
-  const [deletingId,    setDeletingId]    = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    try { setAttachments(await topicAttachmentsApi.list(topicId)) }
-    finally { setLoading(false) }
-  }, [topicId])
-
-  useEffect(() => { load() }, [load])
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? [])
-    e.target.value = ''
-    if (!files.length) return
-    setUploading(true)
-    try {
-      for (const file of files) await topicAttachmentsApi.upload(topicId, file)
-      await load()
-    } finally { setUploading(false) }
-  }
-
-  async function handleDelete(att: TopicAttachment) {
-    setDeletingId(att.id)
-    try {
-      await topicAttachmentsApi.delete(topicId, att.id)
-      setAttachments((prev) => prev.filter((a) => a.id !== att.id))
-    } finally { setDeletingId(null); setConfirmDelete(null) }
-  }
-
+function MetaLine({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-          <Paperclip className="w-4 h-4" />
-          {t('meetings.attachments.title')}
-          {attachments.length > 0 && (
-            <span className="text-xs font-normal text-slate-400">({attachments.length})</span>
-          )}
-        </h2>
-        {canWrite && (
-          <>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors disabled:opacity-50"
-            >
-              {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-              {t('meetings.attachments.upload')}
-            </button>
-            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileChange} />
-          </>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="flex items-center justify-center py-6 text-slate-400">
-          <Loader2 className="w-5 h-5 animate-spin" />
-        </div>
-      ) : attachments.length === 0 ? (
-        <p className="text-sm text-slate-400 italic text-center py-4">{t('meetings.attachments.empty')}</p>
-      ) : (
-        <ul className="space-y-2">
-          {attachments.map((att) => {
-            const url   = topicAttachmentsApi.fileUrl(att.filename)
-            const isImg = att.mimeType.startsWith('image/')
-            return (
-              <li key={att.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 group transition-colors">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
-                  {isImg ? <ImageIcon className="w-4 h-4 text-violet-500" /> : <File className="w-4 h-4 text-slate-500" />}
-                </div>
-                {isImg && (
-                  <a href={url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                    <img src={url} alt={att.originalName} className="w-10 h-10 rounded object-cover border border-slate-200 dark:border-slate-600" />
-                  </a>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{att.originalName}</p>
-                  <p className="text-xs text-slate-400">{formatFileSize(att.size)} · {new Date(att.uploadedAt).toLocaleDateString()}</p>
-                </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <a
-                    href={url}
-                    download={att.originalName}
-                    className="p-1.5 rounded text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 transition-colors"
-                    title={t('meetings.attachments.download')}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </a>
-                  {canWrite && (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDelete(att)}
-                      disabled={deletingId === att.id}
-                      className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50"
-                    >
-                      {deletingId === att.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    </button>
-                  )}
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-
-      <ConfirmDialog
-        isOpen={!!confirmDelete}
-        title={t('meetings.attachments.deleteTitle')}
-        message={t('meetings.attachments.deleteConfirm', { name: confirmDelete?.originalName ?? '' })}
-        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
-        onClose={() => setConfirmDelete(null)}
-        variant="danger"
-      />
+    <div className="flex items-start gap-2.5 py-1.5 text-sm">
+      <span className="mt-0.5 text-slate-400 [&_svg]:h-4 [&_svg]:w-4">{icon}</span>
+      <span className="w-[5.5rem] shrink-0 text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="min-w-0 flex-1 text-slate-800 dark:text-slate-200">{children}</span>
     </div>
   )
 }
@@ -186,33 +70,22 @@ export default function TopicDetailPage() {
   const [topic,       setTopic]       = useState<MeetingTopic | null>(null)
   const [comments,    setComments]    = useState<TopicComment[]>([])
   const [loading,     setLoading]     = useState(true)
-  const [newComment,  setNewComment]  = useState('')
-  const [sending,     setSending]     = useState(false)
-  const [confirmDeleteComment, setConfirmDeleteComment] = useState<TopicComment | null>(null)
 
   // Editing state
-  const [editingDesc,      setEditingDesc]      = useState(false)
-  const [descDraft,        setDescDraft]        = useState('')
-  const [editingTitle,     setEditingTitle]     = useState(false)
-  const [titleDraft,       setTitleDraft]       = useState('')
-  const [editingAssignees, setEditingAssignees] = useState(false)
-  const [assigneeDraft,    setAssigneeDraft]    = useState<string[]>([])
+  const [editingDesc,   setEditingDesc]   = useState(false)
+  const [descDraft,     setDescDraft]     = useState('')
+  const [savingDesc,    setSavingDesc]    = useState(false)
+  const [editingTitle,  setEditingTitle]  = useState(false)
+  const [titleDraft,    setTitleDraft]    = useState('')
+  const [assigneesOpen, setAssigneesOpen] = useState(false)
+  const [attachRefresh, setAttachRefresh] = useState(0)
 
   // Categories & ticket modal
-  const [categories,           setCategories]           = useState<TicketCategory[]>([])
-  const [detailTicket,         setDetailTicket]         = useState<Ticket | null>(null)
-
-  // Tickets
-  const [linkedTickets,        setLinkedTickets]        = useState<Ticket[]>([])
-  const [showCreateTicket,     setShowCreateTicket]     = useState(false)
-  const [newTicketTitle,       setNewTicketTitle]       = useState('')
-  const [newTicketDesc,        setNewTicketDesc]        = useState('')
-  const [newTicketPriority,    setNewTicketPriority]    = useState<TicketPriority>('medium')
-  const [newTicketAssigneeIds, setNewTicketAssigneeIds] = useState<string[]>([])
-  const [newTicketCategoryId,  setNewTicketCategoryId]  = useState<string | null>(null)
-  const [newTicketIsGlobal,    setNewTicketIsGlobal]    = useState(false)
-  const [creatingTicket,       setCreatingTicket]       = useState(false)
-  const [unlinkConfirm,        setUnlinkConfirm]        = useState<Ticket | null>(null)
+  const [categories,       setCategories]       = useState<TicketCategory[]>([])
+  const [detailTicket,     setDetailTicket]     = useState<Ticket | null>(null)
+  const [linkedTickets,    setLinkedTickets]    = useState<Ticket[]>([])
+  const [showCreateTicket, setShowCreateTicket] = useState(false)
+  const [unlinkConfirm,    setUnlinkConfirm]    = useState<Ticket | null>(null)
 
   useEffect(() => {
     if (!meetingId || !topicId) return
@@ -227,687 +100,438 @@ export default function TopicDetailPage() {
       setComments(coms)
       setLinkedTickets(tix)
       setCategories(cats)
+    }).catch(() => {
+      // handled by the not-found state below
     }).finally(() => setLoading(false))
   }, [meetingId, topicId])
 
-  async function handleStatusChange(newStatus: MeetingTopicStatus) {
+  async function handleStatusChange(newStatus: MeetingTopicStatus, silent = false) {
     if (!topic || !meetingId) return
-    setTopic(await meetingsApi.updateTopic(meetingId, topic.id, { status: newStatus }))
+    const previous = topic.status
+    try {
+      const updated = await meetingsApi.updateTopic(meetingId, topic.id, { status: newStatus })
+      setTopic(updated)
+      if (silent) return
+      if (newStatus === 'done' || previous === 'done') {
+        toast.success(newStatus === 'done' ? t('meetings.topicDone') : t('meetings.topicReopened'), {
+          action: { label: t('meetings.undo'), onClick: () => handleStatusChange(previous, true) },
+        })
+      }
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+    }
   }
 
-  async function handleCreateTicket() {
-    if (!newTicketTitle.trim() || !topicId) return
-    setCreatingTicket(true)
+  async function handleCreateTicket(data: NewTicketData) {
+    if (!topicId) return
     try {
-      const ticket = await ticketsApi.create({
-        title:       newTicketTitle.trim(),
-        description: newTicketDesc.trim() || undefined,
-        priority:    newTicketPriority,
-        assigneeIds: newTicketAssigneeIds,
-        categoryId:  newTicketCategoryId ?? undefined,
-        isGlobal:    newTicketIsGlobal,
-        topicId,
-      })
+      const ticket = await ticketsApi.create({ ...data, topicId })
       setLinkedTickets((prev) => [...prev, ticket])
-      setNewTicketTitle('')
-      setNewTicketDesc('')
-      setNewTicketPriority('medium')
-      setNewTicketAssigneeIds([])
-      setNewTicketCategoryId(null)
-      setNewTicketIsGlobal(false)
-      setShowCreateTicket(false)
-    } finally { setCreatingTicket(false) }
+      toast.success(t('meetings.ticketCreated'), { description: ticket.title })
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+      throw err
+    }
   }
 
   function handleTicketChange(updated: Ticket) {
-    setLinkedTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
+    setLinkedTickets((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
     if (detailTicket?.id === updated.id) setDetailTicket(updated)
   }
 
   function handleTicketDelete(ticketId: string) {
-    setLinkedTickets((prev) => prev.filter((t) => t.id !== ticketId))
+    setLinkedTickets((prev) => prev.filter((x) => x.id !== ticketId))
     setDetailTicket(null)
   }
 
   async function handleUnlinkTicket(ticket: Ticket) {
     if (!topicId) return
-    await ticketsApi.unlink(ticket.id, topicId)
-    setLinkedTickets((prev) => prev.filter((t) => t.id !== ticket.id))
-    setUnlinkConfirm(null)
+    try {
+      await ticketsApi.unlink(ticket.id, topicId)
+      setLinkedTickets((prev) => prev.filter((x) => x.id !== ticket.id))
+      toast.success(t('meetings.ticketUnlinked'), { description: ticket.title })
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+      throw err
+    }
   }
 
   async function handleSaveDesc() {
-    if (!topic || !meetingId) return
-    setTopic(await meetingsApi.updateTopic(meetingId, topic.id, { description: descDraft }))
-    setEditingDesc(false)
+    if (!topic || !meetingId || savingDesc) return
+    setSavingDesc(true)
+    try {
+      setTopic(await meetingsApi.updateTopic(meetingId, topic.id, { description: descDraft }))
+      setEditingDesc(false)
+      toast.success(t('common.saved'))
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+    } finally {
+      setSavingDesc(false)
+    }
   }
 
   async function handleSaveTitle() {
     if (!topic || !meetingId || !titleDraft.trim()) return
-    setTopic(await meetingsApi.updateTopic(meetingId, topic.id, { title: titleDraft.trim() }))
-    setEditingTitle(false)
-  }
-
-  async function handleSaveAssignees() {
-    if (!topic || !meetingId) return
-    setTopic(await meetingsApi.updateTopic(meetingId, topic.id, { assigneeIds: assigneeDraft }))
-    setEditingAssignees(false)
-  }
-
-  function toggleAssignee(memberId: string) {
-    setAssigneeDraft((prev) =>
-      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId],
-    )
-  }
-
-  async function handleSendComment() {
-    if (!newComment.trim() || !meetingId || !topicId) return
-    setSending(true)
     try {
-      const comment = await meetingsApi.createComment(meetingId, topicId, newComment.trim(), user?.displayName ?? '')
-      setComments((prev) => [...prev, comment])
-      setNewComment('')
-    } finally { setSending(false) }
+      setTopic(await meetingsApi.updateTopic(meetingId, topic.id, { title: titleDraft.trim() }))
+      setEditingTitle(false)
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+    }
   }
 
-  async function handleDeleteComment(c: TopicComment) {
-    if (!meetingId || !topicId) return
-    await meetingsApi.deleteComment(meetingId, topicId, c.id)
-    setComments((prev) => prev.filter((x) => x.id !== c.id))
-    setConfirmDeleteComment(null)
+  async function handleSaveAssignees(ids: string[]) {
+    if (!topic || !meetingId) return
+    try {
+      setTopic(await meetingsApi.updateTopic(meetingId, topic.id, { assigneeIds: ids }))
+      toast.success(t('common.saved'))
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+      throw err
+    }
   }
 
   // Image upload for markdown editor – uploads to topic attachments
   async function handleImageUpload(file: File): Promise<string> {
     const att = await topicAttachmentsApi.upload(topicId!, file)
+    setAttachRefresh((n) => n + 1)
     return att.filename
   }
 
+  function startEditDesc() {
+    if (!topic) return
+    setDescDraft(topic.description)
+    setEditingDesc(true)
+  }
+
+  // ─── Loading / not found ───────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-slate-400">{t('meetings.loading')}</p>
-      </div>
+      <Page size="default">
+        <Skeleton className="mb-4 h-4 w-40" />
+        <Skeleton className="mb-3 h-8 w-2/3" />
+        <Skeleton className="mb-8 h-5 w-48" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="space-y-6">
+            <div className="surface space-y-3 p-5">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3.5 w-full" />
+              <Skeleton className="h-3.5 w-5/6" />
+            </div>
+            <div className="surface h-32" />
+          </div>
+          <div className="surface h-48" />
+        </div>
+      </Page>
     )
   }
 
   if (!topic || !meeting) {
+    const back = meeting ? { to: `/meetings/${meeting.id}`, label: meeting.title } : { to: '/meetings', label: t('meetings.title') }
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-slate-500">{t('meetings.notFound')}</p>
-      </div>
+      <Page size="narrow">
+        <PageHeader back={back} title={t('meetings.title')} />
+        <div className="surface">
+          <EmptyState
+            icon={<CalendarClock />}
+            title={t('meetings.notFound')}
+            action={<Button variant="secondary" icon={<ArrowLeft />} onClick={() => navigate(back.to)}>{back.label}</Button>}
+          />
+        </div>
+      </Page>
     )
   }
 
   const isDone    = topic.status === 'done'
+  const canEdit   = canWrite && !isDone
   const pool      = meeting.isGlobal ? allMembers : members.filter((m) => m.isActive)
   const assignees = [...members, ...allMembers].filter(
     (m, i, arr) => topic.assigneeIds.includes(m.id) && arr.findIndex((x) => x.id === m.id) === i,
   )
   const assigneeDisplayNames = getMemberDisplayNames(assignees, teams)
+  const fmt = (d: string) => format(new Date(d), 'dd.MM.yyyy')
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
-      {isReadOnly && <ReadOnlyBanner />}
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 text-xs text-slate-400">
-        <button onClick={() => navigate('/meetings')} className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
-          {t('meetings.title')}
-        </button>
-        <span>/</span>
-        <button onClick={() => navigate(`/meetings/${meetingId}`)} className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
-          {meeting.title}
-        </button>
-        <span>/</span>
-        <span className="text-slate-600 dark:text-slate-300 truncate max-w-[200px]">{topic.title}</span>
-      </div>
-
-      <button
-        onClick={() => navigate(`/meetings/${meetingId}`)}
-        className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        {meeting.title}
-      </button>
-
-      {/* Topic card */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
-        {/* Title row */}
-        <div className="flex items-start gap-3">
-          {/* Status dropdown */}
-          <div className="shrink-0 mt-0.5">
-            <select
-              value={topic.status}
-              onChange={(e) => handleStatusChange(e.target.value as MeetingTopicStatus)}
-              disabled={!canWrite}
-              className={`text-xs font-medium px-2 py-1 rounded-full border-0 ${canWrite ? 'cursor-pointer' : 'cursor-default'} appearance-none focus:outline-none focus:ring-2 focus:ring-violet-500 ${TOPIC_STATUS_CONFIG[topic.status].className}`}
-            >
-              {(['todo', 'in_progress', 'deferred', 'fixed', 'done'] as MeetingTopicStatus[]).map((s) => (
-                <option key={s} value={s}>{t(`meetings.status.${s}`)}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex-1 min-w-0">
-            {editingTitle ? (
-              <div className="flex items-center gap-2">
-                <input
-                  autoFocus
-                  value={titleDraft}
-                  onChange={(e) => setTitleDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setEditingTitle(false) }}
-                  className="flex-1 px-2 py-1 text-base font-semibold bg-white dark:bg-slate-800 border border-violet-300 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                />
-                <button onClick={handleSaveTitle} className="px-3 py-1 bg-violet-600 text-white text-xs rounded-lg hover:bg-violet-700">{t('common.save')}</button>
-                <button onClick={() => setEditingTitle(false)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
-              </div>
-            ) : (
-              <div className="flex items-start gap-2 group">
-                <h1 className={`text-base font-semibold leading-snug ${isDone ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
-                  {topic.title}
-                </h1>
-                {!isDone && canWrite && (
-                  <button
-                    onClick={() => { setTitleDraft(topic.title); setEditingTitle(true) }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                  >
-                    ✎
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-          {/* Create ticket button */}
-          {canWrite && (
-            <button
-              onClick={() => setShowCreateTicket(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg shrink-0 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50 transition-colors"
-            >
-              <TicketIcon className="w-3.5 h-3.5" />
-              {t('meetings.createTicket')}
-            </button>
-          )}
-        </div>
-
-        {isDone && topic.closedAt && (
-          <p className="text-xs text-slate-400 ml-0">
-            {t('meetings.closedAt', { date: new Date(topic.closedAt).toLocaleDateString() })}
-          </p>
-        )}
-
-        {/* Description – Markdown */}
-        <div>
-          {editingDesc ? (
-            <div className="space-y-2">
-              <MarkdownEditor
-                value={descDraft}
-                onChange={setDescDraft}
-                placeholder={t('meetings.descriptionPlaceholder')}
-                rows={6}
-                onImageUpload={handleImageUpload}
-              />
-              <div className="flex gap-2">
-                <button onClick={handleSaveDesc} className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors">
-                  {t('common.save')}
-                </button>
-                <button onClick={() => setEditingDesc(false)} className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors">
-                  {t('common.cancel')}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div
-              className={!isDone && canWrite ? 'cursor-text' : ''}
-              onClick={() => { if (!isDone && canWrite) { setDescDraft(topic.description); setEditingDesc(true) } }}
-            >
-              {topic.description ? (
-                <MarkdownRenderer content={topic.description} />
-              ) : (
-                !isDone && (
-                  <p className="text-sm text-slate-400 italic hover:text-slate-500 transition-colors">
-                    {t('meetings.addDescription')}
-                  </p>
-                )
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Assignees */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            {t('meetings.assignees')}
-          </h2>
-          {!editingAssignees && !isDone && canWrite && (
-            <button
-              onClick={() => { setAssigneeDraft([...topic.assigneeIds]); setEditingAssignees(true) }}
-              className="text-xs text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-            >
-              {t('common.edit')}
-            </button>
-          )}
-        </div>
-
-        {editingAssignees ? (
-          <div className="space-y-3">
-            {meeting.isGlobal ? (
-              // Group by team when global meeting
-              teams.length > 0
-                ? teams.map((team) => {
-                    const teamMembers = pool.filter((m) => m.teamId === team.id)
-                    if (teamMembers.length === 0) return null
-                    return (
-                      <div key={team.id}>
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">{team.name}</p>
-                        <div className="flex flex-wrap gap-2">
-                          {teamMembers.map((m) => {
-                            const selected = assigneeDraft.includes(m.id)
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => toggleAssignee(m.id)}
-                                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                                  selected
-                                    ? 'bg-violet-600 text-white border-violet-600'
-                                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-violet-400'
-                                }`}
-                              >
-                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${selected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'}`}>
-                                  {m.name.charAt(0).toUpperCase()}
-                                </span>
-                                {m.name}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })
-                : (
-                  <div className="flex flex-wrap gap-2">
-                    {pool.map((m) => {
-                      const selected = assigneeDraft.includes(m.id)
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => toggleAssignee(m.id)}
-                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                            selected
-                              ? 'bg-violet-600 text-white border-violet-600'
-                              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-violet-400'
-                          }`}
-                        >
-                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${selected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'}`}>
-                            {m.name.charAt(0).toUpperCase()}
-                          </span>
-                          {m.name}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {pool.map((m) => {
-                  const selected = assigneeDraft.includes(m.id)
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => toggleAssignee(m.id)}
-                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                        selected
-                          ? 'bg-violet-600 text-white border-violet-600'
-                          : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-violet-400'
-                      }`}
-                    >
-                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${selected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'}`}>
-                        {m.name.charAt(0).toUpperCase()}
-                      </span>
-                      {m.name}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            {pool.length === 0 && (
-              <p className="text-xs text-slate-400">{t('meetings.noMembers')}</p>
-            )}
-            <div className="flex gap-2">
-              <button onClick={handleSaveAssignees} className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors">
-                {t('common.save')}
-              </button>
-              <button onClick={() => setEditingAssignees(false)} className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors">
-                {t('common.cancel')}
-              </button>
-            </div>
-          </div>
-        ) : assignees.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {assignees.map((m) => (
-              <div key={m.id} className="flex items-center gap-2 px-2.5 py-1.5 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 rounded-full text-xs font-medium">
-                <span
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                  style={{ backgroundColor: m.avatarColor, color: '#fff' }}
-                >
-                  {m.name.charAt(0).toUpperCase()}
-                </span>
-                {assigneeDisplayNames.get(m.id) ?? m.name}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-slate-400 italic">{t('meetings.noAssignees')}</p>
-        )}
-      </div>
-
-      {/* Attachments */}
-      <AttachmentsPanel topicId={topic.id} onImageUpload={handleImageUpload} canWrite={canWrite} />
-
-      {/* Linked Tickets */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-            <TicketIcon className="w-4 h-4" />
-            {t('meetings.linkedTickets')}
-            {linkedTickets.length > 0 && (
-              <span className="text-xs font-normal text-slate-400">({linkedTickets.length})</span>
-            )}
-          </h2>
-          {canWrite && (
-            <button
-              onClick={() => setShowCreateTicket(true)}
-              className="text-xs text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-            >
-              + {t('meetings.createTicket')}
-            </button>
-          )}
-        </div>
-        {linkedTickets.length === 0 ? (
-          <p className="text-sm text-slate-400 italic text-center py-3">{t('meetings.noLinkedTickets')}</p>
-        ) : (
-          <ul className="space-y-2">
-            {linkedTickets.map((ticket) => (
-              <li
-                key={ticket.id}
-                className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 group transition-colors cursor-pointer"
-                onClick={() => setDetailTicket(ticket)}
-              >
-                <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                  ticket.status === 'todo'        ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
-                  ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' :
-                  'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-                }`}>
-                  {t(`tickets.status.${ticket.status}`)}
-                </span>
-                <span className="flex-1 text-sm text-slate-700 dark:text-slate-300 truncate">{ticket.title}</span>
-                {canWrite && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setUnlinkConfirm(ticket) }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-red-600"
-                    title={t('meetings.unlinkTicket')}
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* Create Ticket Modal */}
-      {showCreateTicket && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { setShowCreateTicket(false); setNewTicketTitle('') }} />
-          <div className="relative bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                <TicketIcon className="w-4 h-4 text-indigo-500" />
-                {t('meetings.createTicket')}
-              </h2>
-              <button
-                onClick={() => { setShowCreateTicket(false); setNewTicketTitle('') }}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Title */}
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">{t('tickets.titleLabel')}</label>
+    <Page size="default">
+      <PageHeader
+        back={{ to: `/meetings/${meeting.id}`, label: meeting.title }}
+        documentTitle={topic.title}
+        title={
+          editingTitle ? (
+            <span className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
               <input
                 autoFocus
-                value={newTicketTitle}
-                onChange={(e) => setNewTicketTitle(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Escape') setShowCreateTicket(false) }}
-                placeholder={t('tickets.titlePlaceholder')}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            {/* Description */}
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">{t('tickets.descriptionLabel')}</label>
-              <textarea
-                value={newTicketDesc}
-                onChange={(e) => setNewTicketDesc(e.target.value)}
-                placeholder={t('tickets.descriptionPlaceholder')}
-                rows={3}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-              />
-            </div>
-
-            {/* Priority + Category */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                  <Flag className="w-3 h-3" />
-                  {t('tickets.filterByPriority')}
-                </label>
-                <select
-                  value={newTicketPriority}
-                  onChange={(e) => setNewTicketPriority(e.target.value as TicketPriority)}
-                  className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  {(['low', 'medium', 'high'] as TicketPriority[]).map((p) => (
-                    <option key={p} value={p}>{t(`tickets.priority.${p}`)}</option>
-                  ))}
-                </select>
-              </div>
-              {categories.length > 0 && (
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                    <Tag className="w-3 h-3" />
-                    {t('tickets.filterByCategory')}
-                  </label>
-                  <select
-                    value={newTicketCategoryId ?? ''}
-                    onChange={(e) => setNewTicketCategoryId(e.target.value || null)}
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">{t('tickets.noCategory')}</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* Assignees */}
-            {pool.length > 0 && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                  <Users className="w-3 h-3" />
-                  {t('tickets.assigneesLabel')}
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {pool.map((m) => {
-                    const selected = newTicketAssigneeIds.includes(m.id)
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setNewTicketAssigneeIds((prev) =>
-                          prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id],
-                        )}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                          selected
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-400'
-                        }`}
-                      >
-                        <span className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${selected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'}`}>
-                          {m.name.charAt(0).toUpperCase()}
-                        </span>
-                        {m.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* isGlobal */}
-            <label className="flex items-start gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={newTicketIsGlobal}
-                onChange={(e) => setNewTicketIsGlobal(e.target.checked)}
-                className="mt-0.5 accent-indigo-600"
-              />
-              <div>
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                  <Globe className="w-3 h-3" />
-                  {t('tickets.globalLabel')}
-                </span>
-                <p className="text-xs text-slate-400 mt-0.5">{t('tickets.globalHint')}</p>
-              </div>
-            </label>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                onClick={() => {
-                  setShowCreateTicket(false)
-                  setNewTicketTitle('')
-                  setNewTicketDesc('')
-                  setNewTicketPriority('medium')
-                  setNewTicketAssigneeIds([])
-                  setNewTicketCategoryId(null)
-                  setNewTicketIsGlobal(false)
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleSaveTitle() }
+                  if (e.key === 'Escape') { e.stopPropagation(); setEditingTitle(false) }
                 }}
-                className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 transition-colors"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={handleCreateTicket}
-                disabled={!newTicketTitle.trim() || creatingTicket}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                {creatingTicket ? '…' : t('common.create')}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
+                aria-label={t('meetings.editTitle')}
+                className="form-input min-w-0 flex-1 text-base font-semibold sm:min-w-[24rem]"
+              />
+              <span className="flex gap-2">
+                <Button variant="primary" onClick={handleSaveTitle} disabled={!titleDraft.trim()}>{t('common.save')}</Button>
+                <Button variant="ghost" onClick={() => setEditingTitle(false)}>{t('common.cancel')}</Button>
+              </span>
+            </span>
+          ) : (
+            <span className={isDone ? 'text-slate-500 dark:text-slate-400' : ''}>{topic.title}</span>
+          )
+        }
+        meta={
+          !editingTitle && (
+            <span className="inline-flex items-center gap-1">
+              <TopicStatusMenu status={topic.status} disabled={!canWrite} onChange={(s) => handleStatusChange(s)} />
+              {canEdit && (
+                <IconButton
+                  size="xs"
+                  icon={<Pencil />}
+                  label={t('meetings.editTitle')}
+                  onClick={() => { setTitleDraft(topic.title); setEditingTitle(true) }}
+                />
+              )}
+            </span>
+          )
+        }
+        subtitle={
+          isDone && topic.closedAt
+            ? t('meetings.closedAt', { date: fmt(topic.closedAt) })
+            : t('meetings.createdOn', { date: fmt(topic.createdAt) })
+        }
+        actions={
+          canWrite && !editingTitle && (
+            <>
+              {isDone ? (
+                <Button variant="secondary" icon={<RotateCcw />} onClick={() => handleStatusChange('todo')}>
+                  {t('meetings.reopen')}
+                </Button>
+              ) : (
+                <Button variant="secondary" icon={<CheckCircle2 className="text-emerald-500" />} onClick={() => handleStatusChange('done')}>
+                  {t('meetings.markDone')}
+                </Button>
+              )}
+              <Button variant="primary" icon={<TicketIcon />} onClick={() => setShowCreateTicket(true)}>
+                {t('meetings.createTicket')}
+              </Button>
+            </>
+          )
+        }
+      />
 
-      {/* Unlink confirm */}
+      {isReadOnly && <ReadOnlyBanner className="-mt-1 mb-6" />}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        {/* ── Main ─────────────────────────────────────────────────────── */}
+        <div className="min-w-0 space-y-6">
+          <Panel
+            title={t('meetings.descriptionTitle')}
+            icon={<FileText />}
+            action={
+              canEdit && !editingDesc && topic.description && (
+                <Button size="xs" variant="ghost" icon={<Pencil />} onClick={startEditDesc}>{t('common.edit')}</Button>
+              )
+            }
+          >
+            {editingDesc ? (
+              <div className="space-y-3">
+                <MarkdownEditor
+                  value={descDraft}
+                  onChange={setDescDraft}
+                  placeholder={t('meetings.descriptionPlaceholder')}
+                  rows={8}
+                  autoFocus
+                  onImageUpload={handleImageUpload}
+                  onSubmitShortcut={handleSaveDesc}
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <span className="mr-auto hidden text-xs text-slate-400 sm:inline">
+                    <kbd className="kbd">{isMac ? '⌘' : 'Ctrl'}</kbd>+<kbd className="kbd">Enter</kbd> {t('knownErrors.toSave')}
+                  </span>
+                  <Button variant="ghost" onClick={() => setEditingDesc(false)} disabled={savingDesc}>{t('common.cancel')}</Button>
+                  <Button variant="primary" onClick={handleSaveDesc} loading={savingDesc}>{t('common.save')}</Button>
+                </div>
+              </div>
+            ) : topic.description ? (
+              <MarkdownRenderer content={topic.description} />
+            ) : canEdit ? (
+              <button
+                type="button"
+                onClick={startEditDesc}
+                className="flex w-full items-center gap-2 rounded-lg border border-dashed border-slate-200 px-4 py-5 text-left text-sm text-slate-500 transition-colors hover:border-indigo-300 hover:bg-indigo-50/40 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-400 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-500/5 dark:hover:text-indigo-300"
+              >
+                <Plus className="h-4 w-4" />
+                {t('meetings.addDescription')}
+              </button>
+            ) : (
+              <p className="text-sm italic text-slate-400 dark:text-slate-500">{t('meetings.noDescription')}</p>
+            )}
+          </Panel>
+
+          <AttachmentsCard
+            key={`att-${topic.id}`}
+            ns="meetings.attachments"
+            load={() => topicAttachmentsApi.list(topic.id)}
+            upload={(file) => topicAttachmentsApi.upload(topic.id, file)}
+            remove={(att) => topicAttachmentsApi.delete(topic.id, att.id)}
+            fileUrl={topicAttachmentsApi.fileUrl}
+            canWrite={canWrite}
+            refreshKey={attachRefresh}
+          />
+
+          <CommentThread
+            key={`com-${topic.id}`}
+            comments={comments}
+            canWrite={canWrite}
+            onSend={async (content) => {
+              const comment = await meetingsApi.createComment(meetingId!, topicId!, content, user?.displayName ?? '')
+              setComments((prev) => [...prev, comment])
+            }}
+            onDelete={async (c) => {
+              await meetingsApi.deleteComment(meetingId!, topicId!, c.id)
+              setComments((prev) => prev.filter((x) => x.id !== c.id))
+            }}
+            labels={{
+              title:         t('meetings.discussion'),
+              empty:         t('meetings.noComments'),
+              placeholder:   t('commentThread.placeholder'),
+              anonymous:     t('meetings.anonymous'),
+              deleteTitle:   t('meetings.deleteCommentTitle'),
+              deleteConfirm: t('meetings.deleteCommentConfirm'),
+            }}
+          />
+        </div>
+
+        {/* ── Side panel ───────────────────────────────────────────────── */}
+        <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+          {/* Assignees */}
+          <Panel
+            title={t('meetings.assignees')}
+            icon={<Users />}
+            count={assignees.length}
+            bodyClassName="p-4"
+            action={canEdit && (
+              <IconButton size="sm" icon={<Pencil />} label={t('meetings.editAssignees')} onClick={() => setAssigneesOpen(true)} />
+            )}
+          >
+            {assignees.length > 0 ? (
+              <ul className="space-y-2">
+                {assignees.map((m) => (
+                  <li key={m.id} className="flex items-center gap-2.5">
+                    <Avatar name={m.name} color={m.avatarColor} size="xs" />
+                    <span className="truncate text-sm font-medium text-slate-800 dark:text-slate-200">
+                      {assigneeDisplayNames.get(m.id) ?? m.name}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : canEdit ? (
+              <button
+                type="button"
+                onClick={() => setAssigneesOpen(true)}
+                className="flex w-full items-center gap-2 text-sm text-slate-500 transition-colors hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300"
+              >
+                <Plus className="h-4 w-4" />
+                {t('meetings.addAssignees')}
+              </button>
+            ) : (
+              <p className="text-sm italic text-slate-400 dark:text-slate-500">{t('meetings.noAssignees')}</p>
+            )}
+          </Panel>
+
+          {/* Linked tickets */}
+          <Panel
+            title={t('meetings.linkedTickets')}
+            icon={<TicketIcon />}
+            count={linkedTickets.length}
+            bodyClassName={linkedTickets.length > 0 ? 'p-1.5' : 'p-4'}
+            action={canWrite && (
+              <IconButton size="sm" icon={<Plus />} label={t('meetings.createTicket')} onClick={() => setShowCreateTicket(true)} />
+            )}
+          >
+            {linkedTickets.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t('meetings.noLinkedTickets')}</p>
+            ) : (
+              <ul>
+                {linkedTickets.map((ticket) => (
+                  <li key={ticket.id} className="group relative flex items-start gap-1 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <button
+                      type="button"
+                      onClick={() => setDetailTicket(ticket)}
+                      className="flex min-w-0 flex-1 flex-col items-start gap-1 rounded-lg px-2.5 py-2 text-left"
+                    >
+                      <span className="line-clamp-2 text-sm font-medium text-slate-800 group-hover:text-indigo-600 dark:text-slate-200 dark:group-hover:text-indigo-400">
+                        {ticket.title}
+                      </span>
+                      <Badge variant={TICKET_STATUS_VARIANT[ticket.status]} dot label={t(`tickets.status.${ticket.status}`)} />
+                    </button>
+                    {canWrite && (
+                      <IconButton
+                        size="xs"
+                        variant="danger"
+                        icon={<X />}
+                        label={t('meetings.unlinkTicket')}
+                        onClick={() => setUnlinkConfirm(ticket)}
+                        className="mr-1.5 mt-2 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                      />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          {/* Details */}
+          <Panel title={t('meetings.details')} icon={<Info />} bodyClassName="px-4 py-2.5">
+            <MetaLine icon={<CalendarClock />} label={t('meetings.meeting')}>
+              <Link to={`/meetings/${meeting.id}`} className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+                {meeting.title}
+              </Link>
+            </MetaLine>
+            <MetaLine icon={<CalendarPlus />} label={t('meetings.created')}>
+              <span className="tabular-nums">{fmt(topic.createdAt)}</span>
+            </MetaLine>
+            <MetaLine icon={<History />} label={t('meetings.updated')}>
+              <span className="tabular-nums">{fmt(topic.updatedAt)}</span>
+            </MetaLine>
+            {isDone && topic.closedAt && (
+              <MetaLine icon={<CheckCircle2 />} label={t('meetings.status.done')}>
+                <span className="tabular-nums">{fmt(topic.closedAt)}</span>
+              </MetaLine>
+            )}
+            <MetaLine icon={<MessageSquare />} label={t('meetings.discussion')}>
+              <span className="tabular-nums">{comments.length}</span>
+            </MetaLine>
+          </Panel>
+        </aside>
+      </div>
+
+      <CreateTicketModal
+        isOpen={showCreateTicket}
+        onClose={() => setShowCreateTicket(false)}
+        pool={pool}
+        categories={categories}
+        context={topic.title}
+        onCreate={handleCreateTicket}
+      />
+
+      <AssigneesModal
+        isOpen={assigneesOpen}
+        onClose={() => setAssigneesOpen(false)}
+        pool={pool}
+        teams={teams}
+        groupByTeam={meeting.isGlobal}
+        selected={topic.assigneeIds}
+        onSave={handleSaveAssignees}
+      />
+
       <ConfirmDialog
         isOpen={!!unlinkConfirm}
         title={t('meetings.unlinkTicket')}
-        message={`"${unlinkConfirm?.title}" ${t('meetings.unlinkTicket')}?`}
+        message={t('meetings.unlinkConfirm', { title: unlinkConfirm?.title ?? '' })}
+        confirmLabel={t('meetings.unlink')}
         onConfirm={() => unlinkConfirm && handleUnlinkTicket(unlinkConfirm)}
         onClose={() => setUnlinkConfirm(null)}
-        variant="danger"
-      />
-
-      {/* Comments */}
-      <div className="space-y-4">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
-          <MessageSquare className="w-4 h-4" />
-          {t('meetings.discussion')}
-          <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-            {comments.length}
-          </span>
-        </h2>
-
-        {comments.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-4">{t('meetings.noComments')}</p>
-        ) : (
-          <div className="space-y-3">
-            {comments.map((c) => (
-              <div key={c.id} className="group flex gap-3">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold text-white"
-                  style={{ backgroundColor: members.find((m) => m.name === c.authorName)?.avatarColor ?? '#6366f1' }}
-                >
-                  {(c.authorName || '?').charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{c.authorName || t('meetings.anonymous')}</span>
-                    <span className="text-xs text-slate-400">{new Date(c.createdAt).toLocaleString()}</span>
-                  </div>
-                  <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5">{renderWithMentions(c.content, allMembers)}</p>
-                </div>
-                {canWrite && (
-                  <button
-                    onClick={() => setConfirmDeleteComment(c)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 self-start mt-1 p-1 text-slate-400 hover:text-red-600 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* New comment */}
-        {canWrite && (
-          <div className="flex gap-2 pt-2">
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold text-white"
-              style={{ backgroundColor: members.find((m) => m.name === user?.displayName)?.avatarColor ?? '#6366f1' }}
-            >
-              {(user?.displayName || '?').charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 flex gap-2">
-              <MentionInput
-                value={newComment}
-                onChange={setNewComment}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment() } }}
-                members={allMembers}
-                rows={2}
-                placeholder={t('meetings.commentPlaceholder')}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
-              />
-              <button
-                onClick={handleSendComment}
-                disabled={!newComment.trim() || sending}
-                className="self-end px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <ConfirmDialog
-        isOpen={!!confirmDeleteComment}
-        title={t('meetings.deleteCommentTitle')}
-        message={t('meetings.deleteCommentConfirm')}
-        onConfirm={() => confirmDeleteComment && handleDeleteComment(confirmDeleteComment)}
-        onClose={() => setConfirmDeleteComment(null)}
         variant="danger"
       />
 
@@ -922,6 +546,6 @@ export default function TopicDetailPage() {
           onClose={() => setDetailTicket(null)}
         />
       )}
-    </div>
+    </Page>
   )
 }

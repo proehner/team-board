@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY index.html vite.config.ts tsconfig.json tailwind.config.js postcss.config.js ./
+COPY index.html vite.config.ts tsconfig.json tailwind.config.cjs postcss.config.js ./
 COPY src/ ./src/
 RUN npm run build
 

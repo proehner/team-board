@@ -1,13 +1,18 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { KeyRound, Eye, EyeOff } from 'lucide-react'
+import { KeyRound, AlertTriangle, Check } from 'lucide-react'
 import Modal from './Modal'
 import Button from './Button'
+import Field from './Field'
+import PasswordInput, { PasswordStrength } from '@/components/ui/PasswordInput'
 import { getStoredToken } from '@/store/auth'
+import { toast } from '@/store/toast'
 
 const BASE = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace(/\/$/, '') + '/api'
   : import.meta.env.BASE_URL.replace(/\/$/, '') + '/api'
+
+const MIN_LENGTH = 6
 
 interface Props {
   isOpen: boolean
@@ -17,45 +22,44 @@ interface Props {
 export default function ChangePasswordDialog({ isOpen, onClose }: Props) {
   const { t } = useTranslation()
 
-  const [currentPassword, setCurrentPassword]     = useState('')
-  const [newPassword, setNewPassword]               = useState('')
-  const [confirmPassword, setConfirmPassword]       = useState('')
-  const [showCurrent, setShowCurrent]               = useState(false)
-  const [showNew, setShowNew]                       = useState(false)
-  const [showConfirm, setShowConfirm]               = useState(false)
-  const [loading, setLoading]                       = useState(false)
-  const [error, setError]                           = useState<string | null>(null)
-  const [success, setSuccess]                       = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword]         = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [loading, setLoading]                 = useState(false)
+  const [error, setError]                     = useState<string | null>(null)
+  // Only show inline validation after the user tried to submit or left the field
+  const [touchedNew, setTouchedNew]           = useState(false)
+  const [touchedConfirm, setTouchedConfirm]   = useState(false)
 
   function reset() {
     setCurrentPassword('')
     setNewPassword('')
     setConfirmPassword('')
-    setShowCurrent(false)
-    setShowNew(false)
-    setShowConfirm(false)
     setError(null)
-    setSuccess(false)
     setLoading(false)
+    setTouchedNew(false)
+    setTouchedConfirm(false)
   }
 
   function handleClose() {
+    if (loading) return
     reset()
     onClose()
   }
 
+  const tooShort    = newPassword.length > 0 && newPassword.length < MIN_LENGTH
+  const mismatch    = confirmPassword.length > 0 && newPassword !== confirmPassword
+  const matches     = confirmPassword.length > 0 && newPassword === confirmPassword && !tooShort
+  const sameAsOld   = newPassword.length > 0 && newPassword === currentPassword
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setTouchedNew(true)
+    setTouchedConfirm(true)
 
-    if (newPassword.length < 6) {
-      setError(t('changePassword.errorMinLength'))
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      setError(t('changePassword.errorMismatch'))
-      return
-    }
+    // Client-side validation errors are shown inline at the fields
+    if (newPassword.length < MIN_LENGTH || newPassword !== confirmPassword) return
 
     setLoading(true)
     try {
@@ -75,7 +79,9 @@ export default function ChangePasswordDialog({ isOpen, onClose }: Props) {
         return
       }
 
-      setSuccess(true)
+      toast.success(t('changePassword.successTitle'), { description: t('changePassword.successMessage') })
+      reset()
+      onClose()
     } catch {
       setError(t('changePassword.errorGeneric'))
     } finally {
@@ -83,141 +89,97 @@ export default function ChangePasswordDialog({ isOpen, onClose }: Props) {
     }
   }
 
-  const inputCls =
-    'w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 ' +
-    'text-slate-900 dark:text-slate-100 px-3 py-2 text-sm placeholder-slate-400 ' +
-    'focus:outline-none focus:ring-2 focus:ring-indigo-500 pr-10'
-
   return (
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
+      dismissible={!loading}
       title={t('changePassword.title')}
+      description={t('changePassword.description')}
+      icon={<KeyRound />}
       size="sm"
       footer={
-        success ? (
-          <Button variant="primary" onClick={handleClose}>
-            {t('common.close')}
+        <>
+          <Button variant="secondary" onClick={handleClose} disabled={loading}>
+            {t('common.cancel')}
           </Button>
-        ) : (
-          <>
-            <Button variant="secondary" onClick={handleClose} disabled={loading}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              form="change-password-form"
-              loading={loading}
-              icon={<KeyRound className="w-4 h-4" />}
-            >
-              {t('changePassword.submit')}
-            </Button>
-          </>
-        )
+          <Button
+            variant="primary"
+            type="submit"
+            form="change-password-form"
+            loading={loading}
+            disabled={!currentPassword || !newPassword || !confirmPassword}
+          >
+            {t('changePassword.submit')}
+          </Button>
+        </>
       }
     >
-      {success ? (
-        <div className="flex flex-col items-center gap-3 py-4 text-center">
-          <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-            <KeyRound className="w-6 h-6 text-green-600 dark:text-green-400" />
-          </div>
-          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-            {t('changePassword.successTitle')}
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {t('changePassword.successMessage')}
-          </p>
-        </div>
-      ) : (
-        <form id="change-password-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {/* Current password */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-              {t('changePassword.currentPassword')}
-            </label>
-            <div className="relative">
-              <input
-                type={showCurrent ? 'text' : 'password'}
-                className={inputCls}
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-                disabled={loading}
-              />
-              <button
-                type="button"
-                onClick={() => setShowCurrent((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                tabIndex={-1}
-              >
-                {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
+      <form id="change-password-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <Field label={t('changePassword.currentPassword')} htmlFor="cp-current" required>
+          <PasswordInput
+            id="cp-current"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+            autoFocus
+            required
+            disabled={loading}
+          />
+        </Field>
 
-          {/* New password */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-              {t('changePassword.newPassword')}
-            </label>
-            <div className="relative">
-              <input
-                type={showNew ? 'text' : 'password'}
-                className={inputCls}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                autoComplete="new-password"
-                required
-                disabled={loading}
-              />
-              <button
-                type="button"
-                onClick={() => setShowNew((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                tabIndex={-1}
-              >
-                {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <p className="text-xs text-slate-400">{t('changePassword.minLengthHint')}</p>
-          </div>
+        <Field
+          label={t('changePassword.newPassword')}
+          htmlFor="cp-new"
+          required
+          error={touchedNew && tooShort ? t('changePassword.errorMinLength') : undefined}
+          hint={!newPassword ? t('changePassword.minLengthHint') : sameAsOld ? t('changePassword.sameAsOldHint') : undefined}
+        >
+          <PasswordInput
+            id="cp-new"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            onBlur={() => setTouchedNew(true)}
+            autoComplete="new-password"
+            required
+            minLength={MIN_LENGTH}
+            disabled={loading}
+            aria-invalid={touchedNew && tooShort ? true : undefined}
+          />
+          <PasswordStrength password={newPassword} minLength={MIN_LENGTH} />
+        </Field>
 
-          {/* Confirm new password */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-              {t('changePassword.confirmPassword')}
-            </label>
-            <div className="relative">
-              <input
-                type={showConfirm ? 'text' : 'password'}
-                className={inputCls}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-                required
-                disabled={loading}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirm((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                tabIndex={-1}
-              >
-                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Error */}
-          {error && (
-            <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
-              {error}
+        <Field
+          label={t('changePassword.confirmPassword')}
+          htmlFor="cp-confirm"
+          required
+          error={touchedConfirm && mismatch ? t('changePassword.errorMismatch') : undefined}
+        >
+          <PasswordInput
+            id="cp-confirm"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            onBlur={() => setTouchedConfirm(true)}
+            autoComplete="new-password"
+            required
+            disabled={loading}
+            aria-invalid={touchedConfirm && mismatch ? true : undefined}
+          />
+          {matches && (
+            <p className="form-hint flex items-center gap-1 !text-emerald-600 dark:!text-emerald-400">
+              <Check className="h-3.5 w-3.5" />
+              {t('changePassword.matches')}
             </p>
           )}
-        </form>
-      )}
+        </Field>
+
+        {error && (
+          <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+      </form>
     </Modal>
   )
 }

@@ -34,11 +34,32 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 | **Known Errors** | Error database with severity, solutions, workarounds, comments, and file attachments |
 | **Software** | Registry for tracking vendor software versions used by the team |
 | **Stakeholder** | Sprint progress and goal achievement overview for external communication |
-| **Azure Rankings** | Gamified developer ranking based on Azure DevOps metrics |
+| **Azure Rankings** | Gamified developer ranking based on Azure DevOps activity (PRs, reviews, completed work items, tickets, discussions) – fair, transparent scoring with caps, incremental loading and retroactively recomputed history (see below) |
 | **Global Search** | Cross-module search across members, skills, tickets, topics, errors, and roadmap features |
 | **Multi-Team** | Full tenant isolation – each team has its own members, sprints, assignments, and settings |
 | **Permission Groups** | Role-based access control with named groups; per-page permissions (`none` / `read` / `write-own` / `write`); union model – users may belong to multiple groups |
-| **Dark / Light Mode** | Toggleable via the sidebar button, persisted across sessions |
+| **Dark / Light Mode** | Toggleable via the user menu, follows the OS preference on first visit, persisted across sessions |
+
+### Azure Rankings – how scores are calculated
+
+All data is read from Azure DevOps with **GET requests only** (nothing is ever written to Azure DevOps). Code: `server/src/azureRanking/`.
+
+- **Sources:** the work item *reporting revision stream* (creations, real state changes, discussion comments) plus pull requests and their threads (votes with timestamps, review comments).
+- **Event store:** everything is normalised into events in `server/data/azure-ranking.events.json`. The first load builds the store (~2 min for 1½ years); later refreshes are **incremental** (continuation token + only new/changed PRs) and take a few seconds. *Settings → "Daten vollständig neu aufbauen"* rebuilds it from scratch.
+- **History:** ranking snapshots (`azure-ranking.history.json`, one per day) and month-end values are computed from the events, so a change of the scoring model recomputes the whole history automatically (`SCORING_VERSION` in `scoring.ts`). All files are written atomically.
+
+| Activity | Points | Rule |
+| --- | --- | --- |
+| PR created / merged | 5 / 20 | credited to the author |
+| PR reviewed | 6 | per PR of someone else you voted on or commented on |
+| Approval | 2 | "Approved" or "Approved with suggestions" |
+| Review comment | 2 | max. 10 per PR |
+| PBI / Bug completed | 15 | counted once, when the state really changes to *Done/Closed*, for the assignee at that moment |
+| Task completed | 5 | same rule; Features, Epics and test artefacts don't count |
+| Ticket created / Task or Test Case created | 5 / 1 | max. 10 per person and day each |
+| Ticket discussion | 3 | once per ticket and day |
+
+Bots, service accounts and team groups are ignored; accounts with identical display names are merged. Besides total points the UI offers **points per active week** to compensate for vacation, part-time work and later joiners.
 
 ---
 
@@ -48,7 +69,8 @@ A Scrum team dashboard for team leads – manage members, competencies, sprints,
 
 - React 18 + TypeScript
 - Vite 5 (build tool)
-- Tailwind CSS 3 (dark mode via `class` strategy)
+- Tailwind CSS 3 (dark mode via `class` strategy; design tokens in `tailwind.config.cjs`, global component classes such as `.form-input`, `.form-select`, `.surface` in `src/index.css`)
+- Inter Variable font (bundled via `@fontsource-variable/inter`, no external font requests)
 - Zustand (state management)
 - React Router v6
 - Lucide React (icons)
@@ -218,16 +240,22 @@ team-board/
 ├── src/                          # React frontend (TypeScript)
 │   ├── api/                      # API client (fetch wrapper)
 │   ├── components/
-│   │   ├── layout/               # Sidebar (incl. Change Password), Layout wrapper
-│   │   ├── tickets/              # TicketDetailModal
-│   │   └── ui/                   # Reusable UI components (Button, Card, Modal,
-│   │                             #   ReadOnlyBanner, ChangePasswordDialog, …)
+│   │   ├── layout/               # Layout, collapsible Sidebar (team switcher, user menu),
+│   │   │                         #   navItems.ts (navigation + permissions, shared with Ctrl+K palette)
+│   │   ├── GlobalSearch.tsx      # Command palette (Ctrl/⌘+K): jump to pages + full-text search
+│   │   ├── <area>/               # Page-specific building blocks (sprints, rotation, roadmap, …)
+│   │   └── ui/                   # Shared design-system components: Page, PageHeader, Tabs,
+│   │                             #   Button, IconButton, Card, StatCard, Modal, ConfirmDialog,
+│   │                             #   DropdownMenu, Select, SearchInput, Chip, Badge, Field,
+│   │                             #   EmptyState, Skeleton, Toaster, ReadOnlyBanner, …
 │   ├── hooks/
 │   │   ├── usePagePermission.ts  # Resolves effective permission for the current page
-│   │   └── useUnsavedChanges.ts  # Navigation guard for forms with unsaved changes
+│   │   ├── useUnsavedChanges.ts  # Navigation guard for forms with unsaved changes
+│   │   ├── useClickOutside.ts    # Close popovers on outside click / Escape
+│   │   └── useDocumentTitle.ts   # Browser tab title per page (used by PageHeader)
 │   ├── i18n/                     # i18next setup + locale files (en/de)
 │   ├── pages/                    # Page components (one per module)
-│   ├── store/                    # Zustand stores (app, auth, theme)
+│   ├── store/                    # Zustand stores (app, auth, theme, toast)
 │   ├── types/                    # Shared TypeScript interfaces
 │   └── utils/                    # Date and avatar helpers
 ├── server/                       # Express backend (TypeScript)

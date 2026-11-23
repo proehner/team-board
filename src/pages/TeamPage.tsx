@@ -1,22 +1,42 @@
-import { useState } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store'
+import { toast, errorMessage } from '@/store/toast'
+import Page from '@/components/ui/Page'
+import PageHeader from '@/components/ui/PageHeader'
+import Tabs from '@/components/ui/Tabs'
+import SearchInput from '@/components/ui/SearchInput'
 import Avatar from '@/components/ui/Avatar'
-import Badge from '@/components/ui/Badge'
+import Badge, { type BadgeVariant } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
+import IconButton from '@/components/ui/IconButton'
+import DropdownMenu from '@/components/ui/DropdownMenu'
 import Modal from '@/components/ui/Modal'
+import Field from '@/components/ui/Field'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
 import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import SkillLevelBadge from '@/components/ui/SkillLevelBadge'
 import { usePagePermission } from '@/hooks/usePagePermission'
 import { formatDate } from '@/utils/date'
-import { Plus, Search, Edit2, Trash2, Users, Mail, Calendar } from 'lucide-react'
-import type { TeamMember, MemberRole } from '@/types'
+import {
+  Plus, Users, Pencil, Trash2, MoreHorizontal, UserPlus, UserCog, UserCheck, UserMinus, SearchX, Check,
+} from 'lucide-react'
+import type { TeamMember, MemberRole, SkillLevel } from '@/types'
 
 const ROLES: MemberRole[] = [
   'Developer', 'Senior Developer', 'Tech Lead', 'QA Engineer',
   'DevOps Engineer', 'Product Owner', 'Scrum Master', 'UX Designer',
 ]
+
+/** Leadership roles get a distinct tint so they stand out in the grid. */
+const ROLE_VARIANT: Partial<Record<MemberRole, BadgeVariant>> = {
+  'Product Owner': 'purple',
+  'Scrum Master': 'info',
+  'Tech Lead': 'indigo',
+}
+
+type StatusFilter = 'active' | 'inactive' | 'all'
 
 interface MemberFormData {
   name: string
@@ -43,19 +63,40 @@ export default function TeamPage() {
   const deleteMember = useStore((s) => s.deleteMember)
 
   const [search, setSearch] = useState('')
+  const [status, setStatus] = useState<StatusFilter>('active')
   const [showModal, setShowModal] = useState(false)
   const [editTarget, setEditTarget] = useState<TeamMember | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TeamMember | null>(null)
   const [form, setForm] = useState<MemberFormData>(defaultForm)
   const [errors, setErrors] = useState<MemberFormErrors>({})
-  const [saveError, setSaveError] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  const filtered = members.filter(
-    (m) =>
-      m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.email.toLowerCase().includes(search.toLowerCase()) ||
-      m.roles.some((r) => r.toLowerCase().includes(search.toLowerCase())),
-  )
+  // Search applies first so the status tab counts reflect the current query
+  const searched = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return [...members]
+      .filter((m) =>
+        !q ||
+        m.name.toLowerCase().includes(q) ||
+        m.email.toLowerCase().includes(q) ||
+        m.roles.some((r) => r.toLowerCase().includes(q)),
+      )
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [members, search])
+
+  const counts = {
+    active: searched.filter((m) => m.isActive).length,
+    inactive: searched.filter((m) => !m.isActive).length,
+    all: searched.length,
+  }
+  const filtered = searched.filter((m) => status === 'all' || (status === 'active' ? m.isActive : !m.isActive))
+  const activeTotal = members.filter((m) => m.isActive).length
+  const isFiltered = !!search.trim() || status !== 'all'
+
+  function resetFilters() {
+    setSearch('')
+    setStatus('all')
+  }
 
   function openAdd() {
     setEditTarget(null)
@@ -74,10 +115,9 @@ export default function TeamPage() {
   function toggleRole(role: MemberRole) {
     setForm((f) => ({
       ...f,
-      roles: f.roles.includes(role)
-        ? f.roles.filter((r) => r !== role)
-        : [...f.roles, role],
+      roles: f.roles.includes(role) ? f.roles.filter((r) => r !== role) : [...f.roles, role],
     }))
+    setErrors((e) => ({ ...e, roles: undefined }))
   }
 
   function validate(): boolean {
@@ -89,78 +129,120 @@ export default function TeamPage() {
     return Object.keys(e).length === 0
   }
 
-  async function handleSubmit() {
-    if (!validate()) return
-    setSaveError('')
+  async function handleSubmit(e?: FormEvent) {
+    e?.preventDefault()
+    if (saving || !validate()) return
+    setSaving(true)
     try {
       if (editTarget) {
         await updateMember(editTarget.id, form)
+        toast.success(t('common.saved'))
       } else {
         await addMember(form)
+        toast.success(t('team.memberAdded', { name: form.name.trim() }))
       }
       setShowModal(false)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : t('common.saveError'))
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+    } finally {
+      setSaving(false)
     }
   }
 
-  const skillCount = (memberId: string) =>
-    memberSkills.filter((ms) => ms.memberId === memberId && ms.level > 0).length
+  async function toggleActive(m: TeamMember) {
+    try {
+      await updateMember(m.id, { isActive: !m.isActive })
+      toast.success(m.isActive ? t('team.deactivated', { name: m.name }) : t('team.activated', { name: m.name }))
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+    }
+  }
 
-  const avgLevel = (memberId: string): number => {
-    const ms = memberSkills.filter((s) => s.memberId === memberId && s.level > 0)
-    if (ms.length === 0) return 0
-    return Math.round(ms.reduce((sum, s) => sum + s.level, 0) / ms.length * 10) / 10
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    try {
+      await deleteMember(deleteTarget.id)
+      toast.success(t('team.memberRemoved', { name: deleteTarget.name }))
+    } catch (err) {
+      toast.error(t('common.deleteError'), { description: errorMessage(err) })
+      throw err
+    }
+  }
+
+  const statsFor = (memberId: string) => {
+    const rated = memberSkills.filter((s) => s.memberId === memberId && s.level > 0)
+    const avg = rated.length === 0 ? 0 : rated.reduce((sum, s) => sum + s.level, 0) / rated.length
+    return { skillCount: rated.length, avgLevel: avg }
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t('team.title')}</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('team.activeMembers', { count: members.filter((m) => m.isActive).length })}</p>
-        </div>
-        {canWrite && (
-          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>
+    <Page size="wide">
+      <PageHeader
+        icon={Users}
+        title={t('team.title')}
+        subtitle={t('team.activeMembers', { count: activeTotal })}
+        actions={canWrite && (
+          <Button variant="primary" icon={<Plus />} onClick={openAdd}>
             {t('team.addMember')}
           </Button>
         )}
-      </div>
-      {isReadOnly && <ReadOnlyBanner />}
+      >
+        {members.length > 0 && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder={t('team.searchPlaceholder')}
+              aria-label={t('team.searchPlaceholder')}
+              className="w-full sm:w-72"
+            />
+            <Tabs<StatusFilter>
+              variant="pills"
+              size="sm"
+              value={status}
+              onChange={setStatus}
+              aria-label={t('team.statusFilter')}
+              items={[
+                { value: 'active', label: t('team.filterActive'), count: counts.active },
+                { value: 'inactive', label: t('team.filterInactive'), count: counts.inactive },
+                { value: 'all', label: t('common.all'), count: counts.all },
+              ]}
+            />
+          </div>
+        )}
+      </PageHeader>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input
-          type="text"
-          placeholder={t('common.search')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
-        />
-      </div>
+      {isReadOnly && <ReadOnlyBanner className="mb-6" />}
 
-      {/* Member grid */}
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={<Users className="w-12 h-12" />}
-          title={t('team.noMembersFound')}
-          description={t('team.noMembersSubtitle')}
-          action={canWrite ? <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openAdd}>{t('team.addMember')}</Button> : undefined}
-        />
+      {members.length === 0 ? (
+        <div className="surface">
+          <EmptyState
+            icon={<Users />}
+            title={t('team.emptyTitle')}
+            description={t('team.noMembersSubtitle')}
+            action={canWrite ? <Button variant="primary" icon={<Plus />} onClick={openAdd}>{t('team.addMember')}</Button> : undefined}
+          />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="surface">
+          <EmptyState
+            icon={<SearchX />}
+            title={t('team.noMembersFound')}
+            description={status === 'inactive' && !search.trim() ? t('team.noInactiveHint') : t('team.noResultsHint')}
+            action={isFiltered ? <Button variant="secondary" onClick={resetFilters}>{t('common.resetFilters')}</Button> : undefined}
+          />
+        </div>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((m) => (
             <MemberCard
               key={m.id}
               member={m}
-              skillCount={skillCount(m.id)}
-              avgLevel={avgLevel(m.id)}
+              {...statsFor(m.id)}
               canWrite={canWrite}
               onEdit={() => openEdit(m)}
               onDelete={() => setDeleteTarget(m)}
-              onToggle={() => updateMember(m.id, { isActive: !m.isActive })}
+              onToggle={() => toggleActive(m)}
             />
           ))}
         </div>
@@ -169,72 +251,109 @@ export default function TeamPage() {
       {/* Add/Edit Modal */}
       <Modal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
+        onClose={() => { if (!saving) setShowModal(false) }}
         title={editTarget ? t('team.editMember') : t('team.newMember')}
+        description={editTarget ? editTarget.name : t('team.newMemberHint')}
+        icon={editTarget ? <UserCog /> : <UserPlus />}
+        dismissible={false}
         footer={
           <>
-            {saveError && <p className="flex-1 text-sm text-red-600">{saveError}</p>}
-            <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
-            <Button variant="primary" onClick={handleSubmit}>{editTarget ? t('common.save') : t('common.add')}</Button>
+            <Button variant="secondary" onClick={() => setShowModal(false)} disabled={saving}>{t('common.cancel')}</Button>
+            <Button variant="primary" type="submit" form="member-form" loading={saving}>
+              {editTarget ? t('common.save') : t('common.add')}
+            </Button>
           </>
         }
       >
-        <div className="space-y-4">
-          <FormField label={t('common.name')} error={errors.name}>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder={t('team.namePlaceholder')}
-              className="form-input"
-            />
-          </FormField>
-          <FormField label={t('common.email')} error={errors.email}>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-              placeholder={t('team.emailPlaceholder')}
-              className="form-input"
-            />
-          </FormField>
-          <FormField label={t('common.role')} error={errors.roles}>
-            <div className="grid grid-cols-2 gap-1.5 border border-slate-200 dark:border-slate-600 rounded-lg p-3">
-              {ROLES.map((r) => (
-                <label key={r} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={form.roles.includes(r)}
-                    onChange={() => toggleRole(r)}
-                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  {r}
-                </label>
-              ))}
+        <form id="member-form" onSubmit={handleSubmit} noValidate className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={t('common.name')} htmlFor="member-name" error={errors.name} required>
+              <input
+                id="member-name"
+                type="text"
+                autoFocus
+                autoComplete="off"
+                value={form.name}
+                onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); setErrors((x) => ({ ...x, name: undefined })) }}
+                placeholder={t('team.namePlaceholder')}
+                aria-invalid={!!errors.name}
+                className="form-input"
+              />
+            </Field>
+            <Field label={t('common.email')} htmlFor="member-email" error={errors.email} required>
+              <input
+                id="member-email"
+                type="email"
+                autoComplete="off"
+                value={form.email}
+                onChange={(e) => { setForm((f) => ({ ...f, email: e.target.value })); setErrors((x) => ({ ...x, email: undefined })) }}
+                placeholder={t('team.emailPlaceholder')}
+                aria-invalid={!!errors.email}
+                className="form-input"
+              />
+            </Field>
+          </div>
+
+          <fieldset>
+            <legend className="form-label">
+              {t('team.rolesLabel')}<span className="ml-0.5 text-red-500">*</span>
+            </legend>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {ROLES.map((r) => {
+                const checked = form.roles.includes(r)
+                return (
+                  <label
+                    key={r}
+                    className={`flex cursor-pointer select-none items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-500/60 ${
+                      checked
+                        ? 'border-indigo-300 bg-indigo-50 text-indigo-900 dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-100'
+                        : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <input type="checkbox" checked={checked} onChange={() => toggleRole(r)} className="sr-only" />
+                    <span
+                      aria-hidden
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                        checked
+                          ? 'border-indigo-600 bg-indigo-600 text-white dark:border-indigo-400 dark:bg-indigo-400 dark:text-slate-900'
+                          : 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900'
+                      }`}
+                    >
+                      {checked && <Check className="h-3 w-3" strokeWidth={3} />}
+                    </span>
+                    {r}
+                  </label>
+                )
+              })}
             </div>
-          </FormField>
-          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+            {errors.roles && <p className="form-error">{errors.roles}</p>}
+          </fieldset>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/60">
             <input
               type="checkbox"
               checked={form.isActive}
               onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
-              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              className="mt-0.5 h-4 w-4 rounded"
             />
-            {t('team.activeMember')}
+            <span>
+              <span className="block text-sm font-medium text-slate-800 dark:text-slate-200">{t('team.activeMember')}</span>
+              <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{t('team.activeMemberHint')}</span>
+            </span>
           </label>
-        </div>
+        </form>
       </Modal>
 
       {/* Delete confirmation */}
       <ConfirmDialog
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => { if (deleteTarget) deleteMember(deleteTarget.id) }}
+        onConfirm={confirmDelete}
         title={t('team.removeMember')}
         message={t('team.removeConfirm', { name: deleteTarget?.name })}
         confirmLabel={t('common.remove')}
       />
-    </div>
+    </Page>
   )
 }
 
@@ -250,74 +369,100 @@ interface MemberCardProps {
 
 function MemberCard({ member, skillCount, avgLevel, canWrite, onEdit, onDelete, onToggle }: MemberCardProps) {
   const { t } = useTranslation()
+  const inactive = !member.isActive
+
   return (
-    <div className={`bg-white dark:bg-slate-900 rounded-xl border shadow-sm p-5 space-y-4 transition-opacity ${member.isActive ? 'border-slate-200 dark:border-slate-700' : 'border-slate-100 dark:border-slate-800 opacity-60'}`}>
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3">
-          <Avatar name={member.name} color={member.avatarColor} size="lg" />
-          <div>
-            <p className="font-semibold text-slate-900 dark:text-slate-100">{member.name}</p>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {member.roles.map((r) => <Badge key={r} label={r} variant="info" />)}
+    <article
+      className={`group relative flex flex-col p-5 ${canWrite ? 'surface-interactive' : 'surface'} ${
+        inactive ? 'bg-slate-50/70 dark:bg-slate-900/60' : ''
+      }`}
+    >
+      {/* Whole card opens the editor (stretched button keeps inner links/menus clickable) */}
+      {canWrite && (
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={t('team.editMemberNamed', { name: member.name })}
+          className="absolute inset-0 rounded-xl"
+        />
+      )}
+
+      <div className="flex-1">
+        <div className="flex items-start gap-3.5">
+          <Avatar
+            name={member.name}
+            color={member.avatarColor}
+            size="md"
+            className={inactive ? 'opacity-50 grayscale' : ''}
+          />
+          <div className="min-w-0 flex-1 pt-0.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <h3
+                className={`truncate text-sm font-semibold ${inactive ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-slate-100'}`}
+                title={member.name}
+              >
+                {member.name}
+              </h3>
+              {inactive && <Badge label={t('common.inactive')} variant="outline" dot className="shrink-0" />}
             </div>
+            <a
+              href={`mailto:${member.email}`}
+              title={member.email}
+              className="relative z-10 mt-0.5 block w-fit max-w-full truncate rounded text-xs text-slate-500 transition-colors hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400"
+            >
+              {member.email}
+            </a>
           </div>
+          {canWrite && (
+            <div className="relative z-10 -mr-2 -mt-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+              <DropdownMenu
+                width="w-52"
+                trigger={(p) => <IconButton {...p} icon={<MoreHorizontal />} label={t('common.moreActions')} />}
+                items={[
+                  { label: t('common.edit'), icon: <Pencil />, onClick: onEdit },
+                  inactive
+                    ? { label: t('team.activate'), icon: <UserCheck />, onClick: onToggle }
+                    : { label: t('team.deactivate'), icon: <UserMinus />, onClick: onToggle },
+                  { type: 'divider' },
+                  { label: t('common.remove'), icon: <Trash2 />, danger: true, onClick: onDelete },
+                ]}
+              />
+            </div>
+          )}
         </div>
-        {canWrite && (
-          <div className="flex gap-1 shrink-0">
-            <button onClick={onEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors">
-              <Edit2 className="w-4 h-4" />
-            </button>
-            <button onClick={onDelete} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-              <Trash2 className="w-4 h-4" />
-            </button>
+
+        {member.roles.length > 0 && (
+          <div className="mt-3.5 flex flex-wrap gap-1.5">
+            {member.roles.map((r) => (
+              <Badge key={r} label={r} variant={inactive ? 'outline' : ROLE_VARIANT[r] ?? 'default'} />
+            ))}
           </div>
         )}
       </div>
 
-      <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
-        <div className="flex items-center gap-2">
-          <Mail className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">{member.email}</span>
+      <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-slate-100 pt-3.5 dark:border-slate-800">
+        <div className="min-w-0" title={t('team.skillsRatedHint')}>
+          <dt className="truncate text-2xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">{t('team.statSkills')}</dt>
+          <dd className="mt-1 text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-200">{skillCount}</dd>
         </div>
-        <div className="flex items-center gap-2">
-          <Calendar className="w-3.5 h-3.5 shrink-0" />
-          <span>{formatDate(member.joinedAt)}</span>
+        <div className="min-w-0" title={t('team.avgLevelHint')}>
+          <dt className="truncate text-2xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">{t('team.statAvgLevel')}</dt>
+          <dd className="mt-1 flex items-center gap-2 text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-200">
+            {avgLevel > 0 ? (
+              <>
+                {avgLevel.toFixed(1)}
+                <SkillLevelBadge level={Math.round(avgLevel) as SkillLevel} />
+              </>
+            ) : (
+              <span className="text-slate-400 dark:text-slate-500">–</span>
+            )}
+          </dd>
         </div>
-      </div>
-
-      <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3">
-        <div className="flex gap-4 text-xs text-slate-500 dark:text-slate-400">
-          <span><span className="font-semibold text-slate-700 dark:text-slate-300">{skillCount}</span></span>
-          {avgLevel > 0 && <span>Ø <span className="font-semibold text-slate-700 dark:text-slate-300">{avgLevel}</span></span>}
+        <div className="min-w-0">
+          <dt className="truncate text-2xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">{t('team.statSince')}</dt>
+          <dd className="mt-1 truncate text-sm font-medium tabular-nums text-slate-700 dark:text-slate-300">{formatDate(member.joinedAt)}</dd>
         </div>
-        <button
-          onClick={canWrite ? onToggle : undefined}
-          disabled={!canWrite}
-          className={`text-xs px-2 py-1 rounded-full font-medium transition-colors ${
-            member.isActive
-              ? 'bg-green-50 text-green-600' + (canWrite ? ' hover:bg-green-100' : '')
-              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400' + (canWrite ? ' hover:bg-slate-200 dark:hover:bg-slate-700' : '')
-          } ${!canWrite ? 'cursor-default' : ''}`}
-        >
-          {member.isActive ? t('common.active') : t('common.inactive')}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-interface FormFieldProps {
-  label: string
-  error?: string
-  children: React.ReactNode
-}
-
-function FormField({ label, error, children }: FormFieldProps) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
-      {children}
-      {error && <p className="text-xs text-red-500">{error}</p>}
-    </div>
+      </dl>
+    </article>
   )
 }

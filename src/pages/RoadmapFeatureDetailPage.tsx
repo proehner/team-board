@@ -1,940 +1,127 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
-import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import {
-  ArrowLeft, Save, Trash2, Plus, Map, Calendar, Tag, Layers,
-  Lightbulb, Clock, Circle, CheckCircle2, XCircle,
-  ChevronDown, ChevronUp, Copy, Check, Pencil, X,
-  LayoutTemplate, Server, Cpu, Star, AlertTriangle,
-  FileText, Ticket, Download, Wand2, Globe, Lock,
-  Monitor, Code2,
+  Save, Trash2, Plus, Map, Calendar, Lightbulb, CheckCircle2, ChevronDown, Copy, Check,
+  LayoutTemplate, Server, Cpu, AlertTriangle, FileText, Ticket, Download, Wand2,
+  Monitor, Code2, MoreHorizontal, ClipboardList, Flag, Circle, Filter,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { useAuthStore } from '@/store/auth'
+import { toast, errorMessage } from '@/store/toast'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import Page from '@/components/ui/Page'
+import PageHeader from '@/components/ui/PageHeader'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import IconButton from '@/components/ui/IconButton'
+import DropdownMenu from '@/components/ui/DropdownMenu'
+import Field from '@/components/ui/Field'
+import Select from '@/components/ui/Select'
+import Badge from '@/components/ui/Badge'
+import Chip from '@/components/ui/Chip'
+import Tabs from '@/components/ui/Tabs'
+import EmptyState from '@/components/ui/EmptyState'
+import Skeleton from '@/components/ui/Skeleton'
+import { LoadingState } from '@/components/ui/Spinner'
 import { usePagePermission } from '@/hooks/usePagePermission'
+import { RoadmapStatusBadge, PriorityIndicator } from '@/components/roadmap/RoadmapBadges'
+import { TicketFormModal, TicketRow } from '@/components/roadmap/RoadmapTicketParts'
+import { EndpointFormModal, EndpointRow, ScreenFormModal, ScreenRow } from '@/components/roadmap/BlueprintParts'
+import {
+  ROADMAP_STATUSES, ROADMAP_PRIORITIES, STATUS_META, PRIORITY_META,
+  TICKET_TYPES, TICKET_AREAS, TICKET_TYPE_META, TICKET_AREA_META, COMPLEXITY_META,
+  PLANNING_KEYS, type PlanningKey, planningBarCls, dateLocale,
+} from '@/components/roadmap/roadmapConfig'
 import type {
-  RoadmapFeature, RoadmapTicket,
-  RoadmapStatus, RoadmapPriority,
+  RoadmapFeature, RoadmapStatus, RoadmapPriority,
   RoadmapTicketType, RoadmapTicketArea,
-  RoadmapEndpoint, RoadmapScreen,
-  HttpMethod, EndpointComplexity,
 } from '@/types'
 
-// ─── Config / Constants ───────────────────────────────────────────────────────
+// ─── Planning sections ────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<RoadmapStatus, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  idea:         { label: 'Idee',        icon: Lightbulb,    color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-100 dark:bg-yellow-900/30' },
-  planned:      { label: 'Geplant',     icon: Clock,        color: 'text-blue-600 dark:text-blue-400',   bg: 'bg-blue-100 dark:bg-blue-900/30' },
-  'in-progress':{ label: 'In Arbeit',   icon: Circle,       color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-100 dark:bg-indigo-900/30' },
-  done:         { label: 'Fertig',      icon: CheckCircle2, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-900/30' },
-  cancelled:    { label: 'Abgebrochen', icon: XCircle,      color: 'text-slate-500',                      bg: 'bg-slate-100 dark:bg-slate-800' },
-}
-
-const PRIORITY_CONFIG: Record<RoadmapPriority, { label: string; color: string; dotColor: string }> = {
-  low:      { label: 'Niedrig',  color: 'text-slate-500',                        dotColor: 'bg-slate-400' },
-  medium:   { label: 'Mittel',   color: 'text-blue-600 dark:text-blue-400',      dotColor: 'bg-blue-500' },
-  high:     { label: 'Hoch',     color: 'text-orange-600 dark:text-orange-400',  dotColor: 'bg-orange-500' },
-  critical: { label: 'Kritisch', color: 'text-red-600 dark:text-red-400',        dotColor: 'bg-red-500' },
-}
-
-const TICKET_TYPE_CONFIG: Record<RoadmapTicketType, { label: string; color: string }> = {
-  epic:        { label: 'Epic',        color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' },
-  'user-story':{ label: 'User Story',  color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' },
-  task:        { label: 'Task',        color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300' },
-  bug:         { label: 'Bug',         color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' },
-}
-
-const TICKET_AREA_CONFIG: Record<RoadmapTicketArea, { label: string; icon: React.ElementType }> = {
-  frontend:  { label: 'Frontend',   icon: LayoutTemplate },
-  backend:   { label: 'Backend',    icon: Server },
-  devops:    { label: 'DevOps',     icon: Cpu },
-  design:    { label: 'Design',     icon: Star },
-  database:  { label: 'Datenbank',  icon: FileText },
-  other:     { label: 'Sonstiges',  icon: Layers },
-}
-
-const STATUSES: RoadmapStatus[]      = ['idea', 'planned', 'in-progress', 'done', 'cancelled']
-const PRIORITIES: RoadmapPriority[]  = ['low', 'medium', 'high', 'critical']
-const TICKET_TYPES: RoadmapTicketType[] = ['epic', 'user-story', 'task', 'bug']
-const TICKET_AREAS: RoadmapTicketArea[] = ['frontend', 'backend', 'devops', 'design', 'database', 'other']
-const QUARTERS = [1, 2, 3, 4] as const
-
-const HTTP_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
-const METHOD_CONFIG: Record<HttpMethod, { bg: string; text: string }> = {
-  GET:    { bg: 'bg-green-100 dark:bg-green-900/30',  text: 'text-green-700 dark:text-green-300' },
-  POST:   { bg: 'bg-blue-100 dark:bg-blue-900/30',   text: 'text-blue-700 dark:text-blue-300' },
-  PUT:    { bg: 'bg-orange-100 dark:bg-orange-900/30',text: 'text-orange-700 dark:text-orange-300' },
-  PATCH:  { bg: 'bg-yellow-100 dark:bg-yellow-900/30',text: 'text-yellow-700 dark:text-yellow-300' },
-  DELETE: { bg: 'bg-red-100 dark:bg-red-900/30',     text: 'text-red-700 dark:text-red-300' },
-}
-
-const COMPLEXITIES: EndpointComplexity[] = ['xs', 's', 'm', 'l', 'xl']
-const COMPLEXITY_CONFIG: Record<EndpointComplexity, { label: string; color: string }> = {
-  xs: { label: 'XS', color: 'text-slate-500' },
-  s:  { label: 'S',  color: 'text-green-600 dark:text-green-400' },
-  m:  { label: 'M',  color: 'text-blue-600 dark:text-blue-400' },
-  l:  { label: 'L',  color: 'text-orange-600 dark:text-orange-400' },
-  xl: { label: 'XL', color: 'text-red-600 dark:text-red-400' },
-}
-
-const PLANNING_SECTIONS: { key: keyof RoadmapFeature; label: string }[] = [
-  { key: 'goals',              label: 'Ziele' },
-  { key: 'acceptanceCriteria', label: 'Akzeptanzkriterien' },
-  { key: 'uiNotes',            label: 'Frontend/UI' },
-  { key: 'backendNotes',       label: 'Backend' },
-  { key: 'technicalNotes',     label: 'Technik' },
-  { key: 'risks',              label: 'Risiken' },
+const PLANNING_SECTIONS: { key: PlanningKey; icon: React.ElementType; rows: number; placeholder: string; hint: string; exportTitle: string }[] = [
+  { key: 'goals',              icon: Lightbulb,      rows: 5, placeholder: 'roadmap.goalsPlaceholder',                   hint: 'roadmap.goalsHint',              exportTitle: 'Ziele & Motivation' },
+  { key: 'acceptanceCriteria', icon: CheckCircle2,   rows: 5, placeholder: 'roadmap.acceptanceCriteriaFeaturePlaceholder', hint: 'roadmap.acceptanceCriteriaHint', exportTitle: 'Akzeptanzkriterien' },
+  { key: 'uiNotes',            icon: LayoutTemplate, rows: 6, placeholder: 'roadmap.uiNotesPlaceholder',                 hint: 'roadmap.uiNotesHint',            exportTitle: 'Frontend / UI' },
+  { key: 'backendNotes',       icon: Server,         rows: 6, placeholder: 'roadmap.backendNotesPlaceholder',            hint: 'roadmap.backendNotesHint',       exportTitle: 'Backend / API' },
+  { key: 'technicalNotes',     icon: Cpu,            rows: 5, placeholder: 'roadmap.technicalNotesPlaceholder',          hint: 'roadmap.technicalNotesHint',     exportTitle: 'Technische Entscheidungen' },
+  { key: 'risks',              icon: AlertTriangle,  rows: 4, placeholder: 'roadmap.risksPlaceholder',                   hint: 'roadmap.risksHint',              exportTitle: 'Risiken & Herausforderungen' },
 ]
 
-function planningScore(f: Partial<RoadmapFeature>) {
-  return PLANNING_SECTIONS.filter((s) => ((f[s.key] as string) ?? '').trim().length > 0).length
+const QUARTERS = [1, 2, 3, 4] as const
+
+function filledCount(f: Partial<RoadmapFeature>) {
+  return PLANNING_KEYS.filter((k) => ((f[k] as string | undefined) ?? '').trim().length > 0).length
 }
 
-// ─── Markdown Section Editor ──────────────────────────────────────────────────
+function parseTags(text: string) {
+  return text.split(',').map((tag) => tag.trim()).filter(Boolean)
+}
 
-interface SectionProps {
+// ─── Collapsible planning section ─────────────────────────────────────────────
+
+interface PlanningSectionProps {
+  id: string
   icon: React.ElementType
   title: string
   value: string
   placeholder?: string
-  onChange: (v: string) => void
-  rows?: number
   hint?: string
-  isExpanded?: boolean
-  onToggle?: () => void
+  rows?: number
+  expanded: boolean
+  onToggle: () => void
+  onChange: (v: string) => void
   readOnly?: boolean
 }
 
-function MarkdownSection({ icon: Icon, title, value, placeholder, onChange, rows = 6, hint, isExpanded, onToggle, readOnly }: SectionProps) {
-  const [localExpanded, setLocalExpanded] = useState(true)
-  const expanded = isExpanded !== undefined ? isExpanded : localExpanded
-
-  function handleToggle() {
-    if (onToggle) {
-      onToggle()
-    } else {
-      setLocalExpanded((e) => !e)
-    }
-  }
-
+function PlanningSection({ id, icon: Icon, title, value, placeholder, hint, rows = 6, expanded, onToggle, onChange, readOnly }: PlanningSectionProps) {
+  const { t } = useTranslation()
+  const filled = value.trim().length > 0
+  const preview = value.trim().split('\n')[0]
   return (
-    <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+    <div id={id} className="scroll-mt-6">
       <button
         type="button"
-        onClick={handleToggle}
-        className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={`${id}-body`}
+        className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40"
       >
-        <div className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-indigo-500" />
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{title}</span>
-          {value && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
-        </div>
-        {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+          filled ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+        }`}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">{title}</span>
+          {!expanded && (
+            <span className="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400">
+              {filled ? preview : <span className="italic text-slate-400 dark:text-slate-500">{t('roadmap.sectionEmpty')}</span>}
+            </span>
+          )}
+        </span>
+        {filled && (
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" aria-label={t('roadmap.sectionFilled')} />
+        )}
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </button>
       {expanded && (
-        <div className="p-3 bg-white dark:bg-slate-900">
-          {hint && <p className="text-xs text-slate-400 mb-2">{hint}</p>}
+        <div id={`${id}-body`} className="px-5 pb-5 pt-0.5 animate-fade-in">
+          {hint && <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
           <textarea
+            aria-label={title}
             value={value}
             onChange={(e) => !readOnly && onChange(e.target.value)}
             rows={rows}
-            placeholder={placeholder}
+            placeholder={readOnly ? '' : placeholder}
             readOnly={readOnly}
-            className={`w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y${readOnly ? ' opacity-60 cursor-default' : ''}`}
+            className="form-textarea font-mono text-[13px] leading-relaxed read-only:bg-slate-50 read-only:text-slate-600 dark:read-only:bg-slate-800/40 dark:read-only:text-slate-300"
           />
         </div>
       )}
-    </div>
-  )
-}
-
-// ─── Ticket Row ───────────────────────────────────────────────────────────────
-
-interface TicketRowProps {
-  ticket: RoadmapTicket
-  featureId: string
-  teams: string[]
-  onUpdate: (data: Partial<RoadmapTicket>) => Promise<void>
-  onDelete: () => Promise<void>
-  canWrite?: boolean
-}
-
-function TicketRow({ ticket, teams, onUpdate, onDelete, canWrite = true }: TicketRowProps) {
-  const { t } = useTranslation()
-  const [editing,   setEditing]   = useState(false)
-  const [deleting,  setDeleting]  = useState(false)
-  const [copied,    setCopied]    = useState(false)
-  const [form, setForm] = useState({
-    title:             ticket.title,
-    description:       ticket.description,
-    acceptanceCriteria:ticket.acceptanceCriteria,
-    type:              ticket.type,
-    area:              ticket.area,
-    storyPoints:       ticket.storyPoints ?? '' as number | '',
-    priority:          ticket.priority,
-    assignedTeam:      ticket.assignedTeam ?? '',
-    tags:              ticket.tags.join(', '),
-  })
-
-  function copyToClipboard() {
-    const text = [
-      `# ${ticket.title}`,
-      `**Typ:** ${TICKET_TYPE_CONFIG[ticket.type].label}  |  **Bereich:** ${TICKET_AREA_CONFIG[ticket.area].label}  |  **Priorität:** ${PRIORITY_CONFIG[ticket.priority].label}${ticket.storyPoints ? `  |  **Story Points:** ${ticket.storyPoints}` : ''}${ticket.assignedTeam ? `  |  **Team:** ${ticket.assignedTeam}` : ''}`,
-      '',
-      ticket.description ? `## Beschreibung\n${ticket.description}` : '',
-      ticket.acceptanceCriteria ? `## Akzeptanzkriterien\n${ticket.acceptanceCriteria}` : '',
-      ticket.tags.length > 0 ? `**Tags:** ${ticket.tags.join(', ')}` : '',
-    ].filter(Boolean).join('\n\n')
-    navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  async function handleSave() {
-    await onUpdate({
-      title: form.title.trim(),
-      description: form.description,
-      acceptanceCriteria: form.acceptanceCriteria,
-      type: form.type,
-      area: form.area,
-      storyPoints: form.storyPoints === '' ? undefined : Number(form.storyPoints),
-      priority: form.priority,
-      assignedTeam: form.assignedTeam.trim() || undefined,
-      tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
-    })
-    setEditing(false)
-  }
-
-  async function handleDelete() {
-    setDeleting(true)
-    try { await onDelete() } catch { setDeleting(false) }
-  }
-
-  const tc = TICKET_TYPE_CONFIG[ticket.type]
-  const ac = TICKET_AREA_CONFIG[ticket.area]
-  const pc = PRIORITY_CONFIG[ticket.priority]
-  const AreaIcon = ac.icon
-
-  if (editing) {
-    return (
-      <div className="border border-indigo-300 dark:border-indigo-600 rounded-xl p-4 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.ticketTitle')} *</label>
-            <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.ticketType')}</label>
-            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as RoadmapTicketType })}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              {TICKET_TYPES.map((tp) => <option key={tp} value={tp}>{TICKET_TYPE_CONFIG[tp].label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.ticketArea')}</label>
-            <select value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value as RoadmapTicketArea })}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              {TICKET_AREAS.map((a) => <option key={a} value={a}>{TICKET_AREA_CONFIG[a].label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.priority')}</label>
-            <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as RoadmapPriority })}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              {PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_CONFIG[p].label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.storyPoints')}</label>
-            <input type="number" min={0} max={100} value={form.storyPoints}
-              onChange={(e) => setForm({ ...form, storyPoints: e.target.value === '' ? '' : Number(e.target.value) })}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.assignedTeam')}</label>
-            {teams.length > 0 ? (
-              <select value={form.assignedTeam} onChange={(e) => setForm({ ...form, assignedTeam: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option value="">{t('common.none')}</option>
-                {teams.map((tm) => <option key={tm} value={tm}>{tm}</option>)}
-              </select>
-            ) : (
-              <input value={form.assignedTeam} onChange={(e) => setForm({ ...form, assignedTeam: e.target.value })}
-                placeholder={t('roadmap.assignedTeamPlaceholder')}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            )}
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.description')}</label>
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3}
-              placeholder={t('roadmap.ticketDescPlaceholder')}
-              className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y" />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.acceptanceCriteria')}</label>
-            <textarea value={form.acceptanceCriteria} onChange={(e) => setForm({ ...form, acceptanceCriteria: e.target.value })} rows={4}
-              placeholder={t('roadmap.acceptanceCriteriaPlaceholder')}
-              className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y" />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.tags')} <span className="text-slate-400">({t('roadmap.tagsSeparator')})</span></label>
-            <input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })}
-              placeholder="frontend, authentication, v2"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={() => setEditing(false)}
-            className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
-            {t('common.cancel')}
-          </button>
-          <button type="button" onClick={handleSave}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-            <Save className="w-3.5 h-3.5" />
-            {t('common.save')}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="group border border-slate-200 dark:border-slate-700 rounded-xl p-4 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1.5">
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${tc.color}`}>{tc.label}</span>
-            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-              <AreaIcon className="w-3 h-3" />
-              {ac.label}
-            </span>
-            <span className={`text-xs font-medium ${pc.color}`}>▲ {pc.label}</span>
-            {ticket.storyPoints !== undefined && (
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                {ticket.storyPoints} SP
-              </span>
-            )}
-            {ticket.assignedTeam && (
-              <span className="text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full">
-                {ticket.assignedTeam}
-              </span>
-            )}
-          </div>
-          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{ticket.title}</p>
-          {ticket.description && (
-            <p className="text-xs text-slate-500 mt-1 line-clamp-2 whitespace-pre-wrap">{ticket.description}</p>
-          )}
-          {ticket.acceptanceCriteria && (
-            <details className="mt-2">
-              <summary className="text-xs text-indigo-600 dark:text-indigo-400 cursor-pointer hover:underline">
-                {t('roadmap.showAC')}
-              </summary>
-              <pre className="mt-1 text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap font-sans">{ticket.acceptanceCriteria}</pre>
-            </details>
-          )}
-          {ticket.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {ticket.tags.map((tag) => (
-                <span key={tag} className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded">
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <button onClick={copyToClipboard} title={t('roadmap.copyTicket')}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors">
-            {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-          </button>
-          {canWrite && (
-            <button onClick={() => setEditing(true)} title={t('common.edit')}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {canWrite && (
-            <button onClick={handleDelete} disabled={deleting} title={t('common.delete')}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors disabled:opacity-50">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Add Ticket Form ──────────────────────────────────────────────────────────
-
-interface AddTicketFormProps {
-  featureId: string
-  teams: string[]
-  onCreated: () => void
-  onCancel: () => void
-}
-
-function AddTicketForm({ featureId, teams, onCreated, onCancel }: AddTicketFormProps) {
-  const { t } = useTranslation()
-  const addRoadmapTicket = useStore((s) => s.addRoadmapTicket)
-  const [form, setForm] = useState({
-    title: '', description: '', acceptanceCriteria: '',
-    type: 'task' as RoadmapTicketType, area: 'frontend' as RoadmapTicketArea,
-    storyPoints: '' as number | '', priority: 'medium' as RoadmapPriority,
-    assignedTeam: '', tags: '',
-  })
-  const [saving, setSaving] = useState(false)
-  const [error,  setError]  = useState<string | null>(null)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!form.title.trim()) { setError(t('roadmap.titleRequired')); return }
-    setSaving(true)
-    try {
-      await addRoadmapTicket(featureId, {
-        title: form.title.trim(), description: form.description,
-        acceptanceCriteria: form.acceptanceCriteria, type: form.type, area: form.area,
-        storyPoints: form.storyPoints === '' ? undefined : Number(form.storyPoints),
-        priority: form.priority,
-        assignedTeam: form.assignedTeam.trim() || undefined,
-        tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
-      })
-      onCreated()
-    } catch (err) { setError(String(err)); setSaving(false) }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="border border-dashed border-indigo-300 dark:border-indigo-700 rounded-xl p-4 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3">
-      {error && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{error}</p>}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.ticketTitle')} *</label>
-          <input autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
-            placeholder={t('roadmap.ticketTitlePlaceholder')}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.ticketType')}</label>
-          <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as RoadmapTicketType })}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            {TICKET_TYPES.map((tp) => <option key={tp} value={tp}>{TICKET_TYPE_CONFIG[tp].label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.ticketArea')}</label>
-          <select value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value as RoadmapTicketArea })}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            {TICKET_AREAS.map((a) => <option key={a} value={a}>{TICKET_AREA_CONFIG[a].label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.priority')}</label>
-          <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as RoadmapPriority })}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            {PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_CONFIG[p].label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.storyPoints')}</label>
-          <input type="number" min={0} max={100} value={form.storyPoints}
-            onChange={(e) => setForm({ ...form, storyPoints: e.target.value === '' ? '' : Number(e.target.value) })}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.assignedTeam')}</label>
-          {teams.length > 0 ? (
-            <select value={form.assignedTeam} onChange={(e) => setForm({ ...form, assignedTeam: e.target.value })}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              <option value="">{t('common.none')}</option>
-              {teams.map((tm) => <option key={tm} value={tm}>{tm}</option>)}
-            </select>
-          ) : (
-            <input value={form.assignedTeam} onChange={(e) => setForm({ ...form, assignedTeam: e.target.value })}
-              placeholder={t('roadmap.assignedTeamPlaceholder')}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          )}
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.description')}</label>
-          <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2}
-            placeholder={t('roadmap.ticketDescPlaceholder')}
-            className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y" />
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.acceptanceCriteria')}</label>
-          <textarea value={form.acceptanceCriteria} onChange={(e) => setForm({ ...form, acceptanceCriteria: e.target.value })} rows={3}
-            placeholder={t('roadmap.acceptanceCriteriaPlaceholder')}
-            className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y" />
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.tags')} <span className="text-slate-400">({t('roadmap.tagsSeparator')})</span></label>
-          <input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="frontend, authentication, v2"
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-        </div>
-      </div>
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel}
-          className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
-          {t('common.cancel')}
-        </button>
-        <button type="submit" disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-          <Plus className="w-3.5 h-3.5" />
-          {saving ? t('common.save') + '…' : t('roadmap.addTicket')}
-        </button>
-      </div>
-    </form>
-  )
-}
-
-// ─── Blueprint: Endpoint Row ──────────────────────────────────────────────────
-
-const inputCls = 'w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500'
-const textareaCls = inputCls + ' font-mono resize-y'
-
-interface EndpointRowProps {
-  endpoint: RoadmapEndpoint
-  featureId: string
-  onUpdate: (data: Partial<RoadmapEndpoint>) => Promise<void>
-  onDelete: () => Promise<void>
-  canWrite?: boolean
-}
-
-function EndpointRow({ endpoint, onUpdate, onDelete, canWrite = true }: EndpointRowProps) {
-  const { t } = useTranslation()
-  const [editing,  setEditing]  = useState(false)
-  const [expanded, setExpanded] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [form, setForm] = useState({
-    method:       endpoint.method,
-    path:         endpoint.path,
-    title:        endpoint.title,
-    description:  endpoint.description,
-    requestBody:  endpoint.requestBody,
-    responseBody: endpoint.responseBody,
-    authRequired: endpoint.authRequired,
-    complexity:   endpoint.complexity,
-    notes:        endpoint.notes,
-  })
-
-  const mc = METHOD_CONFIG[endpoint.method]
-  const cc = COMPLEXITY_CONFIG[endpoint.complexity]
-
-  async function handleSave() {
-    await onUpdate(form)
-    setEditing(false)
-  }
-
-  if (editing) {
-    return (
-      <div className="border border-indigo-300 dark:border-indigo-700 rounded-xl p-4 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointMethod')}</label>
-            <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value as HttpMethod })} className={inputCls}>
-              {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointComplexity')}</label>
-            <select value={form.complexity} onChange={(e) => setForm({ ...form, complexity: e.target.value as EndpointComplexity })} className={inputCls}>
-              {COMPLEXITIES.map((c) => <option key={c} value={c}>{COMPLEXITY_CONFIG[c].label}</option>)}
-            </select>
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointPath')}</label>
-            <input value={form.path} onChange={(e) => setForm({ ...form, path: e.target.value })} placeholder="/api/..." className={inputCls} />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointTitle')}</label>
-            <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="z. B. Liste aller Dashboard-Einträge abrufen" className={inputCls} />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointDescription')}</label>
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className={textareaCls} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointRequestBody')}</label>
-            <textarea value={form.requestBody} onChange={(e) => setForm({ ...form, requestBody: e.target.value })} rows={4}
-              placeholder={'{\n  "field": "type"\n}'} className={textareaCls} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointResponseBody')}</label>
-            <textarea value={form.responseBody} onChange={(e) => setForm({ ...form, responseBody: e.target.value })} rows={4}
-              placeholder={'{\n  "id": "string",\n  "data": []\n}'} className={textareaCls} />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointNotes')}</label>
-            <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className={textareaCls} />
-          </div>
-          <div className="col-span-2 flex items-center gap-2">
-            <input type="checkbox" id="ep-auth" checked={form.authRequired} onChange={(e) => setForm({ ...form, authRequired: e.target.checked })}
-              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-            <label htmlFor="ep-auth" className="text-sm text-slate-700 dark:text-slate-300">{t('roadmap.endpointAuth')}</label>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={() => setEditing(false)} className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">{t('common.cancel')}</button>
-          <button type="button" onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-            <Save className="w-3.5 h-3.5" />{t('common.save')}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="group border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3">
-        <span className={`text-xs font-bold px-2 py-0.5 rounded font-mono ${mc.bg} ${mc.text}`}>{endpoint.method}</span>
-        <span className="text-sm font-mono text-slate-700 dark:text-slate-300 flex-1 truncate">{endpoint.path || <span className="text-slate-400 italic">kein Pfad</span>}</span>
-        {endpoint.title && <span className="text-xs text-slate-500 truncate max-w-[200px] hidden sm:block">{endpoint.title}</span>}
-        <span className={`text-xs font-semibold ${cc.color} shrink-0`}>{cc.label}</span>
-        {endpoint.authRequired
-          ? <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-          : <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-        }
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <button onClick={() => setExpanded((v) => !v)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-            {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-          {canWrite && (
-            <button onClick={() => setEditing(true)} className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {canWrite && (
-            <button onClick={async () => { setDeleting(true); try { await onDelete() } catch { setDeleting(false) } }} disabled={deleting}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors disabled:opacity-50">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
-      {expanded && (
-        <div className="border-t border-slate-100 dark:border-slate-800 px-4 py-3 space-y-3 bg-slate-50/50 dark:bg-slate-800/30 text-sm">
-          {endpoint.description && <p className="text-slate-600 dark:text-slate-400">{endpoint.description}</p>}
-          <div className="grid grid-cols-2 gap-3">
-            {endpoint.requestBody && (
-              <div>
-                <p className="text-xs font-medium text-slate-500 mb-1">{t('roadmap.endpointRequestBody')}</p>
-                <pre className="text-xs font-mono bg-slate-100 dark:bg-slate-800 rounded-lg p-3 overflow-x-auto text-slate-700 dark:text-slate-300">{endpoint.requestBody}</pre>
-              </div>
-            )}
-            {endpoint.responseBody && (
-              <div>
-                <p className="text-xs font-medium text-slate-500 mb-1">{t('roadmap.endpointResponseBody')}</p>
-                <pre className="text-xs font-mono bg-slate-100 dark:bg-slate-800 rounded-lg p-3 overflow-x-auto text-slate-700 dark:text-slate-300">{endpoint.responseBody}</pre>
-              </div>
-            )}
-          </div>
-          {endpoint.notes && <p className="text-xs text-slate-500 italic">{endpoint.notes}</p>}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Blueprint: Add Endpoint Form ─────────────────────────────────────────────
-
-interface AddEndpointFormProps {
-  featureId: string
-  onCreated: () => void
-  onCancel: () => void
-}
-
-function AddEndpointForm({ featureId, onCreated, onCancel }: AddEndpointFormProps) {
-  const { t } = useTranslation()
-  const addRoadmapEndpoint = useStore((s) => s.addRoadmapEndpoint)
-  const [form, setForm] = useState({ method: 'GET' as HttpMethod, path: '', title: '', complexity: 'm' as EndpointComplexity, authRequired: true })
-  const [saving, setSaving] = useState(false)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await addRoadmapEndpoint(featureId, form)
-      onCreated()
-    } catch { setSaving(false) }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="border border-dashed border-indigo-300 dark:border-indigo-700 rounded-xl p-4 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointMethod')}</label>
-          <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value as HttpMethod })} className={inputCls}>
-            {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointComplexity')}</label>
-          <select value={form.complexity} onChange={(e) => setForm({ ...form, complexity: e.target.value as EndpointComplexity })} className={inputCls}>
-            {COMPLEXITIES.map((c) => <option key={c} value={c}>{COMPLEXITY_CONFIG[c].label}</option>)}
-          </select>
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointPath')} *</label>
-          <input autoFocus value={form.path} onChange={(e) => setForm({ ...form, path: e.target.value })} placeholder="/api/v1/resource" className={inputCls} />
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.endpointTitle')}</label>
-          <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="z. B. Alle Einträge auflisten" className={inputCls} />
-        </div>
-        <div className="col-span-2 flex items-center gap-2">
-          <input type="checkbox" id="new-ep-auth" checked={form.authRequired} onChange={(e) => setForm({ ...form, authRequired: e.target.checked })}
-            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-          <label htmlFor="new-ep-auth" className="text-sm text-slate-700 dark:text-slate-300">{t('roadmap.endpointAuth')}</label>
-        </div>
-      </div>
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">{t('common.cancel')}</button>
-        <button type="submit" disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-          <Plus className="w-3.5 h-3.5" />{saving ? '…' : t('roadmap.addEndpoint')}
-        </button>
-      </div>
-    </form>
-  )
-}
-
-// ─── Blueprint: Screen Row ────────────────────────────────────────────────────
-
-interface ScreenRowProps {
-  screen: RoadmapScreen
-  endpoints: RoadmapEndpoint[]
-  onUpdate: (data: Partial<RoadmapScreen>) => Promise<void>
-  onDelete: () => Promise<void>
-  canWrite?: boolean
-}
-
-function ScreenRow({ screen, endpoints, onUpdate, onDelete, canWrite = true }: ScreenRowProps) {
-  const { t } = useTranslation()
-  const [editing,  setEditing]  = useState(false)
-  const [expanded, setExpanded] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [form, setForm] = useState({
-    title:          screen.title,
-    route:          screen.route,
-    description:    screen.description,
-    components:     screen.components.join(', '),
-    endpointIds:    screen.endpointIds,
-    wireframeNotes: screen.wireframeNotes,
-  })
-
-  async function handleSave() {
-    await onUpdate({
-      ...form,
-      components: form.components.split(',').map((c) => c.trim()).filter(Boolean),
-    })
-    setEditing(false)
-  }
-
-  const linkedEps = endpoints.filter((e) => screen.endpointIds.includes(e.id))
-
-  if (editing) {
-    return (
-      <div className="border border-indigo-300 dark:border-indigo-700 rounded-xl p-4 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.screenTitle')}</label>
-            <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={inputCls} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.screenRoute')}</label>
-            <input value={form.route} onChange={(e) => setForm({ ...form, route: e.target.value })} placeholder="/dashboard" className={inputCls} />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.screenDescription')}</label>
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className={textareaCls} />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-              {t('roadmap.screenComponents')} <span className="text-slate-400 font-normal">({t('roadmap.tagsSeparator')})</span>
-            </label>
-            <input value={form.components} onChange={(e) => setForm({ ...form, components: e.target.value })}
-              placeholder={t('roadmap.screenComponentsPlaceholder')} className={inputCls} />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.screenLinkedEndpoints')}</label>
-            <div className="flex flex-wrap gap-2">
-              {endpoints.map((ep) => (
-                <label key={ep.id} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                  <input type="checkbox" checked={form.endpointIds.includes(ep.id)}
-                    onChange={(e) => setForm({ ...form, endpointIds: e.target.checked ? [...form.endpointIds, ep.id] : form.endpointIds.filter((id) => id !== ep.id) })}
-                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                  <span className={`font-bold font-mono ${METHOD_CONFIG[ep.method].text}`}>{ep.method}</span>
-                  <span className="font-mono text-slate-600 dark:text-slate-400 truncate max-w-[200px]">{ep.path || '/'}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.screenWireframeNotes')}</label>
-            <textarea value={form.wireframeNotes} onChange={(e) => setForm({ ...form, wireframeNotes: e.target.value })} rows={3} className={textareaCls} />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={() => setEditing(false)} className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">{t('common.cancel')}</button>
-          <button type="button" onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-            <Save className="w-3.5 h-3.5" />{t('common.save')}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="group border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3">
-        <Monitor className="w-4 h-4 text-indigo-400 shrink-0" />
-        <span className="text-sm font-medium text-slate-800 dark:text-slate-100 flex-1 truncate">{screen.title || <span className="text-slate-400 italic">kein Titel</span>}</span>
-        {screen.route && <span className="text-xs font-mono text-slate-500 truncate max-w-[160px] hidden sm:block">{screen.route}</span>}
-        {linkedEps.length > 0 && (
-          <span className="text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded shrink-0">
-            {linkedEps.length} EP
-          </span>
-        )}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <button onClick={() => setExpanded((v) => !v)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-            {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-          {canWrite && (
-            <button onClick={() => setEditing(true)} className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {canWrite && (
-            <button onClick={async () => { setDeleting(true); try { await onDelete() } catch { setDeleting(false) } }} disabled={deleting}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors disabled:opacity-50">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
-      {expanded && (
-        <div className="border-t border-slate-100 dark:border-slate-800 px-4 py-3 space-y-2 bg-slate-50/50 dark:bg-slate-800/30 text-sm">
-          {screen.description && <p className="text-slate-600 dark:text-slate-400">{screen.description}</p>}
-          {screen.components.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {screen.components.map((c, i) => (
-                <span key={i} className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded font-mono">{c}</span>
-              ))}
-            </div>
-          )}
-          {linkedEps.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-slate-500">{t('roadmap.screenLinkedEndpoints')}:</p>
-              <div className="flex flex-col gap-1">
-                {linkedEps.map((ep) => (
-                  <span key={ep.id} className="text-xs font-mono">
-                    <span className={`font-bold ${METHOD_CONFIG[ep.method].text} mr-1.5`}>{ep.method}</span>
-                    <span className="text-slate-600 dark:text-slate-400">{ep.path}</span>
-                    {ep.title && <span className="text-slate-400 ml-2">— {ep.title}</span>}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {screen.wireframeNotes && (
-            <pre className="text-xs text-slate-500 whitespace-pre-wrap font-sans">{screen.wireframeNotes}</pre>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Blueprint: Add Screen Form ───────────────────────────────────────────────
-
-interface AddScreenFormProps {
-  featureId: string
-  endpoints: RoadmapEndpoint[]
-  onCreated: () => void
-  onCancel: () => void
-}
-
-function AddScreenForm({ featureId, endpoints, onCreated, onCancel }: AddScreenFormProps) {
-  const { t } = useTranslation()
-  const addRoadmapScreen = useStore((s) => s.addRoadmapScreen)
-  const [form, setForm] = useState({ title: '', route: '', endpointIds: [] as string[] })
-  const [saving, setSaving] = useState(false)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await addRoadmapScreen(featureId, form)
-      onCreated()
-    } catch { setSaving(false) }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="border border-dashed border-indigo-300 dark:border-indigo-700 rounded-xl p-4 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.screenTitle')} *</label>
-          <input autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="z. B. Dashboard-Übersicht" className={inputCls} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.screenRoute')}</label>
-          <input value={form.route} onChange={(e) => setForm({ ...form, route: e.target.value })} placeholder="/dashboard" className={inputCls} />
-        </div>
-        {endpoints.length > 0 && (
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{t('roadmap.screenLinkedEndpoints')}</label>
-            <div className="flex flex-wrap gap-2">
-              {endpoints.map((ep) => (
-                <label key={ep.id} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                  <input type="checkbox" checked={form.endpointIds.includes(ep.id)}
-                    onChange={(e) => setForm({ ...form, endpointIds: e.target.checked ? [...form.endpointIds, ep.id] : form.endpointIds.filter((id) => id !== ep.id) })}
-                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                  <span className={`font-bold font-mono ${METHOD_CONFIG[ep.method].text}`}>{ep.method}</span>
-                  <span className="font-mono text-slate-600 dark:text-slate-400 truncate max-w-[180px]">{ep.path || '/'}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">{t('common.cancel')}</button>
-        <button type="submit" disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-          <Plus className="w-3.5 h-3.5" />{saving ? '…' : t('roadmap.addScreen')}
-        </button>
-      </div>
-    </form>
-  )
-}
-
-// ─── Delete Confirm Dialog ────────────────────────────────────────────────────
-
-function DeleteConfirm({ onConfirm, onCancel, title }: { onConfirm: () => void; onCancel: () => void; title: string }) {
-  const { t } = useTranslation()
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-          <div>
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('roadmap.deleteFeatureTitle')}</h3>
-            <p className="text-sm text-slate-500 mt-1">{t('roadmap.deleteFeatureConfirm', { title })}</p>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button onClick={onCancel}
-            className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 transition-colors">
-            {t('common.cancel')}
-          </button>
-          <button onClick={onConfirm}
-            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-            {t('common.delete')}
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -944,10 +131,11 @@ function DeleteConfirm({ onConfirm, onCancel, title }: { onConfirm: () => void; 
 export default function RoadmapFeatureDetailPage() {
   const { featureId } = useParams<{ featureId: string }>()
   const navigate = useNavigate()
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { canWrite, isReadOnly } = usePagePermission('roadmap')
 
   const features               = useStore((s) => s.roadmapFeatures)
+  const storeLoading           = useStore((s) => s.loading)
   const roadmapTickets         = useStore((s) => s.roadmapTickets)
   const roadmapEndpoints       = useStore((s) => s.roadmapEndpoints)
   const roadmapScreens         = useStore((s) => s.roadmapScreens)
@@ -963,6 +151,8 @@ export default function RoadmapFeatureDetailPage() {
   const updateRoadmapScreen    = useStore((s) => s.updateRoadmapScreen)
   const deleteRoadmapScreen    = useStore((s) => s.deleteRoadmapScreen)
   const addRoadmapTicket       = useStore((s) => s.addRoadmapTicket)
+  const addRoadmapEndpoint     = useStore((s) => s.addRoadmapEndpoint)
+  const addRoadmapScreen       = useStore((s) => s.addRoadmapScreen)
   const authTeams              = useStore((s) => s.members) // only used for count check
 
   // We get the team list from the auth store for display in tickets
@@ -975,47 +165,52 @@ export default function RoadmapFeatureDetailPage() {
 
   // Load teams for ticket assignment from the global teams list
   useEffect(() => {
-    setTeamNames(useAuthStore.getState().teams.map((t) => t.name))
+    setTeamNames(useAuthStore.getState().teams.map((tm) => tm.name))
   }, [authTeams])
 
   useEffect(() => {
     if (featureId && tickets === null) {
-      loadRoadmapTickets(featureId)
+      loadRoadmapTickets(featureId).catch((err) => toast.error(t('common.loadError'), { description: errorMessage(err) }))
     }
-  }, [featureId, tickets, loadRoadmapTickets])
+  }, [featureId, tickets, loadRoadmapTickets, t])
 
   // ─── Local editable state ────────────────────────────────────────────────
-  const [form, setForm] = useState<Partial<RoadmapFeature>>({})
+  const [form, setForm]           = useState<Partial<RoadmapFeature>>({})
+  const [tagsText, setTagsText]   = useState('')
   const [dirty, setDirty]         = useState(false)
   const [saving, setSaving]       = useState(false)
   const { isBlocked, confirmLeave, cancelLeave, guardedNavigate } = useUnsavedChanges(dirty)
-  const [showDelete, setShowDelete] = useState(false)
+  const [showDelete, setShowDelete]           = useState(false)
   const [showAddTicket, setShowAddTicket]     = useState(false)
-  const [ticketAreaFilter, setTicketAreaFilter]   = useState<RoadmapTicketArea | 'all'>('all')
-  const [ticketTypeFilter, setTicketTypeFilter]   = useState<RoadmapTicketType | 'all'>('all')
+  const [ticketAreaFilter, setTicketAreaFilter] = useState<RoadmapTicketArea | 'all'>('all')
+  const [ticketTypeFilter, setTicketTypeFilter] = useState<RoadmapTicketType | 'all'>('all')
   const [blueprintOpen, setBlueprintOpen]     = useState(false)
-
-  // Planning sections expand/collapse (true = expanded, default)
-  const [sectionsState, setSectionsState] = useState<Partial<Record<string, boolean>>>({})
-  const isSectionExpanded = (key: string) => sectionsState[key] ?? true
-  const toggleSection = (key: string) => setSectionsState((s) => ({ ...s, [key]: !(s[key] ?? true) }))
-  const expandAllSections  = () => setSectionsState(Object.fromEntries(PLANNING_SECTIONS.map((s) => [s.key, true])))
-  const collapseAllSections = () => setSectionsState(Object.fromEntries(PLANNING_SECTIONS.map((s) => [s.key, false])))
-
-  const [savedFeedback, setSavedFeedback] = useState(false)
   const [showAddEndpoint, setShowAddEndpoint] = useState(false)
   const [showAddScreen,   setShowAddScreen]   = useState(false)
+  const [confirmGenerate, setConfirmGenerate] = useState(false)
+  const [exportCopied, setExportCopied]       = useState(false)
+
+  // Planning sections expand/collapse
+  // Editors see every section expanded; read-only viewers only see filled ones expanded by default.
+  const [sectionsState, setSectionsState] = useState<Partial<Record<string, boolean>>>({})
+  const defaultExpanded = (key: PlanningKey) => canWrite || ((form[key] as string | undefined) ?? '').trim().length > 0
+  const isSectionExpanded = (key: PlanningKey) => sectionsState[key] ?? defaultExpanded(key)
+  const toggleSection = (key: PlanningKey) => setSectionsState((s) => ({ ...s, [key]: !(s[key] ?? defaultExpanded(key)) }))
+  const expandAllSections  = () => setSectionsState(Object.fromEntries(PLANNING_KEYS.map((k) => [k, true])))
+  const collapseAllSections = () => setSectionsState(Object.fromEntries(PLANNING_KEYS.map((k) => [k, false])))
+  const allCollapsed = PLANNING_KEYS.every((k) => !isSectionExpanded(k))
+
+  function jumpToSection(key: PlanningKey) {
+    setSectionsState((s) => ({ ...s, [key]: true }))
+    requestAnimationFrame(() => document.getElementById(`plan-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 
   useEffect(() => {
-    if (featureId && blueprintOpen && endpoints === null) {
-      loadRoadmapEndpoints(featureId)
-    }
-    if (featureId && blueprintOpen && screens === null) {
-      loadRoadmapScreens(featureId)
-    }
-  }, [featureId, blueprintOpen, endpoints, screens, loadRoadmapEndpoints, loadRoadmapScreens])
-  const [generating, setGenerating]         = useState(false)
-  const [generatedCount, setGeneratedCount] = useState<number | null>(null)
+    if (!featureId || !blueprintOpen) return
+    const onErr = (err: unknown) => toast.error(t('common.loadError'), { description: errorMessage(err) })
+    if (endpoints === null) loadRoadmapEndpoints(featureId).catch(onErr)
+    if (screens === null) loadRoadmapScreens(featureId).catch(onErr)
+  }, [featureId, blueprintOpen, endpoints, screens, loadRoadmapEndpoints, loadRoadmapScreens, t])
 
   // Sync form when feature loads / changes
   useEffect(() => {
@@ -1039,6 +234,7 @@ export default function RoadmapFeatureDetailPage() {
         technicalNotes:     feature.technicalNotes,
         risks:              feature.risks,
       })
+      setTagsText(feature.tags.join(', '))
       setDirty(false)
     }
   }, [feature?.id])
@@ -1053,9 +249,6 @@ export default function RoadmapFeatureDetailPage() {
 
   async function generateTicketsFromBlueprint() {
     if (!featureId || !endpoints || !screens) return
-    const confirmMsg = t('roadmap.generateTicketsConfirm', { count: endpoints.length + screens.length })
-    if (!window.confirm(confirmMsg)) return
-    setGenerating(true)
     let count = 0
     try {
       for (const ep of endpoints) {
@@ -1063,7 +256,7 @@ export default function RoadmapFeatureDetailPage() {
           `**Methode:** \`${ep.method}\``,
           `**Pfad:** \`${ep.path}\``,
           ep.authRequired ? '**Auth:** Erforderlich' : '**Auth:** Öffentlich',
-          `**Komplexität:** ${COMPLEXITY_CONFIG[ep.complexity].label}`,
+          `**Komplexität:** ${COMPLEXITY_META[ep.complexity].label}`,
           ep.description ? `\n${ep.description}` : '',
           ep.requestBody ? `\n**Request-Body:**\n\`\`\`json\n${ep.requestBody}\n\`\`\`` : '',
           ep.responseBody ? `\n**Response-Body:**\n\`\`\`json\n${ep.responseBody}\n\`\`\`` : '',
@@ -1112,15 +305,14 @@ export default function RoadmapFeatureDetailPage() {
         })
         count++
       }
-      setGeneratedCount(count)
-      setTimeout(() => setGeneratedCount(null), 3000)
-    } finally {
-      setGenerating(false)
+      toast.success(t('roadmap.generatedTickets', { count }))
+    } catch (err) {
+      toast.error(t('roadmap.generateError', { count }), { description: errorMessage(err) })
     }
   }
 
   async function handleSave() {
-    if (!featureId) return
+    if (!featureId || saving) return
     setSaving(true)
     try {
       await updateRoadmapFeature(featureId, {
@@ -1135,8 +327,9 @@ export default function RoadmapFeatureDetailPage() {
         tags:           form.tags ?? [],
       })
       setDirty(false)
-      setSavedFeedback(true)
-      setTimeout(() => setSavedFeedback(false), 2000)
+      toast.success(t('roadmap.toast.featureSaved'))
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -1154,26 +347,28 @@ export default function RoadmapFeatureDetailPage() {
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [canWrite])
 
   async function handleDelete() {
     if (!featureId) return
-    await deleteRoadmapFeature(featureId)
+    try {
+      await deleteRoadmapFeature(featureId)
+    } catch (err) {
+      toast.error(t('common.deleteError'), { description: errorMessage(err) })
+      throw err
+    }
+    toast.success(t('roadmap.toast.featureDeleted'))
     navigate('/roadmap')  // intentional hard nav after delete — no "back" target exists
   }
-
-  const [exportCopied, setExportCopied] = useState(false)
 
   function exportAsDocument() {
     const f = { ...feature, ...form } as RoadmapFeature
     const tks = tickets ?? []
-    const sc  = STATUS_CONFIG[f.status]
-    const pc  = PRIORITY_CONFIG[f.priority]
 
     const lines: string[] = [
       `# ${f.title}`,
       '',
-      `**Status:** ${sc.label}  |  **Priorität:** ${pc.label}${f.targetVersion ? `  |  **Version:** ${f.targetVersion}` : ''}${f.targetYear ? `  |  **Ziel:** ${f.targetYear}${f.targetQuarter ? ` Q${f.targetQuarter}` : ''}` : ''}${f.category ? `  |  **Kategorie:** ${f.category}` : ''}`,
+      `**Status:** ${STATUS_META[f.status].exportLabel}  |  **Priorität:** ${PRIORITY_META[f.priority].exportLabel}${f.targetVersion ? `  |  **Version:** ${f.targetVersion}` : ''}${f.targetYear ? `  |  **Ziel:** ${f.targetYear}${f.targetQuarter ? ` Q${f.targetQuarter}` : ''}` : ''}${f.category ? `  |  **Kategorie:** ${f.category}` : ''}`,
       f.tags.length > 0 ? `**Tags:** ${f.tags.join(', ')}` : '',
       '',
       f.description ? `> ${f.description}` : '',
@@ -1181,33 +376,23 @@ export default function RoadmapFeatureDetailPage() {
       '---',
     ]
 
-    const addSection = (title: string, content: string) => {
-      if (!content.trim()) return
-      lines.push('', `## ${title}`, '', content.trim())
+    for (const s of PLANNING_SECTIONS) {
+      const content = (f[s.key] as string) ?? ''
+      if (!content.trim()) continue
+      lines.push('', `## ${s.exportTitle}`, '', content.trim())
     }
-
-    addSection('Ziele & Motivation', f.goals)
-    addSection('Akzeptanzkriterien', f.acceptanceCriteria)
-    addSection('Frontend / UI', f.uiNotes)
-    addSection('Backend / API', f.backendNotes)
-    addSection('Technische Entscheidungen', f.technicalNotes)
-    addSection('Risiken & Herausforderungen', f.risks)
 
     if (tks.length > 0) {
       lines.push('', '---', '', `## Azure DevOps Tickets (${tks.length})`)
-      const grouped = TICKET_AREAS.reduce<Record<RoadmapTicketArea, typeof tks>>((acc, a) => {
-        acc[a] = tks.filter((t) => t.area === a)
-        return acc
-      }, {} as Record<RoadmapTicketArea, typeof tks>)
       for (const area of TICKET_AREAS) {
-        const areaTickets = grouped[area]
+        const areaTickets = tks.filter((tk) => tk.area === area)
         if (areaTickets.length === 0) continue
-        lines.push('', `### ${TICKET_AREA_CONFIG[area].label}`)
+        lines.push('', `### ${TICKET_AREA_META[area].exportLabel}`)
         for (const tk of areaTickets) {
           lines.push(
             '',
             `#### ${tk.title}`,
-            `**Typ:** ${TICKET_TYPE_CONFIG[tk.type].label}  |  **Priorität:** ${PRIORITY_CONFIG[tk.priority].label}${tk.storyPoints ? `  |  **SP:** ${tk.storyPoints}` : ''}${tk.assignedTeam ? `  |  **Team:** ${tk.assignedTeam}` : ''}`,
+            `**Typ:** ${TICKET_TYPE_META[tk.type].exportLabel}  |  **Priorität:** ${PRIORITY_META[tk.priority].exportLabel}${tk.storyPoints ? `  |  **SP:** ${tk.storyPoints}` : ''}${tk.assignedTeam ? `  |  **Team:** ${tk.assignedTeam}` : ''}`,
           )
           if (tk.description) lines.push('', tk.description)
           if (tk.acceptanceCriteria) lines.push('', '**Akzeptanzkriterien:**', '', tk.acceptanceCriteria)
@@ -1216,600 +401,620 @@ export default function RoadmapFeatureDetailPage() {
       }
     }
 
-    const score = planningScore(f)
-    lines.push('', '---', `*Planungsfortschritt: ${score}/${PLANNING_SECTIONS.length} Abschnitte ausgefüllt · Exportiert am ${new Date().toLocaleDateString('de-DE')}*`)
+    const score = filledCount(f)
+    lines.push('', '---', `*Planungsfortschritt: ${score}/${PLANNING_KEYS.length} Abschnitte ausgefüllt · Exportiert am ${new Date().toLocaleDateString('de-DE')}*`)
 
     navigator.clipboard.writeText(lines.filter((l) => l !== null).join('\n'))
-    setExportCopied(true)
-    setTimeout(() => setExportCopied(false), 2500)
+      .then(() => {
+        setExportCopied(true)
+        setTimeout(() => setExportCopied(false), 2500)
+        toast.success(t('roadmap.toast.exportCopied'), { description: t('roadmap.toast.exportCopiedHint') })
+      })
+      .catch((err) => toast.error(t('common.unknownError'), { description: errorMessage(err) }))
   }
 
+  const filteredTickets = useMemo(() => (tickets ?? [])
+    .filter((tk) => ticketAreaFilter === 'all' || tk.area === ticketAreaFilter)
+    .filter((tk) => ticketTypeFilter === 'all' || tk.type === ticketTypeFilter), [tickets, ticketAreaFilter, ticketTypeFilter])
+
   function copyAllTickets() {
-    const tks = tickets ?? []
-    const filtered = tks
-      .filter((t) => ticketAreaFilter === 'all' || t.area === ticketAreaFilter)
-      .filter((t) => ticketTypeFilter === 'all' || t.type === ticketTypeFilter)
-    const text = filtered.map((tk) => [
+    const text = filteredTickets.map((tk) => [
       `## ${tk.title}`,
-      `**Typ:** ${TICKET_TYPE_CONFIG[tk.type].label}  |  **Bereich:** ${TICKET_AREA_CONFIG[tk.area].label}  |  **Priorität:** ${PRIORITY_CONFIG[tk.priority].label}${tk.storyPoints ? `  |  **SP:** ${tk.storyPoints}` : ''}${tk.assignedTeam ? `  |  **Team:** ${tk.assignedTeam}` : ''}`,
+      `**Typ:** ${TICKET_TYPE_META[tk.type].exportLabel}  |  **Bereich:** ${TICKET_AREA_META[tk.area].exportLabel}  |  **Priorität:** ${PRIORITY_META[tk.priority].exportLabel}${tk.storyPoints ? `  |  **SP:** ${tk.storyPoints}` : ''}${tk.assignedTeam ? `  |  **Team:** ${tk.assignedTeam}` : ''}`,
       tk.description ? `\n${tk.description}` : '',
       tk.acceptanceCriteria ? `\n**Akzeptanzkriterien:**\n${tk.acceptanceCriteria}` : '',
     ].filter(Boolean).join('\n')).join('\n\n---\n\n')
     navigator.clipboard.writeText(text)
+      .then(() => toast.success(t('roadmap.toast.ticketsCopied', { count: filteredTickets.length })))
+      .catch((err) => toast.error(t('common.unknownError'), { description: errorMessage(err) }))
   }
 
+  const categories = useMemo(() => {
+    const cats = new Set(features.map((f) => f.category).filter(Boolean) as string[])
+    return [...cats].sort()
+  }, [features])
+
+  // ── Loading / not found ────────────────────────────────────────────────
   if (!feature) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-2">
-          <Map className="w-10 h-10 text-slate-300 mx-auto" />
-          <p className="text-sm text-slate-500">{t('roadmap.featureNotFound')}</p>
-          <button onClick={() => navigate(-1)} className="text-sm text-indigo-600 hover:underline">{t('roadmap.backToRoadmap')}</button>
-        </div>
-      </div>
+      <Page size="default">
+        {storeLoading ? (
+          <LoadingState label={t('common.loading')} />
+        ) : (
+          <div className="surface">
+            <EmptyState
+              icon={<Map />}
+              title={t('roadmap.featureNotFound')}
+              description={t('roadmap.featureNotFoundHint')}
+              action={<Button variant="secondary" onClick={() => navigate('/roadmap')}>{t('roadmap.backToRoadmap')}</Button>}
+            />
+          </div>
+        )}
+      </Page>
     )
   }
 
-  const sc = STATUS_CONFIG[form.status ?? feature.status]
-  const pc = PRIORITY_CONFIG[form.priority ?? feature.priority]
-  const StatusIcon = sc.icon
-  const filteredTickets = tickets
-    ? tickets
-        .filter((t) => ticketAreaFilter === 'all' || t.area === ticketAreaFilter)
-        .filter((t) => ticketTypeFilter === 'all' || t.type === ticketTypeFilter)
-    : []
+  const status   = (form.status ?? feature.status) as RoadmapStatus
+  const priority = (form.priority ?? feature.priority) as RoadmapPriority
+  const score    = filledCount(form)
+  const locale   = dateLocale(i18n.language)
+  const fmtDate  = (iso: string) => new Date(iso).toLocaleDateString(locale, { dateStyle: 'medium' })
 
   // Story points sum per area
   const spByArea = TICKET_AREAS.reduce<Record<RoadmapTicketArea, number>>((acc, a) => {
-    acc[a] = (tickets ?? []).filter((t) => t.area === a).reduce((s, t) => s + (t.storyPoints ?? 0), 0)
+    acc[a] = (tickets ?? []).filter((tk) => tk.area === a).reduce((s, tk) => s + (tk.storyPoints ?? 0), 0)
     return acc
   }, {} as Record<RoadmapTicketArea, number>)
   const totalSP = Object.values(spByArea).reduce((a, b) => a + b, 0)
+  const withSP  = (tickets ?? []).filter((tk) => tk.storyPoints !== undefined && tk.storyPoints !== null).length
+
+  const target = [
+    feature.targetVersion,
+    feature.targetYear ? `${feature.targetYear}${feature.targetQuarter ? ` Q${feature.targetQuarter}` : ''}` : '',
+  ].filter(Boolean).join(' · ')
+
+  const subtitleParts = [
+    feature.category,
+    target && `${t('roadmap.target')}: ${target}`,
+    `${t('roadmap.updated')} ${fmtDate(feature.updatedAt)}`,
+  ].filter(Boolean)
+
+  const blueprintCount = (endpoints?.length ?? 0) + (screens?.length ?? 0)
+  const readOnlyInput = 'read-only:bg-slate-50 read-only:text-slate-600 dark:read-only:bg-slate-800/40 dark:read-only:text-slate-300'
 
   return (
-    <div className="h-full flex flex-col bg-slate-50 dark:bg-slate-950">
-      {/* Top Bar */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button onClick={() => guardedNavigate(-1)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <Map className="w-4 h-4 text-indigo-500 shrink-0" />
-          <span className="text-sm text-slate-500 hidden sm:block">{t('roadmap.title')}</span>
-          <span className="text-slate-300 dark:text-slate-600 hidden sm:block">/</span>
-          <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate max-w-xs">{feature.title}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {savedFeedback && !dirty && (
-            <span className="hidden sm:flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-              <Check className="w-3 h-3" /> {t('roadmap.savedConfirm')}
-            </span>
-          )}
-          {dirty && (
-            <span className="text-xs text-amber-600 dark:text-amber-400 hidden sm:block">{t('roadmap.unsavedChanges')}</span>
-          )}
-          <button onClick={exportAsDocument} title={t('roadmap.exportDocument')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-indigo-300 hover:text-indigo-600 transition-colors">
-            {exportCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Download className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">{exportCopied ? t('roadmap.exportCopied') : t('roadmap.exportDocument')}</span>
-          </button>
-          {canWrite && (
-            <button onClick={handleSave} disabled={!dirty || saving}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors">
-              <Save className="w-3.5 h-3.5" />
-              {saving ? t('common.save') + '…' : t('common.save')}
-            </button>
-          )}
-          {canWrite && (
-            <button onClick={() => setShowDelete(true)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors">
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {isReadOnly && <ReadOnlyBanner />}
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-
-          {/* ── Title & Meta ── */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-6 space-y-4">
-            <input
-              value={(form.title as string) ?? ''}
-              onChange={(e) => updateField('title', e.target.value)}
-              readOnly={!canWrite}
-              className="w-full text-xl font-bold text-slate-800 dark:text-slate-100 bg-transparent border-0 border-b-2 border-transparent focus:border-indigo-400 focus:outline-none pb-1 transition-colors read-only:cursor-default"
-              placeholder={t('roadmap.featureTitle')}
-            />
-            <textarea
-              value={(form.description as string) ?? ''}
-              onChange={(e) => updateField('description', e.target.value)}
-              rows={2}
-              readOnly={!canWrite}
-              className="w-full text-sm text-slate-600 dark:text-slate-400 bg-transparent resize-none focus:outline-none placeholder-slate-400 read-only:cursor-default"
-              placeholder={t('roadmap.shortDescriptionPlaceholder')}
-            />
-
-            {/* Status / Priority / Timeline row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.status')}</label>
-                <select value={form.status} onChange={(e) => updateField('status', e.target.value as RoadmapStatus)}
-                  disabled={!canWrite}
-                  className={`w-full px-2 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 ${sc.bg} ${sc.color} focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer disabled:opacity-75 disabled:cursor-default`}>
-                  {STATUSES.map((s) => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.priority')}</label>
-                <select value={form.priority} onChange={(e) => updateField('priority', e.target.value as RoadmapPriority)}
-                  disabled={!canWrite}
-                  className="w-full px-2 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-75 disabled:cursor-default">
-                  {PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_CONFIG[p].label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.targetVersion')}</label>
-                <input value={(form.targetVersion as string) ?? ''} onChange={(e) => updateField('targetVersion', e.target.value)}
-                  placeholder="v2.0" readOnly={!canWrite}
-                  className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 read-only:cursor-default" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.category')}</label>
-                <input value={(form.category as string) ?? ''} onChange={(e) => updateField('category', e.target.value)}
-                  placeholder={t('roadmap.categoryPlaceholder')} readOnly={!canWrite}
-                  className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 read-only:cursor-default" />
-              </div>
-            </div>
-
-            {/* Start / Target Year+Quarter / Tags */}
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">
-                    <Calendar className="w-3 h-3 inline mr-1" />{t('roadmap.startYear')}
-                  </label>
-                  <input type="number" min={2024} max={2035} value={form.startYear ?? ''}
-                    onChange={(e) => updateField('startYear', e.target.value ? Number(e.target.value) : undefined as unknown as number)}
-                    placeholder="2025" readOnly={!canWrite}
-                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 read-only:cursor-default" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.startQuarter')}</label>
-                  <select value={form.startQuarter ?? ''} onChange={(e) => updateField('startQuarter', e.target.value ? Number(e.target.value) as 1 | 2 | 3 | 4 : undefined as unknown as 1)}
-                    disabled={!canWrite}
-                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-75 disabled:cursor-default">
-                    <option value="">{t('roadmap.quarterNotSet')}</option>
-                    {QUARTERS.map((q) => <option key={q} value={q}>Q{q}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">
-                    <Calendar className="w-3 h-3 inline mr-1" />{t('roadmap.targetYear')}
-                  </label>
-                  <input type="number" min={2024} max={2035} value={form.targetYear ?? ''}
-                    onChange={(e) => updateField('targetYear', e.target.value ? Number(e.target.value) : undefined as unknown as number)}
-                    placeholder="2025" readOnly={!canWrite}
-                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 read-only:cursor-default" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">{t('roadmap.targetQuarter')}</label>
-                  <select value={form.targetQuarter ?? ''} onChange={(e) => updateField('targetQuarter', e.target.value ? Number(e.target.value) as 1 | 2 | 3 | 4 : undefined as unknown as 1)}
-                    disabled={!canWrite}
-                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-75 disabled:cursor-default">
-                    <option value="">{t('roadmap.quarterNotSet')}</option>
-                    {QUARTERS.map((q) => <option key={q} value={q}>Q{q}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">
-                  <Tag className="w-3 h-3 inline mr-1" />{t('roadmap.tags')} <span className="text-slate-400">({t('roadmap.tagsSeparator')})</span>
-                </label>
-                <input
-                  value={(form.tags as string[])?.join(', ') ?? ''}
-                  onChange={(e) => updateField('tags', e.target.value.split(',').map((t) => t.trim()).filter(Boolean))}
-                  placeholder="dashboard, ui, api" readOnly={!canWrite}
-                  className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 read-only:cursor-default" />
-              </div>
-            </div>
-          </div>
-
-          {/* ── Planning Completeness ── */}
-          {(() => {
-            const score = planningScore(form)
-            const pct = (score / PLANNING_SECTIONS.length) * 100
-            const barColor = pct === 100 ? 'bg-green-500' : pct >= 50 ? 'bg-indigo-500' : pct > 0 ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-600'
-            return (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-3.5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-slate-500">{t('roadmap.planningProgress')}</span>
-                  <span className={`text-xs font-semibold tabular-nums ${pct === 100 ? 'text-green-600 dark:text-green-400' : 'text-slate-500'}`}>
-                    {score}/{PLANNING_SECTIONS.length} {t('roadmap.sectionsFilled')}
-                  </span>
-                </div>
-                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-2">
-                  <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  {PLANNING_SECTIONS.map(({ key, label }) => {
-                    const filled = ((form[key] as string) ?? '').trim().length > 0
-                    return (
-                      <span key={key} className={`text-xs px-2 py-0.5 rounded-full transition-colors ${
-                        filled
-                          ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                      }`}>
-                        {filled ? '✓ ' : ''}{label}
-                      </span>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })()}
-
-          {/* ── Planning Sections ── */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-1">
-              <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">{t('roadmap.planningDetails')}</h2>
-              <div className="flex items-center gap-1">
-                <button type="button" onClick={expandAllSections}
-                  className="text-xs text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                  {t('roadmap.expandAll')}
-                </button>
-                <span className="text-slate-300 dark:text-slate-700">|</span>
-                <button type="button" onClick={collapseAllSections}
-                  className="text-xs text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                  {t('roadmap.collapseAll')}
-                </button>
-              </div>
-            </div>
-            <MarkdownSection
-              icon={Lightbulb}
-              title={t('roadmap.goals')}
-              value={(form.goals as string) ?? ''}
-              onChange={(v) => updateField('goals', v)}
-              placeholder={t('roadmap.goalsPlaceholder')}
-              hint={t('roadmap.goalsHint')}
-              rows={5}
-              isExpanded={isSectionExpanded('goals')}
-              onToggle={() => toggleSection('goals')}
-              readOnly={!canWrite}
-            />
-            <MarkdownSection
-              icon={CheckCircle2}
-              title={t('roadmap.acceptanceCriteria')}
-              value={(form.acceptanceCriteria as string) ?? ''}
-              onChange={(v) => updateField('acceptanceCriteria', v)}
-              placeholder={t('roadmap.acceptanceCriteriaFeaturePlaceholder')}
-              hint={t('roadmap.acceptanceCriteriaHint')}
-              rows={5}
-              isExpanded={isSectionExpanded('acceptanceCriteria')}
-              onToggle={() => toggleSection('acceptanceCriteria')}
-              readOnly={!canWrite}
-            />
-            <MarkdownSection
-              icon={LayoutTemplate}
-              title={t('roadmap.uiNotes')}
-              value={(form.uiNotes as string) ?? ''}
-              onChange={(v) => updateField('uiNotes', v)}
-              placeholder={t('roadmap.uiNotesPlaceholder')}
-              hint={t('roadmap.uiNotesHint')}
-              rows={6}
-              isExpanded={isSectionExpanded('uiNotes')}
-              onToggle={() => toggleSection('uiNotes')}
-              readOnly={!canWrite}
-            />
-            <MarkdownSection
-              icon={Server}
-              title={t('roadmap.backendNotes')}
-              value={(form.backendNotes as string) ?? ''}
-              onChange={(v) => updateField('backendNotes', v)}
-              placeholder={t('roadmap.backendNotesPlaceholder')}
-              hint={t('roadmap.backendNotesHint')}
-              rows={6}
-              isExpanded={isSectionExpanded('backendNotes')}
-              onToggle={() => toggleSection('backendNotes')}
-              readOnly={!canWrite}
-            />
-            <MarkdownSection
-              icon={Cpu}
-              title={t('roadmap.technicalNotes')}
-              value={(form.technicalNotes as string) ?? ''}
-              onChange={(v) => updateField('technicalNotes', v)}
-              placeholder={t('roadmap.technicalNotesPlaceholder')}
-              hint={t('roadmap.technicalNotesHint')}
-              rows={5}
-              isExpanded={isSectionExpanded('technicalNotes')}
-              onToggle={() => toggleSection('technicalNotes')}
-              readOnly={!canWrite}
-            />
-            <MarkdownSection
-              icon={AlertTriangle}
-              title={t('roadmap.risks')}
-              value={(form.risks as string) ?? ''}
-              onChange={(v) => updateField('risks', v)}
-              placeholder={t('roadmap.risksPlaceholder')}
-              hint={t('roadmap.risksHint')}
-              rows={4}
-              isExpanded={isSectionExpanded('risks')}
-              onToggle={() => toggleSection('risks')}
-              readOnly={!canWrite}
-            />
-          </div>
-
-          {/* ── Technical Blueprint ── */}
-          <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setBlueprintOpen((v) => !v)}
-              className="w-full flex items-center justify-between px-5 py-3.5 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+    <Page size="default">
+      <PageHeader
+        back={{ onClick: () => guardedNavigate(-1), label: t('roadmap.backToRoadmap') }}
+        title={(form.title as string)?.trim() || feature.title}
+        documentTitle={feature.title}
+        meta={
+          <>
+            <RoadmapStatusBadge status={status} />
+            <PriorityIndicator priority={priority} />
+            {dirty && <Badge variant="warning" dot label={t('roadmap.unsavedChanges')} />}
+          </>
+        }
+        subtitle={subtitleParts.join(' · ')}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              icon={exportCopied ? <Check className="text-emerald-500" /> : <Download />}
+              onClick={exportAsDocument}
+              title={t('roadmap.exportDocumentHint')}
             >
-              <div className="flex items-center gap-2.5">
-                <Code2 className="w-4 h-4 text-indigo-500" />
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{t('roadmap.blueprint')}</span>
-                {endpoints !== null && screens !== null && (
-                  <span className="text-xs text-slate-400">
-                    {endpoints.length} Endpoints · {screens.length} Screens
-                  </span>
-                )}
-              </div>
-              {blueprintOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-            </button>
-
-            {blueprintOpen && (
-              <div className="p-5 space-y-6 bg-white dark:bg-slate-900">
-                <p className="text-xs text-slate-500">{t('roadmap.blueprintHint')}</p>
-
-                {/* API Endpoints */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Server className="w-4 h-4 text-indigo-400" />
-                      <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400">{t('roadmap.endpoints')}</h3>
-                    </div>
-                    {canWrite && (
-                      <button
-                        onClick={() => setShowAddEndpoint((v) => !v)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-                        {showAddEndpoint ? <X className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                        {showAddEndpoint ? t('common.cancel') : t('roadmap.addEndpoint')}
-                      </button>
-                    )}
-                  </div>
-                  {showAddEndpoint && featureId && canWrite && (
-                    <AddEndpointForm featureId={featureId} onCreated={() => setShowAddEndpoint(false)} onCancel={() => setShowAddEndpoint(false)} />
-                  )}
-                  {endpoints === null ? (
-                    <p className="text-sm text-slate-400 py-2 text-center">{t('common.loading') || 'Laden…'}</p>
-                  ) : endpoints.length === 0 && !showAddEndpoint ? (
-                    <p className="text-sm text-slate-400 py-4 text-center border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">{t('roadmap.noEndpoints')}</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {endpoints.map((ep) => (
-                        <EndpointRow
-                          key={ep.id}
-                          endpoint={ep}
-                          featureId={featureId!}
-                          onUpdate={(data) => updateRoadmapEndpoint(featureId!, ep.id, data)}
-                          onDelete={() => deleteRoadmapEndpoint(featureId!, ep.id)}
-                          canWrite={canWrite}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Frontend Screens */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Monitor className="w-4 h-4 text-indigo-400" />
-                      <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400">{t('roadmap.screens')}</h3>
-                    </div>
-                    {canWrite && (
-                      <button
-                        onClick={() => setShowAddScreen((v) => !v)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-                        {showAddScreen ? <X className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                        {showAddScreen ? t('common.cancel') : t('roadmap.addScreen')}
-                      </button>
-                    )}
-                  </div>
-                  {showAddScreen && featureId && canWrite && (
-                    <AddScreenForm featureId={featureId} endpoints={endpoints ?? []} onCreated={() => setShowAddScreen(false)} onCancel={() => setShowAddScreen(false)} />
-                  )}
-                  {screens === null ? (
-                    <p className="text-sm text-slate-400 py-2 text-center">{t('common.loading') || 'Laden…'}</p>
-                  ) : screens.length === 0 && !showAddScreen ? (
-                    <p className="text-sm text-slate-400 py-4 text-center border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">{t('roadmap.noScreens')}</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {screens.map((sc) => (
-                        <ScreenRow
-                          key={sc.id}
-                          screen={sc}
-                          endpoints={endpoints ?? []}
-                          onUpdate={(data) => updateRoadmapScreen(featureId!, sc.id, data)}
-                          onDelete={() => deleteRoadmapScreen(featureId!, sc.id)}
-                          canWrite={canWrite}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Generate Tickets */}
-                {canWrite && ((endpoints?.length ?? 0) + (screens?.length ?? 0)) > 0 && (
-                  <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
-                    <button
-                      onClick={generateTicketsFromBlueprint}
-                      disabled={generating}
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 transition-all shadow-sm"
-                    >
-                      <Wand2 className="w-4 h-4" />
-                      {generating ? '…' : t('roadmap.generateTickets')}
-                    </button>
-                    {generatedCount !== null && (
-                      <p className="text-xs text-green-600 dark:text-green-400 mt-2 flex items-center gap-1">
-                        <Check className="w-3.5 h-3.5" />
-                        {t('roadmap.generatedTickets', { count: generatedCount })}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
+              {exportCopied ? t('roadmap.exportCopied') : t('roadmap.exportDocument')}
+            </Button>
+            {canWrite && (
+              <Button variant="primary" icon={<Save />} onClick={handleSave} disabled={!dirty} loading={saving} title={`${t('common.save')} (Ctrl+S)`}>
+                {t('common.save')}
+              </Button>
             )}
-          </div>
-
-          {/* ── Azure DevOps Tickets ── */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Ticket className="w-4 h-4 text-indigo-500" />
-                <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">{t('roadmap.azureTickets')}</h2>
-                {tickets && tickets.length > 0 && (
-                  <span className="text-xs text-slate-400">({tickets.length} {t('roadmap.tickets')}{totalSP > 0 ? `, ${totalSP} SP` : ''})</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {tickets && tickets.length > 0 && (
-                  <button onClick={copyAllTickets} title={t('roadmap.copyAllTickets')}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-indigo-600 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-indigo-300 transition-colors">
-                    <Copy className="w-3.5 h-3.5" />
-                    {t('roadmap.copyAll')}
-                  </button>
-                )}
-                {canWrite && (
-                  <button
-                    onClick={() => setShowAddTicket((v) => !v)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-                    {showAddTicket ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                    {showAddTicket ? t('common.cancel') : t('roadmap.addTicket')}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Area + type filter chips + SP coverage */}
-            {tickets && tickets.length > 0 && (
-              <div className="space-y-2">
-                {/* Area filters */}
-                <div className="flex flex-wrap gap-2">
-                  {TICKET_AREAS.map((area) => {
-                    const count = (tickets ?? []).filter((t) => t.area === area).length
-                    if (count === 0) return null
-                    const ac = TICKET_AREA_CONFIG[area]
-                    const AreaIcon = ac.icon
-                    return (
-                      <button
-                        key={area}
-                        onClick={() => setTicketAreaFilter(ticketAreaFilter === area ? 'all' : area)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                          ticketAreaFilter === area
-                            ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                            : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-300'
-                        }`}
-                      >
-                        <AreaIcon className="w-3 h-3" />
-                        {ac.label} ({count}{spByArea[area] > 0 ? ` · ${spByArea[area]} SP` : ''})
-                      </button>
-                    )
-                  })}
-                </div>
-                {/* Type filters */}
-                <div className="flex flex-wrap gap-1.5 items-center">
-                  <span className="text-xs text-slate-400">{t('roadmap.ticketType')}:</span>
-                  {([
-                    { key: 'all' as const, label: t('roadmap.allTicketTypes') },
-                    ...TICKET_TYPES.map((tp) => ({ key: tp, label: TICKET_TYPE_CONFIG[tp].label })),
-                  ]).map(({ key, label }) => (
-                    <button
-                      key={key}
-                      onClick={() => setTicketTypeFilter(key as RoadmapTicketType | 'all')}
-                      className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
-                        ticketTypeFilter === key
-                          ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                          : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-indigo-300'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  {/* SP estimation coverage */}
-                  {(() => {
-                    const withSP = tickets.filter((tk) => tk.storyPoints !== undefined).length
-                    return withSP < tickets.length ? (
-                      <span className="ml-auto text-xs text-slate-400">
-                        {t('roadmap.spEstimated', { n: withSP, total: tickets.length })}
-                      </span>
-                    ) : (
-                      <span className="ml-auto text-xs text-green-600 dark:text-green-400">
-                        {t('roadmap.spEstimated', { n: withSP, total: tickets.length })}
-                      </span>
-                    )
-                  })()}
-                </div>
-              </div>
-            )}
-
-            {showAddTicket && featureId && canWrite && (
-              <AddTicketForm
-                featureId={featureId}
-                teams={teamNames}
-                onCreated={() => setShowAddTicket(false)}
-                onCancel={() => setShowAddTicket(false)}
+            {canWrite && (
+              <DropdownMenu
+                trigger={(p) => <IconButton {...p} variant="secondary" size="md" icon={<MoreHorizontal />} label={t('common.moreActions')} />}
+                items={[
+                  { label: t('roadmap.deleteFeatureTitle'), icon: <Trash2 />, danger: true, onClick: () => setShowDelete(true) },
+                ]}
               />
             )}
+          </>
+        }
+      />
 
-            {tickets === null ? (
-              <p className="text-sm text-slate-400 py-4 text-center">{t('roadmap.loadingTickets')}</p>
-            ) : filteredTickets.length === 0 && !showAddTicket ? (
-              <div className="text-center py-8 space-y-2 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
-                <Ticket className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto" />
-                <p className="text-sm text-slate-400">
-                  {ticketAreaFilter !== 'all' ? t('roadmap.noTicketsArea') : t('roadmap.noTickets')}
-                </p>
-                {ticketAreaFilter === 'all' && (
-                  <p className="text-xs text-slate-400">{t('roadmap.noTicketsHint')}</p>
+      {isReadOnly && <ReadOnlyBanner className="mb-6" />}
+
+      <div className="space-y-6">
+        {/* ── Details ── */}
+        <Card title={t('roadmap.detailsCard')} icon={<FileText />}>
+          <div className="space-y-5">
+            <Field label={t('roadmap.featureTitle')} htmlFor="fd-title" required={canWrite}>
+              <input
+                id="fd-title"
+                value={(form.title as string) ?? ''}
+                onChange={(e) => updateField('title', e.target.value)}
+                readOnly={!canWrite}
+                className={`form-input text-base font-semibold ${readOnlyInput}`}
+                placeholder={t('roadmap.featureTitle')}
+              />
+            </Field>
+            <Field label={t('roadmap.shortDescription')} htmlFor="fd-desc">
+              <textarea
+                id="fd-desc"
+                value={(form.description as string) ?? ''}
+                onChange={(e) => updateField('description', e.target.value)}
+                rows={2}
+                readOnly={!canWrite}
+                className={`form-textarea ${readOnlyInput}`}
+                placeholder={canWrite ? t('roadmap.shortDescriptionPlaceholder') : ''}
+              />
+            </Field>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label={t('roadmap.status')} htmlFor="fd-status">
+                <Select
+                  id="fd-status"
+                  value={status}
+                  onChange={(e) => updateField('status', e.target.value as RoadmapStatus)}
+                  disabled={!canWrite}
+                  icon={<span className={`block h-2 w-2 rounded-full ${STATUS_META[status].dotCls}`} />}
+                >
+                  {ROADMAP_STATUSES.map((s) => <option key={s} value={s}>{t(`roadmap.statusLabels.${s}`)}</option>)}
+                </Select>
+              </Field>
+              <Field label={t('roadmap.priority')} htmlFor="fd-priority">
+                <Select
+                  id="fd-priority"
+                  value={priority}
+                  onChange={(e) => updateField('priority', e.target.value as RoadmapPriority)}
+                  disabled={!canWrite}
+                  icon={<Flag />}
+                >
+                  {ROADMAP_PRIORITIES.map((p) => <option key={p} value={p}>{t(`roadmap.priorityLabels.${p}`)}</option>)}
+                </Select>
+              </Field>
+              <Field label={t('roadmap.targetVersion')} htmlFor="fd-version">
+                <input
+                  id="fd-version"
+                  value={(form.targetVersion as string) ?? ''}
+                  onChange={(e) => updateField('targetVersion', e.target.value)}
+                  placeholder="v2.0" readOnly={!canWrite}
+                  className={`form-input ${readOnlyInput}`}
+                />
+              </Field>
+              <Field label={t('roadmap.category')} htmlFor="fd-category">
+                <input
+                  id="fd-category"
+                  list="fd-category-list"
+                  value={(form.category as string) ?? ''}
+                  onChange={(e) => updateField('category', e.target.value)}
+                  placeholder={canWrite ? t('roadmap.categoryPlaceholder') : ''}
+                  readOnly={!canWrite}
+                  className={`form-input ${readOnlyInput}`}
+                />
+                <datalist id="fd-category-list">
+                  {categories.map((c) => <option key={c} value={c} />)}
+                </datalist>
+              </Field>
+            </div>
+
+            <div>
+              <p className="mb-2 flex items-center gap-1.5 section-label">
+                <Calendar className="h-3.5 w-3.5" />
+                {t('roadmap.schedule')}
+              </p>
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <Field label={t('roadmap.startYear')} htmlFor="fd-start-year">
+                  <input
+                    id="fd-start-year"
+                    type="number" min={2024} max={2035} inputMode="numeric"
+                    value={form.startYear ?? ''}
+                    onChange={(e) => updateField('startYear', e.target.value ? Number(e.target.value) : undefined as unknown as number)}
+                    placeholder="2025" readOnly={!canWrite}
+                    className={`form-input tabular-nums ${readOnlyInput}`}
+                  />
+                </Field>
+                <Field label={t('roadmap.startQuarter')} htmlFor="fd-start-q">
+                  <Select
+                    id="fd-start-q"
+                    value={form.startQuarter ?? ''}
+                    onChange={(e) => updateField('startQuarter', e.target.value ? Number(e.target.value) as 1 | 2 | 3 | 4 : undefined as unknown as 1)}
+                    disabled={!canWrite}
+                  >
+                    <option value="">{t('roadmap.quarterNotSet')}</option>
+                    {QUARTERS.map((q) => <option key={q} value={q}>Q{q}</option>)}
+                  </Select>
+                </Field>
+                <Field label={t('roadmap.targetYear')} htmlFor="fd-target-year">
+                  <input
+                    id="fd-target-year"
+                    type="number" min={2024} max={2035} inputMode="numeric"
+                    value={form.targetYear ?? ''}
+                    onChange={(e) => updateField('targetYear', e.target.value ? Number(e.target.value) : undefined as unknown as number)}
+                    placeholder="2025" readOnly={!canWrite}
+                    className={`form-input tabular-nums ${readOnlyInput}`}
+                  />
+                </Field>
+                <Field label={t('roadmap.targetQuarter')} htmlFor="fd-target-q">
+                  <Select
+                    id="fd-target-q"
+                    value={form.targetQuarter ?? ''}
+                    onChange={(e) => updateField('targetQuarter', e.target.value ? Number(e.target.value) as 1 | 2 | 3 | 4 : undefined as unknown as 1)}
+                    disabled={!canWrite}
+                  >
+                    <option value="">{t('roadmap.quarterNotSet')}</option>
+                    {QUARTERS.map((q) => <option key={q} value={q}>Q{q}</option>)}
+                  </Select>
+                </Field>
+              </div>
+            </div>
+
+            <Field label={t('roadmap.tags')} htmlFor="fd-tags" hint={canWrite ? t('roadmap.tagsSeparator') : undefined}>
+              <input
+                id="fd-tags"
+                value={tagsText}
+                onChange={(e) => { setTagsText(e.target.value); updateField('tags', parseTags(e.target.value)) }}
+                placeholder={canWrite ? 'dashboard, ui, api' : ''}
+                readOnly={!canWrite}
+                className={`form-input ${readOnlyInput}`}
+              />
+            </Field>
+          </div>
+        </Card>
+
+        {/* ── Planning ── */}
+        <Card
+          title={t('roadmap.planningDetails')}
+          subtitle={`${score}/${PLANNING_KEYS.length} ${t('roadmap.sectionsFilled')}`}
+          icon={<ClipboardList />}
+          padding={false}
+          action={
+            <Button size="xs" variant="ghost" onClick={allCollapsed ? expandAllSections : collapseAllSections}>
+              {allCollapsed ? t('roadmap.expandAll') : t('roadmap.collapseAll')}
+            </Button>
+          }
+        >
+          <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+            <div className="mb-3 flex items-center gap-3">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800" role="progressbar" aria-valuemin={0} aria-valuemax={PLANNING_KEYS.length} aria-valuenow={score} aria-label={t('roadmap.planningProgress')}>
+                <div className={`h-full rounded-full transition-all ${planningBarCls(score, PLANNING_KEYS.length)}`} style={{ width: `${(score / PLANNING_KEYS.length) * 100}%` }} />
+              </div>
+              <span className={`text-xs font-semibold tabular-nums ${score === PLANNING_KEYS.length ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                {Math.round((score / PLANNING_KEYS.length) * 100)}%
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {PLANNING_KEYS.map((key) => {
+                const filled = ((form[key] as string) ?? '').trim().length > 0
+                return (
+                  <Chip
+                    key={key}
+                    active={filled}
+                    icon={filled ? <Check /> : <Circle />}
+                    onClick={() => jumpToSection(key)}
+                    title={t('roadmap.jumpToSection')}
+                  >
+                    {t(`roadmap.planningShort.${key}`)}
+                  </Chip>
+                )
+              })}
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {PLANNING_SECTIONS.map((s) => (
+              <PlanningSection
+                key={s.key}
+                id={`plan-${s.key}`}
+                icon={s.icon}
+                title={t(`roadmap.${s.key}`)}
+                value={(form[s.key] as string) ?? ''}
+                onChange={(v) => updateField(s.key, v)}
+                placeholder={t(s.placeholder)}
+                hint={t(s.hint)}
+                rows={s.rows}
+                expanded={isSectionExpanded(s.key)}
+                onToggle={() => toggleSection(s.key)}
+                readOnly={!canWrite}
+              />
+            ))}
+          </div>
+        </Card>
+
+        {/* ── Technical Blueprint ── */}
+        <section className="surface overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setBlueprintOpen((v) => !v)}
+            aria-expanded={blueprintOpen}
+            className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <Code2 className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold leading-6 text-slate-900 dark:text-slate-100">{t('roadmap.blueprint')}</span>
+              <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                {endpoints !== null && screens !== null
+                  ? t('roadmap.blueprintSummary', { endpoints: endpoints.length, screens: screens.length })
+                  : t('roadmap.blueprintHintShort')}
+              </span>
+            </span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${blueprintOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {blueprintOpen && (
+            <div className="space-y-6 border-t border-slate-100 px-5 py-5 animate-fade-in dark:border-slate-800">
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t('roadmap.blueprintHint')}</p>
+
+              {/* API Endpoints */}
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="flex items-center gap-2 section-label">
+                    <Server className="h-3.5 w-3.5" />
+                    {t('roadmap.endpoints')}
+                    {endpoints && <span className="rounded-full bg-slate-200/70 px-1.5 py-px text-2xs font-semibold tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-400">{endpoints.length}</span>}
+                  </h3>
+                  {canWrite && (
+                    <Button size="xs" variant="subtle" icon={<Plus />} onClick={() => setShowAddEndpoint(true)}>
+                      {t('roadmap.addEndpoint')}
+                    </Button>
+                  )}
+                </div>
+                {endpoints === null ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                ) : endpoints.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+                    <EmptyState compact icon={<Server />} title={t('roadmap.noEndpoints')} />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {endpoints.map((ep) => (
+                      <EndpointRow
+                        key={ep.id}
+                        endpoint={ep}
+                        onUpdate={(data) => updateRoadmapEndpoint(featureId!, ep.id, data)}
+                        onDelete={() => deleteRoadmapEndpoint(featureId!, ep.id)}
+                        canWrite={canWrite}
+                      />
+                    ))}
+                  </div>
                 )}
               </div>
-            ) : (
-              <div className="space-y-2">
-                {filteredTickets.map((ticket) => (
-                  <TicketRow
-                    key={ticket.id}
-                    ticket={ticket}
-                    featureId={featureId!}
-                    teams={teamNames}
-                    onUpdate={(data) => updateRoadmapTicket(featureId!, ticket.id, data)}
-                    onDelete={() => deleteRoadmapTicket(featureId!, ticket.id)}
-                    canWrite={canWrite}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
 
-          {/* Meta info */}
-          <div className="text-xs text-slate-400 dark:text-slate-600 pb-6 flex gap-4">
-            <span>{t('roadmap.created')}: {new Date(feature.createdAt).toLocaleDateString('de-DE', { dateStyle: 'medium' })}</span>
-            <span>{t('roadmap.updated')}: {new Date(feature.updatedAt).toLocaleDateString('de-DE', { dateStyle: 'medium' })}</span>
+              {/* Frontend Screens */}
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="flex items-center gap-2 section-label">
+                    <Monitor className="h-3.5 w-3.5" />
+                    {t('roadmap.screens')}
+                    {screens && <span className="rounded-full bg-slate-200/70 px-1.5 py-px text-2xs font-semibold tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-400">{screens.length}</span>}
+                  </h3>
+                  {canWrite && (
+                    <Button size="xs" variant="subtle" icon={<Plus />} onClick={() => setShowAddScreen(true)}>
+                      {t('roadmap.addScreen')}
+                    </Button>
+                  )}
+                </div>
+                {screens === null ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                ) : screens.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+                    <EmptyState compact icon={<Monitor />} title={t('roadmap.noScreens')} />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {screens.map((sc) => (
+                      <ScreenRow
+                        key={sc.id}
+                        screen={sc}
+                        endpoints={endpoints ?? []}
+                        onUpdate={(data) => updateRoadmapScreen(featureId!, sc.id, data)}
+                        onDelete={() => deleteRoadmapScreen(featureId!, sc.id)}
+                        canWrite={canWrite}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Generate Tickets */}
+              {canWrite && blueprintCount > 0 && (
+                <div className="flex flex-col gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 sm:flex-row sm:items-center dark:border-indigo-500/20 dark:bg-indigo-500/[0.07]">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{t('roadmap.generateTickets')}</p>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t('roadmap.generateTicketsHint', { count: blueprintCount })}</p>
+                  </div>
+                  <Button variant="primary" icon={<Wand2 />} onClick={() => setConfirmGenerate(true)} className="shrink-0">
+                    {t('roadmap.generateTicketsShort')}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* ── Azure DevOps Tickets ── */}
+        <Card
+          title={t('roadmap.azureTickets')}
+          subtitle={tickets && tickets.length > 0
+            ? `${t('roadmap.workload.ticketCount', { count: tickets.length })}${totalSP > 0 ? ` · ${totalSP} SP` : ''}`
+            : undefined}
+          icon={<Ticket />}
+          padding={false}
+          action={
+            <>
+              {tickets && tickets.length > 0 && (
+                <Button size="sm" variant="secondary" icon={<Copy />} onClick={copyAllTickets} title={t('roadmap.copyAllTickets')} aria-label={t('roadmap.copyAllTickets')}>
+                  <span className="hidden sm:inline">{t('roadmap.copyAll')}</span>
+                </Button>
+              )}
+              {canWrite && (
+                <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setShowAddTicket(true)} aria-label={t('roadmap.addTicket')}>
+                  <span className="hidden sm:inline">{t('roadmap.addTicket')}</span>
+                </Button>
+              )}
+            </>
+          }
+        >
+          {/* Area + type filters + SP coverage */}
+          {tickets && tickets.length > 0 && (
+            <div className="space-y-3 border-b border-slate-100 px-4 py-3 sm:px-5 dark:border-slate-800">
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('roadmap.ticketArea')}>
+                {TICKET_AREAS.map((area) => {
+                  const count = tickets.filter((tk) => tk.area === area).length
+                  if (count === 0) return null
+                  const AreaIcon = TICKET_AREA_META[area].icon
+                  return (
+                    <Chip
+                      key={area}
+                      active={ticketAreaFilter === area}
+                      icon={<AreaIcon />}
+                      count={count}
+                      onClick={() => setTicketAreaFilter(ticketAreaFilter === area ? 'all' : area)}
+                    >
+                      {t(`roadmap.areas.${area}`)}
+                      {spByArea[area] > 0 && <span className="font-normal opacity-70">· {spByArea[area]} SP</span>}
+                    </Chip>
+                  )
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Tabs
+                  variant="pills"
+                  size="sm"
+                  aria-label={t('roadmap.ticketType')}
+                  value={ticketTypeFilter}
+                  onChange={setTicketTypeFilter}
+                  items={[
+                    { value: 'all' as const, label: t('roadmap.allTicketTypes') },
+                    ...TICKET_TYPES.map((tp) => ({ value: tp, label: t(`roadmap.ticketTypes.${tp}`) })),
+                  ]}
+                />
+                <span className={`ml-auto text-xs tabular-nums ${withSP === tickets.length ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                  {t('roadmap.spEstimated', { n: withSP, total: tickets.length })}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {tickets === null ? (
+            <div className="space-y-3 p-5">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : filteredTickets.length === 0 ? (
+            tickets.length > 0 ? (
+              <EmptyState
+                compact
+                icon={<Filter />}
+                title={t('roadmap.noTicketsFiltered')}
+                action={
+                  <Button size="sm" variant="secondary" onClick={() => { setTicketAreaFilter('all'); setTicketTypeFilter('all') }}>
+                    {t('common.resetFilters')}
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                compact
+                icon={<Ticket />}
+                title={t('roadmap.noTickets')}
+                description={t('roadmap.noTicketsHint')}
+                action={canWrite && (
+                  <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setShowAddTicket(true)}>
+                    {t('roadmap.addTicket')}
+                  </Button>
+                )}
+              />
+            )
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredTickets.map((ticket) => (
+                <TicketRow
+                  key={ticket.id}
+                  ticket={ticket}
+                  teams={teamNames}
+                  onUpdate={(data) => updateRoadmapTicket(featureId!, ticket.id, data)}
+                  onDelete={() => deleteRoadmapTicket(featureId!, ticket.id)}
+                  canWrite={canWrite}
+                />
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Meta info */}
+        <p className="flex flex-wrap gap-x-4 gap-y-1 pb-2 text-xs text-slate-400 dark:text-slate-500">
+          <span>{t('roadmap.created')}: {fmtDate(feature.createdAt)}</span>
+          <span>{t('roadmap.updated')}: {fmtDate(feature.updatedAt)}</span>
+        </p>
+
+        {/* Sticky save bar */}
+        {canWrite && dirty && (
+          <div className="sticky bottom-4 z-20 animate-slide-up">
+            <div className="mx-auto flex max-w-xl items-center gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-2.5 shadow-popover backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
+              <span className="min-w-0 flex-1 truncate text-sm text-slate-700 dark:text-slate-200">{t('roadmap.unsavedChanges')}</span>
+              <span className="hidden items-center gap-1 text-xs text-slate-400 sm:inline-flex">
+                <kbd className="kbd">Ctrl</kbd><kbd className="kbd">S</kbd>
+              </span>
+              <Button size="sm" variant="primary" icon={<Save />} onClick={handleSave} loading={saving}>
+                {t('common.save')}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {showDelete && (
-        <DeleteConfirm
-          title={feature.title}
-          onConfirm={handleDelete}
-          onCancel={() => setShowDelete(false)}
-        />
+      {/* ── Dialogs ── */}
+      {canWrite && featureId && (
+        <>
+          <TicketFormModal
+            isOpen={showAddTicket}
+            onClose={() => setShowAddTicket(false)}
+            teams={teamNames}
+            onSubmit={async (data) => { await addRoadmapTicket(featureId, data) }}
+          />
+          <EndpointFormModal
+            isOpen={showAddEndpoint}
+            onClose={() => setShowAddEndpoint(false)}
+            onSubmit={async (data) => { await addRoadmapEndpoint(featureId, data) }}
+          />
+          <ScreenFormModal
+            isOpen={showAddScreen}
+            onClose={() => setShowAddScreen(false)}
+            endpoints={endpoints ?? []}
+            onSubmit={async (data) => { await addRoadmapScreen(featureId, data) }}
+          />
+        </>
       )}
+
+      <ConfirmDialog
+        isOpen={showDelete}
+        onClose={() => setShowDelete(false)}
+        onConfirm={handleDelete}
+        title={t('roadmap.deleteFeatureTitle')}
+        message={t('roadmap.deleteFeatureConfirm', { title: feature.title })}
+        confirmLabel={t('common.delete')}
+        variant="danger"
+      />
+
+      <ConfirmDialog
+        isOpen={confirmGenerate}
+        onClose={() => setConfirmGenerate(false)}
+        onConfirm={generateTicketsFromBlueprint}
+        title={t('roadmap.generateTickets')}
+        message={t('roadmap.generateTicketsConfirm', { count: blueprintCount })}
+        confirmLabel={t('roadmap.generateTicketsShort')}
+        variant="warning"
+      />
 
       <ConfirmDialog
         isOpen={isBlocked}
@@ -1821,6 +1026,6 @@ export default function RoadmapFeatureDetailPage() {
         cancelLabel={t('confirmDialog.unsavedStay')}
         variant="warning"
       />
-    </div>
+    </Page>
   )
 }

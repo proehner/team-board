@@ -23,4 +23,11 @@ i18n
     },
   })
 
+// Keep <html lang> in sync (screen readers, hyphenation, spell checking)
+const syncLang = (lng?: string) => {
+  if (typeof document !== 'undefined' && lng) document.documentElement.lang = lng.split('-')[0]
+}
+syncLang(i18n.language)
+i18n.on('languageChanged', syncLang)
+
 export default i18n

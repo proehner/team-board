@@ -48,13 +48,37 @@ function latestSprint(sprints: Sprint[]): Sprint | undefined {
   return [...sprints].sort((a, b) => b.endDate.localeCompare(a.endDate) || b.createdAt.localeCompare(a.createdAt))[0]
 }
 
-/** Increments the last number in the latest sprint's name ("Sprint 41" → "Sprint 42", "S09" → "S10"). */
+/** Largest span treated as a number range ("51_52" → span 1). Guards against names like "Sprint 1-2026". */
+const MAX_RANGE_SPAN = 10
+
+const pad = (n: number, like: string) => String(n).padStart(like.length, '0')
+
+/**
+ * Suggests the next sprint name based on the latest sprint:
+ * - Trailing number range → the whole range moves on by its length
+ *   ("2026_51_52" → "2026_53_54", "2026_08_10" → "2026_11_13", "KW 3-4" → "KW 5-6").
+ * - Otherwise the last number is incremented ("Sprint 41" → "Sprint 42", "S09" → "S10").
+ */
 export function suggestSprintName(sprints: Sprint[]): string {
   const latest = latestSprint(sprints)
-  const match = latest?.name.match(/(\d+)(?!.*\d)/)
-  if (latest && match && match.index !== undefined) {
-    const next = String(Number(match[1]) + 1).padStart(match[1].length, '0')
-    return latest.name.slice(0, match.index) + next + latest.name.slice(match.index + match[1].length)
+  if (!latest) return `Sprint ${sprints.length + 1}`
+  const name = latest.name
+
+  const range = name.match(/(\d+)(\D+)(\d+)(\D*)$/)
+  if (range && range.index !== undefined) {
+    const [, fromStr, sep, toStr, suffix] = range
+    const from = Number(fromStr)
+    const to = Number(toStr)
+    const span = to - from
+    if (span > 0 && span <= MAX_RANGE_SPAN) {
+      const nextFrom = to + 1
+      return name.slice(0, range.index) + pad(nextFrom, fromStr) + sep + pad(nextFrom + span, toStr) + suffix
+    }
+  }
+
+  const last = name.match(/(\d+)(?!.*\d)/)
+  if (last && last.index !== undefined) {
+    return name.slice(0, last.index) + pad(Number(last[1]) + 1, last[1]) + name.slice(last.index + last[1].length)
   }
   return `Sprint ${sprints.length + 1}`
 }

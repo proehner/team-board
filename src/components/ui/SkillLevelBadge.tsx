@@ -1,37 +1,30 @@
+import { useTranslation } from 'react-i18next'
 import type { SkillLevel } from '@/types'
-import { SKILL_LEVEL_LABELS } from '@/types'
 
 interface SkillLevelBadgeProps {
   level: SkillLevel
   showLabel?: boolean
   size?: 'sm' | 'md'
+  className?: string
 }
 
-const levelColors: Record<SkillLevel, string> = {
-  0: 'bg-slate-200 dark:bg-slate-700',
-  1: 'bg-blue-200',
-  2: 'bg-blue-400',
-  3: 'bg-indigo-500',
-  4: 'bg-indigo-700',
-  5: 'bg-indigo-900',
-}
-
-export default function SkillLevelBadge({ level, showLabel = false, size = 'sm' }: SkillLevelBadgeProps) {
+/** Five-dot meter for a skill level (0–5). Dark-mode aware, labelled for screen readers. */
+export default function SkillLevelBadge({ level, showLabel = false, size = 'sm', className = '' }: SkillLevelBadgeProps) {
+  const { t } = useTranslation()
+  const label = t(`skillLevel.${level}`)
   return (
-    <div className="inline-flex items-center gap-1.5">
-      <div className="flex gap-0.5">
+    <span className={`inline-flex items-center gap-1.5 ${className}`} title={`${level}/5 · ${label}`}>
+      <span className="flex gap-0.5" role="img" aria-label={`${level}/5 · ${label}`}>
         {([1, 2, 3, 4, 5] as SkillLevel[]).map((l) => (
-          <div
+          <span
             key={l}
-            className={`rounded-full transition-colors ${size === 'sm' ? 'w-2 h-2' : 'w-3 h-3'} ${
-              l <= level ? levelColors[level] : 'bg-slate-200 dark:bg-slate-700'
+            className={`rounded-full transition-colors ${size === 'sm' ? 'h-1.5 w-1.5' : 'h-2.5 w-2.5'} ${
+              l <= level ? 'bg-indigo-500 dark:bg-indigo-400' : 'bg-slate-200 dark:bg-slate-700'
             }`}
           />
         ))}
-      </div>
-      {showLabel && (
-        <span className="text-xs text-slate-600 dark:text-slate-400">{SKILL_LEVEL_LABELS[level]}</span>
-      )}
-    </div>
+      </span>
+      {showLabel && <span className="text-xs text-slate-600 dark:text-slate-400">{label}</span>}
+    </span>
   )
 }

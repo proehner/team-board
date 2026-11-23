@@ -1,29 +1,37 @@
-import { useState, useEffect, useCallback } from 'react'
-import { createPortal } from 'react-dom'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { usePagePermission } from '@/hooks/usePagePermission'
-import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { format } from 'date-fns'
 import {
-  CalendarClock, ArrowLeft, Plus, Archive,
-  ChevronRight, Trash2, RefreshCw, MapPin, Clock,
-  ChevronUp, ChevronDown, Search,
+  CalendarClock, Plus, Archive, Trash2, RefreshCw, MapPin, Clock, ChevronUp, ChevronDown,
+  Globe, ListTodo, MoreHorizontal, Pencil, Ticket as TicketIcon, SearchX, ArrowLeft, CheckCircle2,
 } from 'lucide-react'
+import { usePagePermission } from '@/hooks/usePagePermission'
 import { useStore } from '@/store'
 import { useAuthStore } from '@/store/auth'
 import { getMemberDisplayNames } from '@/utils/members'
 import { meetingsApi } from '@/api/client'
 import type { MeetingTopic, MeetingTopicStatus, TeamMember, Team } from '@/types'
+import Page from '@/components/ui/Page'
+import PageHeader from '@/components/ui/PageHeader'
+import Tabs from '@/components/ui/Tabs'
+import Button from '@/components/ui/Button'
+import IconButton from '@/components/ui/IconButton'
+import Badge from '@/components/ui/Badge'
+import Avatar from '@/components/ui/Avatar'
+import DropdownMenu, { type DropdownItem } from '@/components/ui/DropdownMenu'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import EmptyState from '@/components/ui/EmptyState'
+import SearchInput from '@/components/ui/SearchInput'
+import Skeleton from '@/components/ui/Skeleton'
+import ReadOnlyBanner from '@/components/ui/ReadOnlyBanner'
+import { toast, errorMessage } from '@/store/toast'
+import { TopicStatusMenu } from '@/components/meetings/TopicStatus'
+import MeetingFormModal, { type MeetingPayload } from '@/components/meetings/MeetingFormModal'
+import { formatSchedule } from '@/components/meetings/meetingUtils'
+import { stripMarkdown } from '@/components/knownErrors/utils'
 
-const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-
-const STATUS_CONFIG: Record<MeetingTopicStatus, { label: string; className: string }> = {
-  todo:        { label: 'meetings.status.todo',        className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
-  in_progress: { label: 'meetings.status.in_progress', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
-  deferred:    { label: 'meetings.status.deferred',    className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
-  fixed:       { label: 'meetings.status.fixed',       className: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' },
-  done:        { label: 'meetings.status.done',        className: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
-}
+type TabKey = 'open' | 'done'
 
 export default function MeetingDetailPage() {
   const { t }           = useTranslation()
@@ -32,54 +40,83 @@ export default function MeetingDetailPage() {
   const meetings        = useStore((s) => s.meetings)
   const members         = useStore((s) => s.members)
   const allMembers      = useStore((s) => s.allMembers)
+  const updateMeeting   = useStore((s) => s.updateMeeting)
+  const deleteMeeting   = useStore((s) => s.deleteMeeting)
   const teams           = useAuthStore((s) => s.teams)
 
   const { canWrite, isReadOnly } = usePagePermission('meetings')
 
   const meeting = meetings.find((m) => m.id === meetingId)
 
-  const [topics, setTopics]             = useState<MeetingTopic[]>([])
-  const [showArchived, setShowArchived] = useState(false)
+  const [topics, setTopics]               = useState<MeetingTopic[]>([])
+  const [tab, setTab]                     = useState<TabKey>('open')
   const [loadingTopics, setLoadingTopics] = useState(true)
-  const [topicFilter, setTopicFilter]   = useState('')
-  const [newTitle, setNewTitle]         = useState('')
-  const [adding, setAdding]             = useState(false)
-  const [showAddForm, setShowAddForm]   = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<MeetingTopic | null>(null)
+  const [topicFilter, setTopicFilter]     = useState('')
+  const [newTitle, setNewTitle]           = useState('')
+  const [adding, setAdding]               = useState(false)
+  const [showAddForm, setShowAddForm]     = useState(false)
+  const [deleteTarget, setDeleteTarget]   = useState<MeetingTopic | null>(null)
+  const [editOpen, setEditOpen]           = useState(false)
+  const [confirmDeleteMeeting, setConfirmDeleteMeeting] = useState(false)
+  const addInputRef = useRef<HTMLInputElement>(null)
 
+  // Load all topics (open + done) once; the tabs split them client-side.
   const loadTopics = useCallback(async () => {
     if (!meetingId) return
     setLoadingTopics(true)
     try {
-      const data = await meetingsApi.listTopics(meetingId, showArchived)
-      setTopics(data)
+      setTopics(await meetingsApi.listTopics(meetingId, true))
+    } catch (err) {
+      toast.error(t('common.loadError'), { description: errorMessage(err) })
     } finally {
       setLoadingTopics(false)
     }
-  }, [meetingId, showArchived])
+  }, [meetingId, t])
 
   useEffect(() => { loadTopics() }, [loadTopics])
 
+  function openAddForm() {
+    setTab('open')
+    setShowAddForm(true)
+    requestAnimationFrame(() => addInputRef.current?.focus())
+  }
+
   async function handleAddTopic() {
-    if (!newTitle.trim() || !meetingId) return
+    if (!newTitle.trim() || !meetingId || adding) return
     setAdding(true)
     try {
       const topic = await meetingsApi.createTopic(meetingId, { title: newTitle.trim() })
       setTopics((prev) => [...prev, topic])
       setNewTitle('')
-      setShowAddForm(false)
+      toast.success(t('meetings.topicAdded'), { description: topic.title })
+      // Keep the form open for quick consecutive entries
+      requestAnimationFrame(() => addInputRef.current?.focus())
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
     } finally {
       setAdding(false)
     }
   }
 
-  async function handleStatusChange(topic: MeetingTopic, newStatus: MeetingTopicStatus) {
+  async function handleStatusChange(topic: MeetingTopic, newStatus: MeetingTopicStatus, silent = false) {
     if (!meetingId) return
-    const updated = await meetingsApi.updateTopic(meetingId, topic.id, { status: newStatus })
-    setTopics((prev) => {
-      const next = prev.map((tp) => (tp.id === topic.id ? updated : tp))
-      return showArchived ? next : next.filter((tp) => tp.status !== 'done')
-    })
+    const previous = topic.status
+    try {
+      const updated = await meetingsApi.updateTopic(meetingId, topic.id, { status: newStatus })
+      setTopics((prev) => prev.map((tp) => (tp.id === topic.id ? updated : tp)))
+      if (silent) return
+      if (newStatus === 'done' || previous === 'done') {
+        toast.success(
+          newStatus === 'done' ? t('meetings.topicDone') : t('meetings.topicReopened'),
+          {
+            description: topic.title,
+            action: { label: t('meetings.undo'), onClick: () => handleStatusChange(updated, previous, true) },
+          },
+        )
+      }
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+    }
   }
 
   async function handleMove(topic: MeetingTopic, direction: 'up' | 'down') {
@@ -90,386 +127,412 @@ export default function MeetingDetailPage() {
     if (swapIdx < 0 || swapIdx >= active.length) return
 
     const swapTopic = active[swapIdx]
-    const [updA, updB] = await Promise.all([
-      meetingsApi.updateTopic(meetingId, topic.id,     { sortOrder: swapTopic.sortOrder }),
-      meetingsApi.updateTopic(meetingId, swapTopic.id, { sortOrder: topic.sortOrder }),
-    ])
-    setTopics((prev) => prev
-      .map((tp) => {
-        if (tp.id === updA.id) return updA
-        if (tp.id === updB.id) return updB
-        return tp
-      })
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-    )
+    try {
+      const [updA, updB] = await Promise.all([
+        meetingsApi.updateTopic(meetingId, topic.id,     { sortOrder: swapTopic.sortOrder }),
+        meetingsApi.updateTopic(meetingId, swapTopic.id, { sortOrder: topic.sortOrder }),
+      ])
+      setTopics((prev) => prev
+        .map((tp) => {
+          if (tp.id === updA.id) return updA
+          if (tp.id === updB.id) return updB
+          return tp
+        })
+        .sort((a, b) => a.sortOrder - b.sortOrder),
+      )
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+    }
   }
 
   async function handleDeleteTopic() {
     if (!deleteTarget || !meetingId) return
-    await meetingsApi.deleteTopic(meetingId, deleteTarget.id)
-    setTopics((prev) => prev.filter((tp) => tp.id !== deleteTarget.id))
-    setDeleteTarget(null)
+    try {
+      await meetingsApi.deleteTopic(meetingId, deleteTarget.id)
+      setTopics((prev) => prev.filter((tp) => tp.id !== deleteTarget.id))
+      toast.success(t('common.deleted'), { description: deleteTarget.title })
+    } catch (err) {
+      toast.error(t('common.deleteError'), { description: errorMessage(err) })
+      throw err
+    }
   }
+
+  async function handleUpdateMeeting(payload: MeetingPayload) {
+    try {
+      await updateMeeting(meeting!.id, payload)
+      toast.success(t('common.saved'))
+    } catch (err) {
+      toast.error(t('common.saveError'), { description: errorMessage(err) })
+      throw err
+    }
+  }
+
+  async function handleDeleteMeeting() {
+    try {
+      await deleteMeeting(meeting!.id)
+      toast.success(t('common.deleted'), { description: meeting!.title })
+      navigate('/meetings')
+    } catch (err) {
+      toast.error(t('common.deleteError'), { description: errorMessage(err) })
+      throw err
+    }
+  }
+
+  const activeTopics = useMemo(() => topics.filter((tp) => tp.status !== 'done'), [topics])
+  const doneTopics   = useMemo(
+    () => topics
+      .filter((tp) => tp.status === 'done')
+      .sort((a, b) => new Date(b.closedAt ?? b.updatedAt).getTime() - new Date(a.closedAt ?? a.updatedAt).getTime()),
+    [topics],
+  )
 
   if (!meeting) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-slate-500">{t('meetings.notFound')}</p>
-      </div>
+      <Page size="narrow">
+        <PageHeader back={{ to: '/meetings', label: t('meetings.title') }} title={t('meetings.title')} />
+        <div className="surface">
+          <EmptyState
+            icon={<CalendarClock />}
+            title={t('meetings.notFound')}
+            action={<Button variant="secondary" icon={<ArrowLeft />} onClick={() => navigate('/meetings')}>{t('meetings.backToList')}</Button>}
+          />
+        </div>
+      </Page>
     )
   }
 
-  const activeTopics = topics.filter((tp) => tp.status !== 'done')
-  const doneTopics   = topics.filter((tp) => tp.status === 'done')
-
   const filterQuery = topicFilter.trim().toLowerCase()
-  const filteredActiveTopics = filterQuery
-    ? activeTopics.filter((tp) =>
-        tp.title.toLowerCase().includes(filterQuery) ||
-        (tp.description ?? '').toLowerCase().includes(filterQuery),
-      )
-    : activeTopics
-  const filteredDoneTopics = filterQuery
-    ? doneTopics.filter((tp) =>
-        tp.title.toLowerCase().includes(filterQuery) ||
-        (tp.description ?? '').toLowerCase().includes(filterQuery),
-      )
-    : doneTopics
+  const matches = (tp: MeetingTopic) =>
+    !filterQuery ||
+    tp.title.toLowerCase().includes(filterQuery) ||
+    (tp.description ?? '').toLowerCase().includes(filterQuery)
 
-  function formatSchedule() {
-    const parts: string[] = []
-    if (meeting!.dayOfWeek != null) parts.push(t(`meetings.days.${DAY_KEYS[meeting!.dayOfWeek]}`))
-    if (meeting!.meetingTime) parts.push(meeting!.meetingTime)
-    return parts.join(', ')
-  }
+  const list = (tab === 'open' ? activeTopics : doneTopics).filter(matches)
+  const schedule = formatSchedule(t, meeting)
+  const memberPool = meeting.isGlobal ? allMembers : members
+
+  const inProgressCount = activeTopics.filter((tp) => tp.status === 'in_progress').length
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
-      {isReadOnly && <ReadOnlyBanner />}
-      {/* Back + Header */}
-      <div className="space-y-3">
-        <button
-          onClick={() => navigate('/meetings')}
-          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          {t('meetings.title')}
-        </button>
-
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-violet-500 flex items-center justify-center shrink-0 mt-0.5">
-            <CalendarClock className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">{meeting.title}</h1>
-            {meeting.description && (
-              <p className="text-sm text-slate-500 mt-0.5">{meeting.description}</p>
-            )}
-            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-              <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                <RefreshCw className="w-3.5 h-3.5" />
-                {t(`meetings.recurrence.${meeting.recurrence}`)}
+    <Page size="default">
+      <PageHeader
+        back={{ to: '/meetings', label: t('meetings.title') }}
+        title={meeting.title}
+        meta={meeting.isGlobal && <Badge variant="success" icon={<Globe />} label={t('meetings.global')} />}
+        subtitle={
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="inline-flex items-center gap-1.5">
+              <RefreshCw className="h-3.5 w-3.5 text-slate-400" />
+              {t(`meetings.recurrence.${meeting.recurrence}`)}
+            </span>
+            {schedule && (
+              <span className="inline-flex items-center gap-1.5 tabular-nums">
+                <Clock className="h-3.5 w-3.5 text-slate-400" />
+                {schedule}
               </span>
-              {formatSchedule() && (
-                <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <Clock className="w-3.5 h-3.5" />
-                  {formatSchedule()}
-                </span>
-              )}
-              {meeting.location && (
-                <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <MapPin className="w-3.5 h-3.5" />
-                  {meeting.location}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Agenda Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('meetings.agenda')}</h2>
-          <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-            {activeTopics.length} {t('meetings.openTopics')}
+            )}
+            {meeting.location && (
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                {meeting.location}
+              </span>
+            )}
           </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowArchived((v) => !v)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
-              showArchived
-                ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-                : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Archive className="w-3.5 h-3.5" />
-            {t('meetings.showArchived')}
-            {doneTopics.length > 0 && !showArchived && (
-              <span className="bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-full px-1.5 py-0 text-xs">
-                {doneTopics.length}
-              </span>
-            )}
-          </button>
-          {canWrite && (
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              {t('meetings.addTopic')}
-            </button>
-          )}
-        </div>
-      </div>
+        }
+        actions={
+          canWrite && (
+            <>
+              <Button variant="primary" icon={<Plus />} onClick={openAddForm}>
+                {t('meetings.addTopic')}
+              </Button>
+              <DropdownMenu
+                trigger={(p) => (
+                  <IconButton {...p} variant="secondary" size="md" icon={<MoreHorizontal />} label={t('common.moreActions')} />
+                )}
+                items={[
+                  { label: t('meetings.editMeeting'), icon: <Pencil />, onClick: () => setEditOpen(true) },
+                  { type: 'divider' },
+                  { label: t('meetings.deleteTitle'), icon: <Trash2 />, danger: true, onClick: () => setConfirmDeleteMeeting(true) },
+                ]}
+              />
+            </>
+          )
+        }
+      >
+        {isReadOnly && <ReadOnlyBanner className="mb-5" />}
+        {meeting.description && (
+          <p className="mb-5 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            {meeting.description}
+          </p>
+        )}
+        <Tabs<TabKey>
+          aria-label={t('meetings.agenda')}
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'open', label: t('meetings.agenda'), icon: ListTodo, count: loadingTopics ? undefined : activeTopics.length },
+            { value: 'done', label: t('meetings.archivedTopics'), icon: Archive, count: loadingTopics ? undefined : doneTopics.length },
+          ]}
+        />
+      </PageHeader>
 
-      {/* Topic filter */}
+      {/* Toolbar */}
       {topics.length > 0 && (
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
+        <div className="-mt-1 mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <SearchInput
             value={topicFilter}
-            onChange={(e) => setTopicFilter(e.target.value)}
-            placeholder={t('common.search')}
-            className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            onChange={setTopicFilter}
+            size="sm"
+            placeholder={t('meetings.searchTopics')}
+            className="w-full sm:w-72"
+            aria-label={t('common.search')}
           />
+          <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400 sm:ml-auto">
+            {tab === 'open'
+              ? t('meetings.agendaSummary', { open: activeTopics.length, inProgress: inProgressCount })
+              : t('meetings.doneSummary', { count: doneTopics.length })}
+          </span>
         </div>
       )}
 
       {/* Add topic form */}
-      {showAddForm && (
-        <div className="flex gap-2">
+      {showAddForm && tab === 'open' && (
+        <form
+          onSubmit={(e) => { e.preventDefault(); handleAddTopic() }}
+          className="surface mb-4 flex flex-col gap-2 p-3 animate-slide-down sm:flex-row sm:items-center"
+        >
           <input
+            ref={addInputRef}
             autoFocus
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleAddTopic(); if (e.key === 'Escape') setShowAddForm(false) }}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setShowAddForm(false); setNewTitle('') } }}
             placeholder={t('meetings.topicTitlePlaceholder')}
-            className="flex-1 px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-violet-300 dark:border-violet-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            aria-label={t('meetings.addTopic')}
+            className="form-input flex-1"
           />
-          <button
-            onClick={handleAddTopic}
-            disabled={!newTitle.trim() || adding}
-            className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            {adding ? '…' : t('common.add')}
-          </button>
-          <button
-            onClick={() => { setShowAddForm(false); setNewTitle('') }}
-            className="px-3 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-        </div>
+          <div className="flex items-center gap-2">
+            <span className="hidden text-2xs text-slate-400 lg:inline">
+              <kbd className="kbd">Enter</kbd> {t('meetings.toAdd')} · <kbd className="kbd">Esc</kbd> {t('meetings.toClose')}
+            </span>
+            <Button variant="ghost" onClick={() => { setShowAddForm(false); setNewTitle('') }} className="ml-auto sm:ml-0">
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" variant="primary" icon={<Plus />} loading={adding} disabled={!newTitle.trim()}>
+              {t('common.add')}
+            </Button>
+          </div>
+        </form>
       )}
 
       {/* Topics list */}
       {loadingTopics ? (
-        <div className="text-center py-8 text-slate-400 text-sm">{t('meetings.loading')}</div>
-      ) : topics.length === 0 ? (
-        <div className="text-center py-12 text-slate-400">
-          <CalendarClock className="w-8 h-8 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">{t('meetings.emptyAgenda')}</p>
+        <div className="surface divide-y divide-slate-100 dark:divide-slate-800">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3.5">
+              <Skeleton className="h-5 w-24 rounded-full" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-1/2" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : list.length === 0 ? (
+        <div className="surface">
+          {filterQuery ? (
+            <EmptyState
+              compact
+              icon={<SearchX />}
+              title={t('meetings.noResults')}
+              action={<Button variant="secondary" size="sm" onClick={() => setTopicFilter('')}>{t('common.resetFilters')}</Button>}
+            />
+          ) : tab === 'open' ? (
+            <EmptyState
+              icon={<CheckCircle2 />}
+              title={t('meetings.emptyAgenda')}
+              description={t('meetings.emptyAgendaHint')}
+              action={canWrite && !showAddForm && (
+                <Button variant="primary" icon={<Plus />} onClick={openAddForm}>{t('meetings.addTopic')}</Button>
+              )}
+            />
+          ) : (
+            <EmptyState icon={<Archive />} title={t('meetings.emptyDone')} />
+          )}
         </div>
       ) : (
-        <div className="space-y-1.5">
-          {/* Active topics */}
-          {filteredActiveTopics.map((topic, idx) => (
+        <ul className="surface divide-y divide-slate-100 dark:divide-slate-800">
+          {list.map((topic, idx) => (
             <TopicRow
               key={topic.id}
               topic={topic}
-              meetingId={meeting.id}
-              members={meeting.isGlobal ? allMembers : members}
+              to={`/meetings/${meeting.id}/topics/${topic.id}`}
+              members={memberPool}
               teams={teams}
+              canMove={tab === 'open' && !filterQuery}
               isFirst={idx === 0}
-              isLast={idx === filteredActiveTopics.length - 1}
+              isLast={idx === list.length - 1}
               canWrite={canWrite}
               onStatusChange={handleStatusChange}
               onMove={handleMove}
               onDelete={() => setDeleteTarget(topic)}
-              onNavigate={() => navigate(`/meetings/${meeting.id}/topics/${topic.id}`)}
-              t={t}
             />
           ))}
-
-          {/* Empty filter result */}
-          {filterQuery && filteredActiveTopics.length === 0 && filteredDoneTopics.length === 0 && (
-            <div className="text-center py-8 text-slate-400 text-sm">{t('meetings.noResults')}</div>
-          )}
-
-          {/* Done / archived section */}
-          {showArchived && filteredDoneTopics.length > 0 && (
-            <>
-              <div className="flex items-center gap-2 py-2">
-                <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-                <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
-                  <Archive className="w-3 h-3" /> {t('meetings.archivedTopics')}
-                </span>
-                <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-              </div>
-              {filteredDoneTopics.map((topic) => (
-                <TopicRow
-                  key={topic.id}
-                  topic={topic}
-                  meetingId={meeting.id}
-                  members={meeting.isGlobal ? allMembers : members}
-                  teams={teams}
-                  isFirst={false}
-                  isLast={false}
-                  canWrite={canWrite}
-                  onStatusChange={handleStatusChange}
-                  onMove={() => {/* no sorting in archive */}}
-                  onDelete={() => setDeleteTarget(topic)}
-                  onNavigate={() => navigate(`/meetings/${meeting.id}/topics/${topic.id}`)}
-                  t={t}
-                />
-              ))}
-            </>
-          )}
-        </div>
+        </ul>
       )}
 
-      {/* Delete confirm */}
-      {deleteTarget && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
-          <div className="relative bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">{t('meetings.deleteTopicTitle')}</h2>
-            <p className="text-sm text-slate-500">{t('meetings.deleteTopicConfirm', { title: deleteTarget.title })}</p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 transition-colors">
-                {t('common.cancel')}
-              </button>
-              <button onClick={handleDeleteTopic} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors">
-                {t('common.delete')}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
-    </div>
+      {/* Delete topic */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        title={t('meetings.deleteTopicTitle')}
+        message={t('meetings.deleteTopicConfirm', { title: deleteTarget?.title ?? '' })}
+        confirmLabel={t('common.delete')}
+        onConfirm={handleDeleteTopic}
+        onClose={() => setDeleteTarget(null)}
+        variant="danger"
+      />
+
+      {/* Edit / delete meeting */}
+      <MeetingFormModal isOpen={editOpen} onClose={() => setEditOpen(false)} meeting={meeting} onSubmit={handleUpdateMeeting} />
+      <ConfirmDialog
+        isOpen={confirmDeleteMeeting}
+        title={t('meetings.deleteTitle')}
+        message={t('meetings.deleteConfirm', { title: meeting.title })}
+        confirmLabel={t('common.delete')}
+        onConfirm={handleDeleteMeeting}
+        onClose={() => setConfirmDeleteMeeting(false)}
+        variant="danger"
+      />
+    </Page>
   )
 }
 
+// ─── Topic row ────────────────────────────────────────────────────────────────
+
 interface TopicRowProps {
   topic: MeetingTopic
-  meetingId: string
+  to: string
   members: TeamMember[]
   teams: Team[]
+  canMove: boolean
   isFirst: boolean
   isLast: boolean
   canWrite: boolean
   onStatusChange: (topic: MeetingTopic, status: MeetingTopicStatus) => void
   onMove: (topic: MeetingTopic, dir: 'up' | 'down') => void
   onDelete: () => void
-  onNavigate: () => void
-  t: (key: string, opts?: Record<string, unknown>) => string
 }
 
-function TopicRow({ topic, members, teams, isFirst, isLast, canWrite, onStatusChange, onMove, onDelete, onNavigate, t }: TopicRowProps) {
+const revealCls = 'opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100'
+
+/**
+ * Whole row is clickable via a stretched link. Interactive controls come AFTER the link in the
+ * DOM (visual order via `order-*`) so they paint above the link overlay without z-index
+ * — this keeps dropdown menus above the following rows.
+ */
+function TopicRow({ topic, to, members, teams, canMove, isFirst, isLast, canWrite, onStatusChange, onMove, onDelete }: TopicRowProps) {
+  const { t } = useTranslation()
   const isDone    = topic.status === 'done'
   const assignees = members.filter((m) => topic.assigneeIds?.includes(m.id))
   const assigneeDisplayNames = getMemberDisplayNames(assignees, teams)
-  const cfg       = STATUS_CONFIG[topic.status]
+  const preview   = topic.description ? stripMarkdown(topic.description) : ''
+  const ticketCount = topic.ticketIds?.length ?? 0
 
-  const STATUSES: MeetingTopicStatus[] = ['todo', 'in_progress', 'deferred', 'fixed', 'done']
+  const menuItems: DropdownItem[] = [
+    ...(canMove
+      ? [
+          { label: t('meetings.moveUp'), icon: <ChevronUp />, disabled: isFirst, onClick: () => onMove(topic, 'up') },
+          { label: t('meetings.moveDown'), icon: <ChevronDown />, disabled: isLast, onClick: () => onMove(topic, 'down') },
+          { type: 'divider' as const },
+        ]
+      : []),
+    { label: t('meetings.deleteTopicTitle'), icon: <Trash2 />, danger: true, onClick: onDelete },
+  ]
 
   return (
-    <div
-      onClick={onNavigate}
-      className={`group flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all ${
-        isDone
-          ? 'bg-slate-50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-800 opacity-60'
-          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-sm'
-      }`}
-    >
-      {/* Sort arrows (only for active topics with write permission) */}
-      {!isDone && canWrite && (
-        <div className="flex flex-col gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={(e) => { e.stopPropagation(); onMove(topic, 'up') }}
-            disabled={isFirst}
-            className="p-0.5 rounded text-slate-400 hover:text-violet-600 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronUp className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onMove(topic, 'down') }}
-            disabled={isLast}
-            className="p-0.5 rounded text-slate-400 hover:text-violet-600 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronDown className="w-3.5 h-3.5" />
-          </button>
+    <li className="group relative flex items-center gap-3 px-3 py-3 transition-colors first:rounded-t-xl last:rounded-b-xl hover:bg-slate-50/80 dark:hover:bg-slate-800/40 sm:px-4">
+      {/* Title (stretched link) */}
+      <Link
+        to={to}
+        className="order-3 min-w-0 flex-1 outline-none after:absolute after:inset-0 after:rounded-[inherit] after:content-[''] focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-indigo-500/70"
+      >
+        <span
+          className={`block truncate text-sm font-medium ${
+            isDone ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-400'
+          }`}
+        >
+          {topic.title}
+        </span>
+        {(preview || (isDone && topic.closedAt)) && (
+          <span className="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400">
+            {isDone && topic.closedAt
+              ? t('meetings.closedAt', { date: format(new Date(topic.closedAt), 'dd.MM.yyyy') })
+              : preview}
+          </span>
+        )}
+      </Link>
+
+      {/* Reorder (desktop, hover) */}
+      {canWrite && canMove && (
+        <div className={`relative order-1 hidden shrink-0 flex-col sm:flex ${revealCls}`}>
+          <IconButton size="xs" icon={<ChevronUp />} label={t('meetings.moveUp')} disabled={isFirst} onClick={() => onMove(topic, 'up')} className="!h-4 !rounded" />
+          <IconButton size="xs" icon={<ChevronDown />} label={t('meetings.moveDown')} disabled={isLast} onClick={() => onMove(topic, 'down')} className="!h-4 !rounded" />
         </div>
       )}
-      {(isDone || !canWrite) && <div className="w-5 shrink-0" />}
 
-      {/* Status badge (clickable dropdown) */}
-      <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-        <select
-          value={topic.status}
-          onChange={(e) => onStatusChange(topic, e.target.value as MeetingTopicStatus)}
+      {/* Status */}
+      <div className="relative order-2 shrink-0">
+        <TopicStatusMenu
+          status={topic.status}
+          compact
           disabled={!canWrite}
-          className={`text-xs font-medium px-2 py-1 rounded-full border-0 ${canWrite ? 'cursor-pointer' : 'cursor-default'} appearance-none focus:outline-none focus:ring-2 focus:ring-violet-500 ${cfg.className}`}
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>{t(`meetings.status.${s}`)}</option>
-          ))}
-        </select>
+          onChange={(s) => onStatusChange(topic, s)}
+        />
       </div>
 
-      {/* Title + description */}
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${isDone ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
-          {topic.title}
-        </p>
-        {topic.description && (
-          <p className="text-xs text-slate-400 truncate mt-0.5">{topic.description.replace(/[#*`_>\-]/g, '').slice(0, 100)}</p>
-        )}
-      </div>
-
-      {/* Ticket count badge */}
-      {topic.ticketIds?.length > 0 && (
-        <span className="shrink-0 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded-full">
-          🎫 {topic.ticketIds.length}
-        </span>
-      )}
-
-      {/* Assignees */}
-      {assignees.length > 0 && (
-        <div className="flex items-center -space-x-1.5 shrink-0">
-          {assignees.slice(0, 3).map((m) => (
-            <div
-              key={m.id}
-              title={assigneeDisplayNames.get(m.id) ?? m.name}
-              className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center text-xs font-bold text-white shrink-0"
-              style={{ backgroundColor: m.avatarColor }}
+      {/* Meta */}
+      {(ticketCount > 0 || assignees.length > 0) && (
+        <div className="relative order-4 hidden shrink-0 items-center gap-3 sm:flex">
+          {ticketCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-medium tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              title={t('meetings.linkedTicketsCount', { count: ticketCount })}
             >
-              {m.name.charAt(0).toUpperCase()}
-            </div>
-          ))}
-          {assignees.length > 3 && (
-            <div className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-900 bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-medium text-slate-600 dark:text-slate-300">
-              +{assignees.length - 3}
+              <TicketIcon className="h-3 w-3 text-slate-400" />
+              {ticketCount}
+            </span>
+          )}
+          {assignees.length > 0 && (
+            <div className="flex items-center -space-x-1.5">
+              {assignees.slice(0, 3).map((m) => (
+                <Avatar key={m.id} name={assigneeDisplayNames.get(m.id) ?? m.name} color={m.avatarColor} size="xs" ring />
+              ))}
+              {assignees.length > 3 && (
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-600 ring-2 ring-white dark:bg-slate-700 dark:text-slate-300 dark:ring-slate-900">
+                  +{assignees.length - 3}
+                </span>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* Actions */}
+      {/* Row actions */}
       {canWrite && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete() }}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+        <div className="relative order-5 shrink-0">
+          <DropdownMenu
+            trigger={(p) => (
+              <IconButton
+                {...p}
+                icon={<MoreHorizontal />}
+                label={t('common.moreActions')}
+                className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100"
+              />
+            )}
+            items={menuItems}
+          />
         </div>
       )}
-      <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0 group-hover:text-violet-400 transition-colors" />
-    </div>
+    </li>
   )
 }

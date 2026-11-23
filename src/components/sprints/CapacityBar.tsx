@@ -26,12 +26,17 @@ export default function CapacityBar({ capacity, activities, className = '' }: Ca
 
   return (
     <div
-      className={`flex h-2.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 ${unassigned < 0 ? 'ring-2 ring-red-400 dark:ring-red-500' : ''} ${className}`}
+      role="img"
+      aria-label={tooltip}
       title={tooltip}
+      className={`flex h-2 gap-px overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 ${
+        unassigned < 0 ? 'ring-2 ring-red-400/80 ring-offset-1 ring-offset-white dark:ring-red-500/80 dark:ring-offset-slate-900' : ''
+      } ${className}`}
     >
       {scale > 0 && segments.map((s) => (
         <div
           key={s.activity.id}
+          className="h-full first:rounded-l-full last:rounded-r-full"
           style={{ width: `${(s.hours / scale) * 100}%`, backgroundColor: s.activity.color }}
         />
       ))}

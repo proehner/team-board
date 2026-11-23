@@ -5,7 +5,14 @@ export const AVATAR_COLORS = [
 ]
 
 export const getInitials = (name: string): string => {
-  const parts = name.trim().split(/\s+/)
+  // Only consider word parts that start with a letter (drops "(kendox)", "-", emojis …)
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter((p) => !p.startsWith('('))
+    .map((p) => p.replace(/^[^\p{L}\p{N}]+/u, ''))
+    .filter((p) => /^[\p{L}\p{N}]/u.test(p))
+  if (parts.length === 0) return name.trim().substring(0, 2).toUpperCase() || '?'
   if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase()
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
